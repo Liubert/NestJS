@@ -1,11 +1,11 @@
 import { Transform } from 'class-transformer';
 import {
+  ArrayUnique,
+  IsArray,
   IsEmail,
+  IsOptional,
   IsString,
   Length,
-  IsOptional,
-  IsArray,
-  ArrayUnique,
 } from 'class-validator';
 import { trimTransform } from '../../../common/transformers/trim-transformer';
 import { IsPassword } from '../../../common/ validators/password.validator';
@@ -13,21 +13,19 @@ import { IsPassword } from '../../../common/ validators/password.validator';
 export class CreateUserDto {
   @Transform(trimTransform)
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsString()
   @Length(8, 128)
   @IsPassword()
-  password: string;
+  password!: string;
 
   @Transform(trimTransform)
-  @IsOptional()
   @IsString()
   @Length(1, 50)
   firstName?: string;
 
   @Transform(trimTransform)
-  @IsOptional()
   @IsString()
   @Length(1, 50)
   lastName?: string;
