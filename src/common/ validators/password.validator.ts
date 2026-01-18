@@ -1,9 +1,10 @@
-// src/common/validators/password.validator.ts
 import { Matches, ValidationOptions } from 'class-validator';
 
 const PASSWORD_REGEX = /^(?=.*[A-Za-z])(?=.*\d).+$/;
 const PASSWORD_MESSAGE =
   'Password must contain at least one letter and one number';
+
+// TODO: In future, should be used for forgot password and change password flows.
 
 export function IsPassword(validationOptions?: ValidationOptions) {
   const options: ValidationOptions = {
@@ -13,10 +14,3 @@ export function IsPassword(validationOptions?: ValidationOptions) {
   };
   return Matches(PASSWORD_REGEX, options);
 }
-
-// Example usage in a DTO:
-// import { IsPassword } from '../../../common/validators/password.validator';
-// class CreateUserDto {
-//   @IsPassword()
-//   password: string;
-// }

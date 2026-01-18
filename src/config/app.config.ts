@@ -1,5 +1,9 @@
 import { registerAs } from '@nestjs/config';
 
+// Centralized application config with default values.
+// Single entry point for environment-based settings.
+// Allows running the app locally without .env.
+
 export default registerAs('app', () => ({
   port: parseInt(process.env.APP_PORT || '3000', 10),
   environment: process.env.NODE_ENV || 'local',
