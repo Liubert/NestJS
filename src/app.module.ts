@@ -4,14 +4,14 @@ import { AppService } from './app.service';
 import { UsersModule } from './users/users.module';
 import { ConfigModule } from '@nestjs/config';
 import { LoggerMiddleware } from './common/middleware/logger.middleware'; // Import your middleware
-import configuration from './config/app.config';
+import appConfig from './config/app.config';
 
 @Module({
   imports: [
     // Initialize configuration module
     ConfigModule.forRoot({
       isGlobal: true, // Recommended: makes config available everywhere
-      load: [configuration],
+      load: [appConfig],
       envFilePath: `.env`, // Points to the environment file
     }),
     UsersModule,

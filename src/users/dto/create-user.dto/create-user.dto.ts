@@ -8,7 +8,7 @@ import {
   Length,
 } from 'class-validator';
 import { trimTransform } from '../../../common/transformers/trim-transformer';
-import { IsPassword } from '../../../common/ validators/password.validator';
+import { IsPassword } from '../../../common/validators/password.validator';
 
 export class CreateUserDto {
   @Transform(trimTransform)
