@@ -1,14 +1,7 @@
 import { Transform } from 'class-transformer';
-import {
-  ArrayUnique,
-  IsArray,
-  IsEmail,
-  IsOptional,
-  IsString,
-  Length,
-} from 'class-validator';
-import { trimTransform } from '../../../common/transformers/trim-transformer';
-import { IsPassword } from '../../../common/validators/password.validator';
+import { IsEmail, IsOptional, IsString, Length } from 'class-validator';
+import { trimTransform } from '../../../../common/transformers/trim-transformer';
+import { IsPassword } from '../../../../common/validators/password.validator';
 
 export class CreateUserDto {
   @Transform(trimTransform)
@@ -31,8 +24,6 @@ export class CreateUserDto {
   lastName?: string;
 
   @IsOptional()
-  @IsArray()
-  @ArrayUnique()
-  @IsString({ each: true })
-  roles?: string[];
+  @IsString()
+  phone?: string;
 }
