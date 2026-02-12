@@ -8,11 +8,14 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, QueryFailedError, QueryRunner, Repository } from 'typeorm';
 
-import { OrderEntity, OrderStatus } from './entities/order.entity';
+import { OrderEntity } from './entities/order.entity';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { ProductEntity } from '../products/entities/product.entity';
 import { OrderItemEntity } from './entities/order-item.entity';
+import { OrderStatus } from '../../graphql/orders/order-status.enum';
+
+const MAX_LIMIT = 50;
 
 function isUniqueViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -36,7 +39,10 @@ export class OrdersService {
   }
 
   async findOne(id: string): Promise<OrderEntity> {
-    const order = await this.ordersRepo.findOne({ where: { id } });
+    const order = await this.ordersRepo.findOne({
+      where: { id },
+      relations: { items: true },
+    });
 
     if (!order) {
       throw new NotFoundException(`Order with id ${id} not found`);
@@ -44,6 +50,39 @@ export class OrdersService {
 
     return order;
   }
+
+  async findOrders({
+    filter,
+    pagination,
+  }: {
+    filter?: { status?: OrderStatus; dateFrom?: Date; dateTo?: Date };
+    pagination?: { limit?: number; offset?: number };
+  }) {
+    const limit = Math.min(pagination?.limit ?? 20, MAX_LIMIT);
+    const offset = Math.max(pagination?.offset ?? 0, 0);
+
+    const qb = this.ordersRepo
+      .createQueryBuilder('o')
+      .leftJoinAndSelect('o.items', 'i')
+      .orderBy('o.createdAt', 'DESC')
+      .take(limit)
+      .skip(offset);
+
+    if (filter?.status) {
+      qb.andWhere('o.status = :status', { status: filter.status });
+    }
+
+    if (filter?.dateFrom) {
+      qb.andWhere('o.createdAt >= :dateFrom', { dateFrom: filter.dateFrom });
+    }
+
+    if (filter?.dateTo) {
+      qb.andWhere('o.createdAt <= :dateTo', { dateTo: filter.dateTo });
+    }
+
+    return qb.getMany();
+  }
+
   // NOTE: Concurrency strategy
   //
   // This implementation uses **pessimistic row-level locking** for stock updates.

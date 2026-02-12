@@ -1,4 +1,3 @@
-// comments in English
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
 @Entity('users')

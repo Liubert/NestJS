@@ -1,7 +1,6 @@
-// comments in English
 import { dataSource } from '../data-source/data-source';
-import { ProductEntity } from '../modules/products/entities/product.entity';
-import { UserEntity } from '../modules/users/user.entity';
+import { ProductEntity } from '../../modules/products/entities/product.entity';
+import { UserEntity } from '../../modules/users/user.entity';
 
 // ---- PRODUCTS ----
 const PRODUCTS_COUNT = 10000;

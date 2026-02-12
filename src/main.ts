@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { AppConfig, Envs } from './config/app.config';
 import { ResponseTimeInterceptor } from './common/interceptors/response-time.interceptor';
-import { setupSwagger } from './swagger/swagger';
+import { setupSwagger } from './config/swagger/swagger';
 import { ConfigService } from '@nestjs/config';
 
 async function bootstrap() {
@@ -12,7 +12,7 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,
-      forbidNonWhitelisted: false,
+      forbidNonWhitelisted: true,
       transform: true,
     }),
   );
@@ -21,15 +21,15 @@ async function bootstrap() {
 
   const configService = app.get(ConfigService);
 
-  const { port, environment } = configService.getOrThrow<AppConfig>('app');
+  const { port, env } = configService.getOrThrow<AppConfig>('app');
 
-  if (environment !== Envs.PROD) {
+  if (env !== Envs.prod) {
     setupSwagger(app);
   }
 
   await app.listen(port);
 
-  console.log(`Application environment is: ${environment}`);
+  console.log(`Application environment is: ${env}`);
   console.log(`Application is running on: ${await app.getUrl()}`);
 }
 
