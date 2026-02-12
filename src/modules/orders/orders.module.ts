@@ -4,10 +4,17 @@ import { OrdersController } from './orders.controller';
 import { OrdersService } from './orders.service';
 import { OrderEntity } from './entities/order.entity';
 import { OrderItemEntity } from './entities/order-item.entity';
+import { ProductsModule } from '../products/products.module';
+import { OrdersResolver } from '../../graphql/orders/order.resolver';
+import { OrderItemResolver } from '../../graphql/orderItems/order-item.resolver';
+import { ProductLoader } from '../../graphql/products/product.loader';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([OrderEntity, OrderItemEntity])],
+  imports: [
+    TypeOrmModule.forFeature([OrderEntity, OrderItemEntity]),
+    ProductsModule,
+  ],
   controllers: [OrdersController],
-  providers: [OrdersService],
+  providers: [OrdersService, OrdersResolver, OrderItemResolver, ProductLoader],
 })
 export class OrdersModule {}

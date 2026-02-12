@@ -1,46 +1,46 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { GraphQLModule } from '@nestjs/graphql';
+import { ApolloDriver, ApolloDriverConfig } from '@nestjs/apollo';
+import { join } from 'path';
+
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { UsersModule } from './modules/users/users.module';
-import { ConfigModule, ConfigService } from '@nestjs/config';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import appConfig, { AppConfig } from './config/app.config';
-import { TypeOrmModule } from '@nestjs/typeorm';
+
+import { UsersModule } from './modules/users/users.module';
 import { ProductsModule } from './modules/products/products.module';
 import { OrdersModule } from './modules/orders/orders.module';
 
+import { AppResolver } from './graphql/app.resolver';
+import { formatGraphQLError } from './graphql/errors/format-error';
+
 @Module({
   imports: [
-    // Initialize configuration module
     ConfigModule.forRoot({
-      isGlobal: true, // Recommended: makes config available everywhere
+      isGlobal: true,
       load: [appConfig],
-      envFilePath: `.env`, // Points to the environment file
+      envFilePath: `.env`,
     }),
 
-    // NEW: DB connection (does not affect existing routes/middleware)
+    GraphQLModule.forRoot<ApolloDriverConfig>({
+      driver: ApolloDriver,
+      autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
+      sortSchema: true,
+      path: '/graphql',
+      debug: false,
+      formatError: formatGraphQLError,
+    }),
+
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
-        // Read typed config object from your existing app config
-        const { database } = configService.getOrThrow<AppConfig>('app');
-
+        const { db } = configService.getOrThrow<AppConfig>('app');
         return {
-          type: 'postgres',
-          host: database.host,
-          port: database.port,
-          username: database.user,
-          password: database.password,
-          database: database.name,
-
-          // DB changes only by migrations
-          synchronize: false,
-
-          // TypeORM will auto-load entities registered via TypeOrmModule.forFeature(...)
+          ...db,
           autoLoadEntities: true,
-
-          // see SQL queries and errors in console
-          logging: true,
         };
       },
     }),
@@ -50,10 +50,9 @@ import { OrdersModule } from './modules/orders/orders.module';
     OrdersModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [AppService, AppResolver],
 })
 export class AppModule implements NestModule {
-  // Implementation of NestModule interface to apply middleware
   configure(consumer: MiddlewareConsumer) {
     consumer.apply(LoggerMiddleware).forRoutes('*');
   }

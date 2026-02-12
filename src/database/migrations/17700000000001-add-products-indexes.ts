@@ -1,4 +1,3 @@
-// comments in English
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
 export class AddProductsIndexes17700000000001 implements MigrationInterface {
@@ -38,7 +37,6 @@ export class AddProductsIndexes17700000000001 implements MigrationInterface {
       `DROP INDEX IF EXISTS idx_products_active_created_at_id_desc;`,
     );
 
-    // comments in English:
     // Usually don't drop extensions in down migrations.
     // await queryRunner.query(`DROP EXTENSION IF EXISTS pg_trgm;`);
   }

@@ -1,4 +1,3 @@
-// comments in English
 import {
   IsDateString,
   IsInt,

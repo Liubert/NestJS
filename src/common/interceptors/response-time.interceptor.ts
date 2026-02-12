@@ -12,6 +12,11 @@ import { Response } from 'express';
 @Injectable()
 export class ResponseTimeInterceptor implements NestInterceptor {
   intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+    // Skip GraphQL requests (no standard HTTP response object here)
+    if (context.getType<'http' | 'rpc' | 'ws'>() !== 'http') {
+      return next.handle();
+    }
+
     const http = context.switchToHttp();
     const req = http.getRequest<RequestWithMetadata>();
     const res = http.getResponse<Response>();

@@ -1,4 +1,3 @@
-// comments in English
 import {
   Column,
   CreateDateColumn,
@@ -8,12 +7,7 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { OrderItemEntity } from './order-item.entity';
-
-export enum OrderStatus {
-  CREATED = 'created',
-  PAID = 'paid',
-  CANCELLED = 'cancelled',
-}
+import { OrderStatus } from '../../../graphql/orders/order-status.enum';
 
 @Entity('orders')
 @Index('UQ_orders_user_idempotency', ['userId', 'idempotencyKey'], {

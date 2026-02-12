@@ -1,17 +1,16 @@
-// comments in English
 import {
   BadRequestException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
 import { ProductEntity } from './entities/product.entity';
 import { ListProductsDto } from './dto/list-product.dto';
-import { DEFAULT_PAGE_SIZE } from '../../constant/pagination.const';
+import { DEFAULT_PAGE_SIZE } from '../../common/constant/pagination.const';
 
 @Injectable()
 export class ProductsService {
@@ -20,6 +19,14 @@ export class ProductsService {
     private readonly productsRepo: Repository<ProductEntity>,
   ) {}
 
+  async findByIds(ids: string[]): Promise<ProductEntity[]> {
+    if (!ids.length) return [];
+
+    return this.productsRepo.find({
+      where: { id: In(ids) },
+    });
+  }
+
   async findAll(): Promise<ProductEntity[]> {
     return this.productsRepo.find({
       where: { isActive: true },
@@ -27,7 +34,6 @@ export class ProductsService {
     });
   }
 
-  // comments in English
   async findAllInfinite(params: ListProductsDto): Promise<{
     items: ProductEntity[];
     nextCursor: { createdAt: string; productId: string } | null;
