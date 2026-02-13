@@ -72,7 +72,7 @@ export class OrdersService {
     const products: ProductEntity[] = await queryRunner.manager
       .createQueryBuilder(ProductEntity, 'p')
       .where('p.id IN (:...ids)', { ids: productIds })
-      .setLock('pessimistic_partial_write')
+      .setLock('for_no_key_update')
       .getMany();
 
     if (products.length !== productIds.length) {
