@@ -47,3 +47,12 @@ The current setup is just the beginning, but it provides a clear picture of how 
 ```bash
 npm install
 npm run start:dev
+Start PostgreSQL
+docker start pg-ecom
+docker run -d --name pg-ecom -p 5432:5432 postgres:15
+
+Run migrations
+
+Apply all database migrations:
+
+npx typeorm-ts-node-commonjs migration:run -d src/data-source.ts
