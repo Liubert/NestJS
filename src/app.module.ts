@@ -15,7 +15,7 @@ import { ProductsModule } from './modules/products/products.module';
 import { OrdersModule } from './modules/orders/orders.module';
 
 import { AppResolver } from './graphql/app.resolver';
-import { formatGraphQLError } from './graphql/errors/format-error';
+import { apolloFormatError } from './graphql/errors/apollo-format-error';
 
 @Module({
   imports: [
@@ -31,7 +31,7 @@ import { formatGraphQLError } from './graphql/errors/format-error';
       sortSchema: true,
       path: '/graphql',
       debug: false,
-      formatError: formatGraphQLError,
+      formatError: apolloFormatError,
     }),
 
     TypeOrmModule.forRootAsync({
