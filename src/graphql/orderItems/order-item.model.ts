@@ -12,6 +12,6 @@ export class OrderItem {
   @Field(() => Float)
   unitPrice!: number;
 
-  @Field(() => Product)
-  product!: Product;
+  @Field(() => Product, { nullable: false })
+  product?: Product;
 }
