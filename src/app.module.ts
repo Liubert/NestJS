@@ -16,6 +16,8 @@ import { OrdersModule } from './modules/orders/orders.module';
 
 import { AppResolver } from './graphql/app.resolver';
 import { apolloFormatError } from './graphql/errors/apollo-format-error';
+import { AuthModule } from './modules/auth/auth.module';
+import { FilesModule } from './modules/files/files.module';
 
 @Module({
   imports: [
@@ -44,10 +46,11 @@ import { apolloFormatError } from './graphql/errors/apollo-format-error';
         };
       },
     }),
-
+    AuthModule,
     UsersModule,
     ProductsModule,
     OrdersModule,
+    FilesModule,
   ],
   controllers: [AppController],
   providers: [AppService, AppResolver],

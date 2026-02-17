@@ -165,12 +165,12 @@ export class OrdersService {
 
   private async saveOrder(
     orderRepoTx: Repository<OrderEntity>,
-    dto: CreateOrderDto,
+    userId: string,
     idempotencyKey: string,
   ): Promise<OrderEntity> {
     return await orderRepoTx.save(
       orderRepoTx.create({
-        userId: dto.userId,
+        userId,
         idempotencyKey,
         status: OrderStatus.CREATED,
         totalAmount: '0.00',
@@ -220,6 +220,7 @@ export class OrdersService {
   async create(
     dto: CreateOrderDto,
     idempotencyKey: string,
+    userId: string,
   ): Promise<{ order: OrderEntity; isCreated: boolean }> {
     const queryRunner = this.dataSource.createQueryRunner();
 
@@ -233,7 +234,7 @@ export class OrdersService {
 
       // 1) Idempotency fast path (inside TX to avoid weird races)
       const existing = await orderRepoTx.findOne({
-        where: { userId: dto.userId, idempotencyKey },
+        where: { userId, idempotencyKey },
         relations: { items: true },
       });
       if (existing) {
@@ -248,7 +249,11 @@ export class OrdersService {
       this.assertSufficientStock(productMap, qtyByProductId);
 
       // 3) Create order (UNIQUE(userId, idempotencyKey) protects double-submit)
-      const savedOrder = await this.saveOrder(orderRepoTx, dto, idempotencyKey);
+      const savedOrder = await this.saveOrder(
+        orderRepoTx,
+        userId,
+        idempotencyKey,
+      );
 
       // 4) Create items
       const orderItems = await this.saveOrderItems(
@@ -290,7 +295,7 @@ export class OrdersService {
       // Idempotency race: return existing order for the same (userId, key)
       if (isUniqueViolation(err)) {
         const existingAfterRace = await this.ordersRepo.findOne({
-          where: { userId: dto.userId, idempotencyKey },
+          where: { userId, idempotencyKey },
           relations: { items: true },
         });
         if (existingAfterRace)
@@ -305,6 +310,14 @@ export class OrdersService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  async findByUserId(userId: string) {
+    return this.ordersRepo.find({
+      where: { userId },
+      relations: { items: true },
+      order: { createdAt: 'DESC' },
+    });
   }
 
   async update(id: string, dto: UpdateOrderDto): Promise<OrderEntity> {

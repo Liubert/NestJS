@@ -9,6 +9,7 @@ import { CreateOrderInput } from './create-order.input';
 import { CreateOrderPayload, Order } from './order.model';
 import { OrdersFilterInput } from './order-filters.input';
 import { PaginationInput } from '../common/pagination.input';
+import { CurrentUser } from '../../modules/auth/current-user.decorator';
 
 type GqlContext = {
   req?: { headers?: Record<string, string | string[] | undefined> };
@@ -67,6 +68,7 @@ export class OrdersResolver {
   @Mutation(() => CreateOrderPayload)
   async createOrder(
     @Args('input') input: CreateOrderInput,
+    @CurrentUser() user: { userId: string },
     @Context() ctx: GqlContext,
   ): Promise<CreateOrderPayload> {
     const idempotencyKey = getHeader(ctx, 'Idempotency-Key');
@@ -76,7 +78,7 @@ export class OrdersResolver {
     }
 
     const dto: CreateOrderDto = {
-      userId: input.userId,
+      userId: user.userId,
       items: input.items.map((it) => ({
         productId: it.productId,
         quantity: it.quantity,
@@ -86,6 +88,7 @@ export class OrdersResolver {
     const { order, isCreated } = await this.ordersService.create(
       dto,
       idempotencyKey,
+      user.userId,
     );
 
     return {
