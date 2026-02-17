@@ -16,5 +16,6 @@ import { ProductLoader } from '../../graphql/products/product.loader';
   ],
   controllers: [OrdersController],
   providers: [OrdersService, OrdersResolver, OrderItemResolver, ProductLoader],
+  exports: [OrdersService],
 })
 export class OrdersModule {}

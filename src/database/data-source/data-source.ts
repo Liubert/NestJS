@@ -7,5 +7,5 @@ const { db } = loadBaseConfig();
 export const dataSource = new DataSource({
   ...db,
   entities: ['src/modules/**/*.entity.ts'],
-  migrations: ['src/migrations/*.ts'],
+  migrations: ['src/database/migrations/*.ts'],
 });
