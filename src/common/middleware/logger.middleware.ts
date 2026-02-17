@@ -1,6 +1,6 @@
 import { Injectable, Logger, NestMiddleware } from '@nestjs/common';
 import { NextFunction, Request, Response } from 'express';
-import { v4 as uuidv4 } from 'uuid';
+import { randomUUID } from 'crypto';
 
 // 1. Defining a custom interface to avoid TS errors
 export interface RequestWithMetadata extends Request {
@@ -15,7 +15,7 @@ export class LoggerMiddleware implements NestMiddleware {
 
   // 2. Use our custom interface for 'req'
   use(req: RequestWithMetadata, res: Response, next: NextFunction) {
-    const requestId: string = uuidv4();
+    const requestId: string = randomUUID();
     const startTime: number = Date.now();
 
     req.requestId = requestId;

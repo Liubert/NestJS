@@ -9,20 +9,24 @@ const asStringArray = (v: unknown): string[] => {
   return [];
 };
 
+const isBadRequest400 = (err: GraphQLError): boolean => {
+  const original = err.extensions?.originalError;
+  return isRecord(original) && original['statusCode'] === 400;
+};
+
 const getBadRequestMessages = (err: GraphQLError): string[] => {
   const original = err.extensions?.originalError;
   if (!isRecord(original)) return [err.message];
 
-  return asStringArray(original['message']).length
-    ? asStringArray(original['message'])
-    : [err.message];
+  const msgs = asStringArray(original['message']);
+  return msgs.length ? msgs : [err.message];
 };
 
 export const formatGraphQLError = (
   err: GraphQLError,
 ): GraphQLFormattedError => {
-  // 1) Only special-case ValidationPipe → nice validation output
-  if (err.extensions?.code === 'BAD_REQUEST') {
+  // 1) ValidationPipe / BadRequestException => BAD_USER_INPUT
+  if (isBadRequest400(err)) {
     const messages = getBadRequestMessages(err);
 
     return {
@@ -36,11 +40,8 @@ export const formatGraphQLError = (
     };
   }
 
-  // 2) Everything else: keep default message/code,
-  // but avoid leaking details from Nest HTTP exceptions if present.
+  // 2) Other Nest HTTP exceptions: don't leak extra fields
   const original = err.extensions?.originalError;
-
-  // If this is a Nest HTTP exception, it often has statusCode/message/etc.
   if (isRecord(original) && typeof original['statusCode'] === 'number') {
     const messages = asStringArray(original['message']);
     const message = messages.length ? messages.join(', ') : err.message;
@@ -54,7 +55,7 @@ export const formatGraphQLError = (
     };
   }
 
-  // Otherwise return as-is (but keep it formatted)
+  // 3) Default
   return {
     message: err.message || 'Internal server error',
     extensions: {
