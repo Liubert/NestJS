@@ -1,11 +1,4 @@
-import {
-  IsEnum,
-  IsInt,
-  IsNotEmpty,
-  IsOptional,
-  IsString,
-  Min,
-} from 'class-validator';
+import { IsIn, IsNotEmpty, IsString } from 'class-validator';
 
 export enum FileVisibility {
   PRIVATE = 'private',
@@ -13,19 +6,11 @@ export enum FileVisibility {
 }
 
 export class PresignUploadDto {
-  @IsOptional()
-  @IsEnum(FileVisibility)
-  visibility?: FileVisibility;
-
   @IsString()
   @IsNotEmpty()
   contentType!: string;
 
-  @IsInt()
-  @Min(1)
-  size!: number;
-
-  @IsOptional()
   @IsString()
-  entityId?: string;
+  @IsIn(['avatar'])
+  purpose!: 'avatar';
 }

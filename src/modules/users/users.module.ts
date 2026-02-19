@@ -1,21 +1,23 @@
 import { Module } from '@nestjs/common';
+import { TypeOrmModule } from '@nestjs/typeorm';
+
 import { UsersController } from './users.controller';
 import { UsersService } from './users.service';
-import { TypeOrmModule } from '@nestjs/typeorm';
 import { UserEntity } from './user.entity';
+import { FileRecordEntity } from '../files/file-record.entity';
+import { FilesModule } from '../files/files.module';
 import { UserResolver } from '../../graphql/user/user.resolver';
 import { OrdersModule } from '../orders/orders.module';
-import { FilesModule } from '../files/files.module';
+import { FileRecordLoader } from '../../graphql/user/file-record.loader';
 
 @Module({
   imports: [
-    // Registers repository UserEntity inside this module DI container
-    TypeOrmModule.forFeature([UserEntity]),
+    TypeOrmModule.forFeature([UserEntity, FileRecordEntity]),
+    FilesModule, // Provides FilesService for UsersService
     OrdersModule,
-    FilesModule,
   ],
   controllers: [UsersController],
-  providers: [UsersService, UserResolver],
+  providers: [UsersService, UserResolver, FileRecordLoader],
   exports: [UsersService],
 })
 export class UsersModule {}

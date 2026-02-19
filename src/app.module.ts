@@ -18,6 +18,7 @@ import { AppResolver } from './graphql/app.resolver';
 import { apolloFormatError } from './graphql/errors/apollo-format-error';
 import { AuthModule } from './modules/auth/auth.module';
 import { FilesModule } from './modules/files/files.module';
+import { ReqWithUser } from './modules/auth/types/auth.types';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { FilesModule } from './modules/files/files.module';
       sortSchema: true,
       path: '/graphql',
       debug: false,
+      context: ({ req }: { req: ReqWithUser }) => ({ req }),
       formatError: apolloFormatError,
     }),
 

@@ -1,96 +1,151 @@
 import {
   BadRequestException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 
-import { FileRecordEntity, FileStatus } from './file-record.entity';
-import { S3StorageService } from './storage/s3-storage.service';
+import { UserEntity } from '../users/user.entity';
 import { FileVisibility, PresignUploadDto } from './dto/presign.dto';
+import { FileRecordEntity, FileStatus } from './file-record.entity';
+import { CompleteUploadDto } from './dto/complete.dto';
+import { S3StorageService } from './storage/s3-storage.service';
+import { CurrentUserType } from '../users/types/current-user.type';
+
+const S3_PRESIGNED_GET_TTL_SECONDS = 3600;
 
 @Injectable()
 export class FilesService {
   constructor(
     @InjectRepository(FileRecordEntity)
-    private readonly filesRepo: Repository<FileRecordEntity>,
-    private readonly s3: S3StorageService,
+    private readonly fileRepo: Repository<FileRecordEntity>,
+    @InjectRepository(UserEntity)
+    private readonly usersRepo: Repository<UserEntity>,
+    private readonly s3Storage: S3StorageService,
   ) {}
 
-  async presign(user: { userId: string }, input: PresignUploadDto) {
-    console.log('user');
-    console.log(user);
-    const ownerId = user.userId;
-    const entityId = user.userId;
+  async findFileRecordsByIds(ids: string[]): Promise<FileRecordEntity[]> {
+    if (!ids.length) return [];
 
-    const ext = this.extFromContentType(input.contentType);
-    const key = `users/${ownerId}/avatars/${randomUUID()}.${ext}`;
+    return this.fileRepo.find({
+      where: { id: In(ids) },
+    });
+  }
 
-    console.log('key');
-    console.log(key);
-    const file = this.filesRepo.create({
-      ownerId,
-      entityId,
+  async presignUpload(currentUser: CurrentUserType, input: PresignUploadDto) {
+    const { key, normalizedContentType } = this.buildKeyForAvatar(
+      currentUser.userId,
+      input.contentType,
+    );
+
+    const file = this.fileRepo.create({
+      ownerId: currentUser.userId,
+      entityId: null,
       key,
-      contentType: input.contentType,
-      size: input.size, // store expected size (optional but useful)
+      contentType: normalizedContentType,
+      size: 0,
       status: FileStatus.PENDING,
-      visibility: input.visibility,
+      visibility: FileVisibility.PRIVATE,
     });
 
-    const saved = await this.filesRepo.save(file);
-    const uploadUrl = await this.s3.presignPut(key, input.contentType);
+    await this.fileRepo.save(file);
 
-    return { fileId: saved.id, key, uploadUrl, contentType: input.contentType };
-  }
-
-  async getViewUrl(requesterId: string, fileId: string): Promise<string> {
-    const file = await this.filesRepo.findOne({ where: { id: fileId } });
-    if (!file) throw new NotFoundException('File not found');
-
-    if (file.ownerId !== requesterId) {
-      throw new ForbiddenException('Not your file');
-    }
-
-    if (file.visibility === FileVisibility.PUBLIC) {
-      return this.s3.publicUrl(file.key);
-    }
-
-    return this.s3.presignGet(file.key);
-  }
-
-  async complete(
-    ownerId: string,
-    input: { fileId: string; entityId?: string },
-  ) {
-    const file = await this.filesRepo.findOne({ where: { id: input.fileId } });
-    if (!file) throw new NotFoundException('File not found');
-    if (file.ownerId !== ownerId) throw new ForbiddenException('Not your file');
-    if (file.status !== FileStatus.PENDING)
-      throw new BadRequestException('File is not pending');
-
-    const head = await this.s3.head(file.key);
-    if (head.size <= 0) throw new BadRequestException('Empty object');
-
-    file.size = head.size;
-    file.status = FileStatus.READY;
-    await this.filesRepo.save(file);
+    const uploadUrl = await this.s3Storage.presignPut(
+      file.key,
+      file.contentType,
+    );
 
     return {
       fileId: file.id,
       key: file.key,
-      url: this.s3.publicUrl(file.key),
-      status: file.status,
+      uploadUrl,
+      contentType: file.contentType,
     };
   }
 
-  private extFromContentType(ct: string) {
-    if (ct === 'image/jpeg') return 'jpg';
-    if (ct === 'image/png') return 'png';
-    if (ct === 'image/webp') return 'webp';
-    throw new BadRequestException('Unsupported contentType');
+  async completeUpload(currentUser: CurrentUserType, input: CompleteUploadDto) {
+    const file = await this.fileRepo.findOne({ where: { id: input.fileId } });
+    if (!file) throw new NotFoundException('File not found');
+
+    if (file.ownerId !== currentUser.userId) {
+      throw new NotFoundException('File not found');
+    }
+
+    if (file.status !== FileStatus.PENDING) {
+      throw new BadRequestException('File is not pending');
+    }
+
+    const head = await this.s3Storage.head(file.key);
+
+    if (
+      head.contentType &&
+      file.contentType &&
+      head.contentType !== file.contentType
+    ) {
+      throw new BadRequestException('Uploaded Content-Type mismatch');
+    }
+
+    file.size = head.size;
+    file.status = FileStatus.READY;
+    file.entityId = currentUser.userId;
+
+    await this.fileRepo.save(file);
+
+    await this.usersRepo.update(
+      { id: currentUser.userId },
+      { avatarFileId: file.id },
+    );
+
+    return {
+      fileId: file.id,
+      status: file.status,
+      avatarUrl: await this.getViewUrl(file),
+    };
+  }
+
+  public async getViewUrl(file: FileRecordEntity): Promise<string | null> {
+    // if (!file || file.status !== FileStatus.READY) return null;
+
+    return this.s3Storage.presignGet(file.key, S3_PRESIGNED_GET_TTL_SECONDS);
+  }
+
+  public async getAvatarUrlForUser(
+    avatarFileId: string,
+  ): Promise<string | null> {
+    const file = await this.fileRepo.findOne({ where: { id: avatarFileId } });
+    if (!file) return null;
+
+    // Status check
+    if (file.status !== FileStatus.READY) return null;
+
+    return this.s3Storage.presignGet(file.key, S3_PRESIGNED_GET_TTL_SECONDS);
+  }
+
+  private buildKeyForAvatar(userId: string, contentType: string) {
+    const normalizedContentType = (contentType || '').toLowerCase().trim();
+
+    if (!normalizedContentType.startsWith('image/')) {
+      throw new BadRequestException('Only images are allowed');
+    }
+
+    const ext = this.extensionFromContentType(normalizedContentType) || 'jpg';
+    const key = `users/${userId}/avatars/${randomUUID()}.${ext}`;
+
+    return { key, normalizedContentType };
+  }
+
+  private extensionFromContentType(contentType: string): string | null {
+    switch (contentType) {
+      case 'image/jpeg':
+        return 'jpg';
+      case 'image/png':
+        return 'png';
+      case 'image/webp':
+        return 'webp';
+      default:
+        return null;
+    }
   }
 }

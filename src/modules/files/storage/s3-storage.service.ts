@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import {
   GetObjectCommand,
   HeadObjectCommand,
@@ -6,57 +7,56 @@ import {
   S3Client,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import type { AppConfig } from '../../../config/app.config';
-import appConfig from '../../../config/app.config';
+
+import { AppConfig } from '../../../config/app.config';
 
 @Injectable()
 export class S3StorageService {
-  private readonly client: S3Client;
+  private readonly s3: S3Client;
   private readonly bucket: string;
+  private readonly region: string;
 
-  constructor(@Inject(appConfig.KEY) private readonly config: AppConfig) {
-    this.bucket = this.config.s3.bucket;
+  constructor(private readonly configService: ConfigService) {
+    const config = this.configService.getOrThrow<AppConfig>('app');
 
-    this.client = new S3Client({
-      region: this.config.s3.region,
-      credentials: {
-        accessKeyId: this.config.s3.accessKeyId,
-        secretAccessKey: this.config.s3.secretAccessKey,
-      },
+    this.bucket = config.s3.bucket;
+    this.region = config.s3.region;
+
+    const accessKeyId = config.s3.accessKeyId;
+    const secretAccessKey = config.s3.secretAccessKey;
+
+    this.s3 = new S3Client({
+      region: this.region,
+      credentials:
+        accessKeyId && secretAccessKey
+          ? { accessKeyId, secretAccessKey }
+          : undefined,
     });
   }
 
-  async presignPut(key: string, contentType: string): Promise<string> {
+  async presignPut(key: string, contentType: string) {
     const cmd = new PutObjectCommand({
       Bucket: this.bucket,
       Key: key,
       ContentType: contentType,
     });
 
-    return getSignedUrl(this.client, cmd, { expiresIn: 60 });
+    return getSignedUrl(this.s3, cmd, { expiresIn: 60 });
   }
 
   async head(key: string): Promise<{ size: number; contentType?: string }> {
-    const res = await this.client.send(
+    const res = await this.s3.send(
       new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
     );
 
     return {
-      size: Number(res.ContentLength ?? 0),
+      size: res.ContentLength ?? 0,
       contentType: res.ContentType,
     };
   }
 
-  async presignGet(key: string): Promise<string> {
-    const cmd = new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-    });
-
-    return getSignedUrl(this.client, cmd, { expiresIn: 60 });
-  }
-
-  publicUrl(key: string): string {
-    return `https://${this.bucket}.s3.${this.config.s3.region}.amazonaws.com/${key}`;
+  async presignGet(key: string, expiresInSeconds = 300) {
+    const cmd = new GetObjectCommand({ Bucket: this.bucket, Key: key });
+    return getSignedUrl(this.s3, cmd, { expiresIn: expiresInSeconds });
   }
 }
