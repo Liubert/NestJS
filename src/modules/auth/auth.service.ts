@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 
 import { UsersService } from '../users/users.service';
+import { JwtPayload } from './types/jwt-payload.type';
 
 type LoginDto = {
   email: string;
@@ -30,10 +31,14 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const accessToken = await this.jwtService.signAsync({
+    const payload: JwtPayload = {
       sub: user.id,
       role: user.role,
-    });
+      email: user.email,
+      scopes: [],
+    };
+
+    const accessToken = await this.jwtService.signAsync(payload);
 
     return {
       accessToken,

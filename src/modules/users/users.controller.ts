@@ -19,6 +19,7 @@ import { Roles } from '../auth/role.decorator';
 import { UserRole } from './types/user-role.enum';
 import { FilesService } from '../files/files.service';
 import { CurrentUser } from '../auth/current-user.decorator';
+import type { CurrentUserType } from './types/current-user.type';
 
 // @UseGuards(AuthHeaderGuard)
 @Controller('users')
@@ -37,19 +38,11 @@ export class UsersController {
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
-  async me(@CurrentUser() user: { userId: string }) {
+  async me(@CurrentUser() user: CurrentUserType) {
     const entity = await this.usersService.getMe(user.userId);
     if (!entity) throw new NotFoundException('User not found');
 
     return entity;
-  }
-
-  @Post('me/avatar')
-  async setAvatar(
-    @CurrentUser() user: { userId: string },
-    @Body() body: { fileId: string },
-  ) {
-    return this.usersService.setMyAvatar(user.userId, body.fileId);
   }
 
   @Post()

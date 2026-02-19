@@ -1,3 +1,4 @@
+// src/modules/users/users.service.ts
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -8,6 +9,8 @@ import { UpdateUserDto } from './dto/create-user.dto/update-user.dto';
 import { UserResponseDto } from './dto/create-user.dto/response-user.dto';
 import { UserEntity } from './user.entity';
 import { FilesService } from '../files/files.service';
+import { FileRecordEntity } from '../files/file-record.entity';
+import { PaginationInput } from '../../graphql/common/pagination.input';
 
 @Injectable()
 export class UsersService {
@@ -15,37 +18,47 @@ export class UsersService {
     @InjectRepository(UserEntity)
     private readonly usersRepo: Repository<UserEntity>,
     private readonly filesService: FilesService,
+    @InjectRepository(FileRecordEntity)
+    private readonly fileRepo: Repository<FileRecordEntity>,
   ) {}
 
   async getAll(): Promise<UserResponseDto[]> {
     const users = await this.usersRepo.find();
-
     return users;
   }
 
-  async setMyAvatar(userId: string, fileId: string) {
-    // Ensure file exists + belongs to user + is READY
-    const url = await this.filesService.getViewUrl(userId, fileId); // will throw if чужий/нема
+  async getPaginatedUsers({ limit, offset }: PaginationInput) {
+    const [items, total] = await this.usersRepo.findAndCount({
+      take: limit,
+      skip: offset,
+    });
 
-    // Optional: ensure file is READY (краще окремим методом в FilesService)
-    // For now: at least ownership check is done by getViewUrl.
-
-    await this.usersRepo.update(userId, { avatarFileId: fileId });
-
-    return { avatarFileId: fileId, avatarUrl: url };
+    return { items, total };
   }
 
   async getMe(userId: string) {
     const user = await this.usersRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const avatarUrl = user.avatarFileId
-      ? await this.filesService.getViewUrl(userId, user.avatarFileId)
-      : null;
+    let avatarUrl: string | null = null;
+
+    if (user.avatarFileId) {
+      const file = await this.fileRepo.findOne({
+        where: { id: user.avatarFileId },
+      });
+
+      avatarUrl = file ? await this.filesService.getViewUrl(file) : null;
+    }
 
     return {
-      ...user,
-      avatarUrl: avatarUrl,
+      id: user.id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      phone: user.phone,
+      role: user.role,
+      avatarFileId: user.avatarFileId ?? null,
+      avatarUrl,
     };
   }
 
@@ -54,9 +67,7 @@ export class UsersService {
   }
 
   async updateAvatarFileId(userId: string, fileId: string) {
-    await this.usersRepo.update(userId, {
-      avatarFileId: fileId,
-    });
+    await this.usersRepo.update(userId, { avatarFileId: fileId });
   }
 
   async findByEmailWithSensitiveData(
@@ -80,17 +91,14 @@ export class UsersService {
       passwordHash,
       ...dto,
     });
-    const saved: UserEntity = await this.usersRepo.save(entity);
 
+    const saved: UserEntity = await this.usersRepo.save(entity);
     return saved;
   }
 
   async update(id: string, dto: UpdateUserDto): Promise<UserResponseDto> {
     const existing = await this.usersRepo.findOne({ where: { id } });
-
-    if (!existing) {
-      throw new NotFoundException(`User with id ${id} not found`);
-    }
+    if (!existing) throw new NotFoundException(`User with id ${id} not found`);
 
     const updated = this.usersRepo.merge(existing, dto);
     const saved = await this.usersRepo.save(updated);
@@ -100,13 +108,9 @@ export class UsersService {
 
   async remove(id: string): Promise<{ status: string; id: string }> {
     const existing = await this.usersRepo.findOne({ where: { id } });
-
-    if (!existing) {
-      throw new NotFoundException(`User with id ${id} not found`);
-    }
+    if (!existing) throw new NotFoundException(`User with id ${id} not found`);
 
     await this.usersRepo.remove(existing);
-
     return { status: 'deleted', id };
   }
 }

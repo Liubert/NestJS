@@ -24,4 +24,10 @@ export class GqlUser {
 
   @Field(() => [Order])
   orders!: Order[];
+
+  @Field(() => ID, { nullable: true })
+  avatarFileId!: string | null;
+
+  @Field(() => String, { nullable: true })
+  avatarUrl!: string | null;
 }
