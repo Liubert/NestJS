@@ -28,32 +28,41 @@ export type BaseAppConfig = {
   s3: S3Config;
 };
 
+const must = (v: string | undefined, name: string): string => {
+  // Fail fast instead of silently falling back to localhost in Docker
+  if (!v) throw new Error(`Missing env var: ${name}`);
+  return v;
+};
+
 export function loadBaseConfig(): BaseAppConfig {
   return {
     port: Number(process.env.APP_PORT ?? 3000),
     env: (process.env.NODE_ENV as Envs) ?? Envs.local,
 
     auth: {
-      JWT_SECRET: process.env.JWT_SECRET ?? 'super-secret-dev-key',
+      JWT_SECRET: must(process.env.JWT_SECRET, 'JWT_SECRET'),
     },
 
     db: {
       type: 'postgres',
-      host: process.env.DATABASE_HOST ?? 'localhost',
-      port: Number(process.env.DATABASE_PORT ?? 5432),
-      username: process.env.DATABASE_USER ?? 'postgres',
-      password: process.env.DATABASE_PASSWORD ?? 'postgres',
-      database: process.env.DATABASE_NAME ?? 'ecom',
+      host: must(process.env.DB_HOST, 'DB_HOST'),
+      port: Number(must(process.env.DB_PORT, 'DB_PORT')),
+      username: must(process.env.DB_USER, 'DB_USER'),
+      password: must(process.env.DB_PASS, 'DB_PASS'),
+      database: must(process.env.DB_NAME, 'DB_NAME'),
       namingStrategy: new SnakeNamingStrategy(),
       synchronize: false,
       logging: true,
     },
 
     s3: {
-      region: process.env.AWS_REGION!,
-      bucket: process.env.AWS_S3_BUCKET!,
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+      region: must(process.env.AWS_REGION, 'AWS_REGION'),
+      bucket: must(process.env.AWS_S3_BUCKET, 'AWS_S3_BUCKET'),
+      accessKeyId: must(process.env.AWS_ACCESS_KEY_ID, 'AWS_ACCESS_KEY_ID'),
+      secretAccessKey: must(
+        process.env.AWS_SECRET_ACCESS_KEY,
+        'AWS_SECRET_ACCESS_KEY',
+      ),
     },
   };
 }
