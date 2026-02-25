@@ -1,0 +1,105 @@
+# ------------------------------------------------------
+# THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
+# ------------------------------------------------------
+
+input CreateOrderInput {
+  items: [CreateOrderItemInput!]!
+}
+
+input CreateOrderItemInput {
+  productId: ID!
+  quantity: Int!
+}
+
+type CreateOrderPayload {
+  isCreated: Boolean!
+  order: Order!
+}
+
+type CursorPagination {
+  createdAt: DateTime!
+  id: String!
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type GqlUser {
+  avatarFileId: ID
+  avatarUrl: String
+  email: String!
+  firstName: String!
+  id: ID!
+  lastName: String
+  orders: [Order!]!
+  phone: String
+  role: String!
+}
+
+type Mutation {
+  createOrder(input: CreateOrderInput!): CreateOrderPayload!
+}
+
+type Order {
+  createdAt: DateTime!
+  id: ID!
+  items: [OrderItem!]!
+  status: OrderStatus!
+  totalAmount: Float!
+  userId: ID!
+}
+
+type OrderItem {
+  product: Product!
+  productId: ID!
+  quantity: Int!
+  unitPrice: Float!
+}
+
+enum OrderStatus {
+  CANCELED
+  CREATED
+  DELIVERED
+  PAID
+}
+
+input OrdersFilterInput {
+  dateFrom: DateTime
+  dateTo: DateTime
+  status: OrderStatus
+}
+
+input PaginationInput {
+  limit: Int
+  offset: Int
+}
+
+type Product {
+  createdAt: DateTime!
+  id: ID!
+  isActive: Boolean!
+  name: String!
+  price: Float!
+}
+
+type ProductsConnection {
+  items: [Product!]!
+  nextCursor: CursorPagination
+}
+
+type Query {
+  hello: String!
+  me: GqlUser!
+  order(id: String!): Order!
+  orders(filter: OrdersFilterInput, pagination: PaginationInput): [Order!]!
+  product(id: String!): Product!
+  productsInfinite(createdAt: String, id: String, limit: Int, maxPrice: Float, minPrice: Float, search: String): ProductsConnection!
+  users(pagination: PaginationInput): UsersPayload!
+}
+
+type UsersPayload {
+  items: [GqlUser!]!
+  total: Int!
+}

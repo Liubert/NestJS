@@ -1,0 +1,54 @@
+services:
+  api:
+    env_file:
+      - .env
+    build:
+      context: .
+      target: dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      APP_NAME: ${APP_NAME}
+      APP_PORT: ${APP_PORT}
+
+      # App expects DB_* (your .env.local uses DB_*)
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+
+      JWT_SECRET: ${JWT_SECRET}
+    volumes:
+      # Bind mount source code for hot reload
+      - ./:/usr/src/app
+      # Prevent overwriting container node_modules by bind mount
+      - /usr/src/app/node_modules
+    ports:
+      - "8080:3000"
+    networks:
+      - internal
+
+  # Dev-only seed (ts-node)
+  seed:
+    env_file:
+      - .env
+    build:
+      context: .
+      target: dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+    networks:
+      - internal
+    command: ["npm", "run", "seed"]
+    profiles: ["dev-tools"]
