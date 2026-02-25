@@ -1,0 +1,27 @@
+# dependencies
+node_modules
+
+# build output
+dist
+coverage
+
+# VCS
+.git
+.gitignore
+
+# env / secrets (keep example)
+.env
+.env.*
+!.env.example
+*.pem
+
+# logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# editor / OS
+.vscode
+.idea
+.DS_Store
+__MACOSX
