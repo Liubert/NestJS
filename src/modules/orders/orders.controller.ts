@@ -58,4 +58,19 @@ export class OrdersController {
   remove(@Param('id') id: string) {
     return this.ordersService.remove(id);
   }
+
+  // -------------------- TEST ENDPOINTS --------------------
+
+  @Post('test/rabbit/success')
+  async testRabbitSuccess() {
+    await this.ordersService.testPublishRabbit('ok-order');
+    return { status: 'sent', mode: 'success' };
+  }
+
+  @Post('test/rabbit/fail')
+  async testRabbitFail() {
+    // Worker will treat IDs starting with "fail-" as forced failure
+    await this.ordersService.testPublishRabbit(`fail-${Date.now()}`);
+    return { status: 'sent', mode: 'fail' };
+  }
 }

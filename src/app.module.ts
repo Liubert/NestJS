@@ -18,6 +18,7 @@ import { apolloFormatError } from './graphql/errors/apollo-format-error';
 import { AuthModule } from './modules/auth/auth.module';
 import { FilesModule } from './modules/files/files.module';
 import { ReqWithUser } from './modules/auth/types/auth.types';
+import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { ReqWithUser } from './modules/auth/types/auth.types';
     ProductsModule,
     OrdersModule,
     FilesModule,
+    RabbitMQModule,
   ],
   controllers: [AppController],
   providers: [AppService, AppResolver],

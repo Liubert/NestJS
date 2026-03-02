@@ -33,4 +33,9 @@ async function bootstrap() {
   console.log(`Application is running on: ${await app.getUrl()}`);
 }
 
-bootstrap();
+void bootstrap().catch((err) => {
+  // Ensure startup failures are visible and fail the process.
+
+  console.error('Bootstrap failed:', err);
+  process.exit(1);
+});

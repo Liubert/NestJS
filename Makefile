@@ -26,8 +26,8 @@ seed:
 
 init:
 	docker compose build
-	docker compose up -d postgres
-	sleep 3
+	docker compose up -d postgres rabbitmq
+	sleep 5
 	docker compose run --rm migrate
 	docker compose run --rm seed
 	docker compose -f compose.yml -f compose.dev.yml up
@@ -42,8 +42,8 @@ clean-cache:
 
 reset:
 	docker compose down -v
-	docker compose -f compose.yml -f compose.dev.yml up --build -d postgres
-	sleep 3
+	docker compose up --build -d postgres rabbitmq
+	sleep 5
 	docker compose run --rm migrate
 	docker compose run --rm seed
 	@echo "Database reset completed"

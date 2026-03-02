@@ -16,13 +16,16 @@ services:
       retries: 20
 
   api:
-    env_file:
-      - .env
+    image: ${APP_IMAGE}
     build:
       context: .
       target: prod
+    env_file:
+      - .env
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -47,10 +50,13 @@ services:
     ports:
       - "8080:3000"
 
+
+
   migrate:
+    image: ${APP_IMAGE}
     build:
       context: .
-      target: build
+      target: prod
     env_file:
       - .env
     depends_on:
@@ -68,9 +74,10 @@ services:
     command: ["npm", "run", "migration:run:prod"]
 
   seed:
+    image: ${APP_IMAGE}
     build:
       context: .
-      target: build
+      target: prod
     env_file:
       - .env
     depends_on:
@@ -87,8 +94,29 @@ services:
       - internal
     command: ["npm", "run", "seed:prod"]
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    networks:
+      - internal
+      - public
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    healthcheck:
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   pgdata:
+  rabbitmqdata:
 
 networks:
   internal:
