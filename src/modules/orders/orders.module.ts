@@ -8,6 +8,7 @@ import { ProductsModule } from '../products/products.module';
 import { OrdersResolver } from '../../graphql/orders/order.resolver';
 import { OrderItemResolver } from '../../graphql/orderItems/order-item.resolver';
 import { ProductLoader } from '../../graphql/products/product.loader';
+import { OrdersWorkerService } from './orders.worker';
 
 @Module({
   imports: [
@@ -15,7 +16,13 @@ import { ProductLoader } from '../../graphql/products/product.loader';
     ProductsModule,
   ],
   controllers: [OrdersController],
-  providers: [OrdersService, OrdersResolver, OrderItemResolver, ProductLoader],
+  providers: [
+    OrdersService,
+    OrdersResolver,
+    OrderItemResolver,
+    ProductLoader,
+    OrdersWorkerService,
+  ],
   exports: [OrdersService],
 })
 export class OrdersModule {}

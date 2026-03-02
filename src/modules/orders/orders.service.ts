@@ -14,6 +14,7 @@ import { UpdateOrderDto } from './dto/update-order.dto';
 import { ProductEntity } from '../products/entities/product.entity';
 import { OrderItemEntity } from './entities/order-item.entity';
 import { OrderStatus } from '../../graphql/orders/order-status.enum';
+import { RabbitMQService } from '../../rabbitmq/rabbitmq.service';
 
 const MAX_LIMIT = 50;
 
@@ -30,6 +31,7 @@ export class OrdersService {
     @InjectRepository(OrderEntity)
     private readonly ordersRepo: Repository<OrderEntity>,
     private readonly dataSource: DataSource,
+    private readonly rabbit: RabbitMQService,
   ) {}
 
   async findAll(): Promise<OrderEntity[]> {
@@ -333,5 +335,16 @@ export class OrdersService {
     await this.ordersRepo.delete(id);
 
     return { status: 'deleted', id };
+  }
+
+  // async test(): Promise<void> {
+  //   const msg = this.rabbit.createBaseMessage('test-order-2');
+  //   await this.rabbit.publishProcess(msg);
+  // }
+
+  // Add into OrdersService class
+  async testPublishRabbit(orderId: string): Promise<void> {
+    const msg = this.rabbit.createBaseMessage(orderId);
+    await this.rabbit.publishProcess(msg);
   }
 }

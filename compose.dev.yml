@@ -1,19 +1,27 @@
 services:
+  # Disable one-off migration container in regular `make dev` up flow.
+  # Run it manually via `make migrate` when needed.
+  migrate:
+    profiles: ["dev-tools"]
+
   api:
+    image: ${APP_IMAGE:-nest-js-app:local}-dev
     env_file:
       - .env
     build:
       context: .
       target: dev
+    command: npm run start:dev
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     environment:
       NODE_ENV: development
       APP_NAME: ${APP_NAME}
       APP_PORT: ${APP_PORT}
 
-      # App expects DB_* (your .env.local uses DB_*)
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: ${DB_NAME}
@@ -21,15 +29,43 @@ services:
       DB_PASS: ${DB_PASS}
 
       JWT_SECRET: ${JWT_SECRET}
+
+      # Rabbit
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-orders.exchange}
+      RABBITMQ_PROCESS_QUEUE: ${RABBITMQ_PROCESS_QUEUE:-orders.process}
+      RABBITMQ_RETRY_QUEUE: ${RABBITMQ_RETRY_QUEUE:-orders.retry}
+      RABBITMQ_DLQ_QUEUE: ${RABBITMQ_DLQ_QUEUE:-orders.dlq}
+      RABBITMQ_RETRY_DELAY_MS: ${RABBITMQ_RETRY_DELAY_MS:-3000}
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
     volumes:
-      # Bind mount source code for hot reload
       - ./:/usr/src/app
-      # Prevent overwriting container node_modules by bind mount
       - /usr/src/app/node_modules
     ports:
       - "8080:3000"
     networks:
       - internal
+      - public
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    networks:
+      - internal
+      - public
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    healthcheck:
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
 
   # Dev-only seed (ts-node)
   seed:
@@ -52,3 +88,11 @@ services:
       - internal
     command: ["npm", "run", "seed"]
     profiles: ["dev-tools"]
+
+volumes:
+  rabbitmqdata:
+
+networks:
+  internal:
+    internal: true
+  public: {}
