@@ -23,7 +23,7 @@ export class OrderEntity {
   @Column({ type: 'uuid', name: 'idempotency_key' })
   idempotencyKey!: string;
 
-  @Column({ type: 'text', default: 'created' })
+  @Column({ type: 'text', default: 'pending' })
   status!: OrderStatus;
 
   @Column({
@@ -37,6 +37,17 @@ export class OrderEntity {
 
   @CreateDateColumn({ type: 'timestamptz', name: 'created_at' })
   createdAt!: Date;
+
+  @Column({ type: 'timestamptz', name: 'processed_at', nullable: true })
+  processedAt!: Date | null;
+
+  // We keep the original request payload here so API can return fast and
+  // worker can do heavy processing later in async mode.
+  @Column({ type: 'jsonb', name: 'requested_items', default: () => "'[]'" })
+  requestedItems!: Array<{
+    productId: string;
+    quantity: number;
+  }>;
 
   @OneToMany(() => OrderItemEntity, (item) => item.order, { cascade: false })
   items?: OrderItemEntity[];

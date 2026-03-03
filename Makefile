@@ -1,12 +1,39 @@
 # ---------- Development ----------
 
 dev:
-	docker compose -f compose.yml -f compose.dev.yml up --build
+	docker compose -f compose.yml -f compose.dev.yml up -d
+	$(MAKE) dev-wait
 
+dev-build:
+	docker compose -f compose.yml -f compose.dev.yml up --build -d
+	$(MAKE) dev-wait
+
+dev-wait:
+	@echo "Waiting for API health on http://localhost:8080/health ..."
+	@i=0; \
+	until curl -fsS http://localhost:8080/health >/dev/null 2>&1; do \
+		i=$$((i + 1)); \
+		if [ $$i -ge 60 ]; then \
+			echo "API is not healthy after 60s"; \
+			docker compose -f compose.yml -f compose.dev.yml ps; \
+			exit 1; \
+		fi; \
+		sleep 1; \
+	done; \
+	echo "API is healthy"
+
+dev-health:
+	curl -fsS http://localhost:8080/health
+
+dev-logs:
+	docker compose -f compose.yml -f compose.dev.yml logs -f
 
 # ---------- Production-like ----------
 
 prod:
+	docker compose -f compose.yml up
+
+prod-build:
 	docker compose -f compose.yml up --build
 
 prod-bg:
@@ -34,7 +61,15 @@ init:
 
 clean-cache:
 	docker builder prune -af
-	@echo "Docker build cache cleaned"
+	docker image prune -f
+	@echo "Docker build cache + dangling images cleaned"
+
+clean-cache-all:
+	docker builder prune -af
+	docker container prune -f
+	docker image prune -af
+	docker volume prune -f
+	@echo "Docker build cache + stopped containers + all unused images + unused volumes cleaned"
 
 # ---------- DANGER ZONE ----------
 # WARNING: This command removes containers AND database volumes.

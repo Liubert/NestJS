@@ -6,17 +6,26 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, QueryFailedError, QueryRunner, Repository } from 'typeorm';
+import {
+  DataSource,
+  EntityManager,
+  QueryFailedError,
+  Repository,
+} from 'typeorm';
 
 import { OrderEntity } from './entities/order.entity';
 import { CreateOrderDto, CreateOrderItemDto } from './dto/create-order.dto';
 import { UpdateOrderDto } from './dto/update-order.dto';
 import { ProductEntity } from '../products/entities/product.entity';
 import { OrderItemEntity } from './entities/order-item.entity';
+import { ProcessedMessageEntity } from './entities/processed-message.entity';
 import { OrderStatus } from '../../graphql/orders/order-status.enum';
 import { RabbitMQService } from '../../rabbitmq/rabbitmq.service';
 
 const MAX_LIMIT = 50;
+const WORKER_HANDLER_NAME = 'orders.process';
+
+export type ProcessPendingOrderResult = 'processed' | 'duplicate';
 
 function isUniqueViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -85,6 +94,37 @@ export class OrdersService {
     return qb.getMany();
   }
 
+  private findExistingOrderByIdempotency(
+    userId: string,
+    idempotencyKey: string,
+  ): Promise<OrderEntity | null> {
+    return this.ordersRepo.findOne({
+      where: { userId, idempotencyKey },
+      relations: { items: true },
+    });
+  }
+
+  private async reserveProcessedMessage(
+    manager: EntityManager,
+    messageId: string,
+    orderId: string,
+  ): Promise<boolean> {
+    const insertResult = await manager
+      .createQueryBuilder()
+      .insert()
+      .into(ProcessedMessageEntity)
+      .values({
+        messageId,
+        orderId,
+        handler: WORKER_HANDLER_NAME,
+      })
+      .onConflict(`("message_id") DO NOTHING`)
+      .returning('message_id')
+      .execute();
+
+    return Array.isArray(insertResult.raw) && insertResult.raw.length > 0;
+  }
+
   // NOTE: Concurrency strategy
   //
   // This implementation uses **pessimistic row-level locking** for stock updates.
@@ -105,12 +145,12 @@ export class OrdersService {
   // - is harder to reason about and test.
 
   private async lockAndLoadProducts(
-    queryRunner: QueryRunner,
+    manager: EntityManager,
     items: CreateOrderItemDto[],
   ): Promise<Map<string, ProductEntity>> {
     const productIds = [...new Set(items.map((i) => i.productId))];
 
-    const products: ProductEntity[] = await queryRunner.manager
+    const products: ProductEntity[] = await manager
       .createQueryBuilder(ProductEntity, 'p')
       .where('p.id IN (:...ids)', { ids: productIds })
       .setLock('pessimistic_partial_write')
@@ -165,17 +205,25 @@ export class OrdersService {
     }
   }
 
-  private async saveOrder(
-    orderRepoTx: Repository<OrderEntity>,
+  private async savePendingOrder(
+    orderRepo: Repository<OrderEntity>,
     userId: string,
     idempotencyKey: string,
+    items: CreateOrderItemDto[],
   ): Promise<OrderEntity> {
-    return await orderRepoTx.save(
-      orderRepoTx.create({
+    // Step 1 (Producer): store order as PENDING.
+    // We intentionally do not create order_items and do not touch stock here.
+    // Those are "heavy" operations and must run in worker (async pipeline).
+    return await orderRepo.save(
+      orderRepo.create({
         userId,
         idempotencyKey,
-        status: OrderStatus.CREATED,
+        // API path must be fast: persist intent and exit quickly.
+        status: OrderStatus.PENDING,
+        processedAt: null,
         totalAmount: '0.00',
+        // Keep original client payload to process later in worker transaction.
+        requestedItems: items,
       }),
     );
   }
@@ -223,83 +271,52 @@ export class OrdersService {
     dto: CreateOrderDto,
     idempotencyKey: string,
     userId: string,
+    correlationId?: string,
   ): Promise<{ order: OrderEntity; isCreated: boolean }> {
-    const queryRunner = this.dataSource.createQueryRunner();
-
-    await queryRunner.connect();
-
     try {
-      await queryRunner.startTransaction();
-
-      const orderRepoTx = queryRunner.manager.getRepository(OrderEntity);
-      const itemsRepoTx = queryRunner.manager.getRepository(OrderItemEntity);
-
-      // 1) Idempotency fast path (inside TX to avoid weird races)
-      const existing = await orderRepoTx.findOne({
-        where: { userId, idempotencyKey },
-        relations: { items: true },
-      });
-      if (existing) {
-        await queryRunner.commitTransaction();
-        return { order: existing, isCreated: false };
-      }
-
-      // 2) Lock products rows (oversell protection)
-      const productMap = await this.lockAndLoadProducts(queryRunner, dto.items);
-      const qtyByProductId = this.aggregateQuantities(dto.items);
-
-      this.assertSufficientStock(productMap, qtyByProductId);
-
-      // 3) Create order (UNIQUE(userId, idempotencyKey) protects double-submit)
-      const savedOrder = await this.saveOrder(
-        orderRepoTx,
+      // Step 0 (Idempotency): if this request already processed/accepted
+      // for the same (userId, idempotencyKey), return existing order.
+      // This protects API producer from duplicate client retries.
+      const existing = await this.findExistingOrderByIdempotency(
         userId,
         idempotencyKey,
       );
+      if (existing) {
+        return { order: existing, isCreated: false };
+      }
 
-      // 4) Create items
-      const orderItems = await this.saveOrderItems(
-        itemsRepoTx,
-        savedOrder.id,
+      // Step 1 (DB): create lightweight PENDING order.
+      const savedOrder = await this.savePendingOrder(
+        this.ordersRepo,
+        userId,
+        idempotencyKey,
         dto.items,
-        productMap,
       );
 
-      // 5) Update total
-      savedOrder.totalAmount = this.getOrderTotalFromItems(orderItems);
-      await orderRepoTx.save(savedOrder);
+      // Step 2 (Broker): publish message to processing queue.
+      // Message contains unique messageId (generated in createBaseMessage),
+      // orderId, createdAt and attempt=0.
+      //
+      // Important order of operations:
+      // - first save order in DB,
+      // - only then publish message.
+      //
+      // If publish fails, we return 500 and order stays PENDING.
+      // For production-grade guarantees, outbox pattern is the next step.
+      const msg = this.rabbit.createBaseMessage(savedOrder.id, correlationId);
+      await this.rabbit.publishProcess(msg);
 
-      // 6) Decrement stock + persist
-      this.decrementStock(productMap, qtyByProductId);
-      await queryRunner.manager.save(ProductEntity, [...productMap.values()]);
-
-      await queryRunner.commitTransaction();
-
-      // Reload to return with relations
-      const finalOrder = await this.ordersRepo.findOne({
-        where: { id: savedOrder.id },
-        relations: { items: true },
-      });
-
-      if (!finalOrder) {
-        throw new InternalServerErrorException(
-          'Order not found after successful transaction',
-        );
-      }
-
-      return { order: finalOrder, isCreated: true };
+      // Step 3 (HTTP response): return immediately with persisted PENDING order.
+      // We intentionally avoid extra "read-after-publish" query to keep latency low
+      // and avoid race where worker already flips status before producer responds.
+      return { order: savedOrder, isCreated: true };
     } catch (err: unknown) {
-      // Rollback only if TX is active
-      if (queryRunner.isTransactionActive) {
-        await queryRunner.rollbackTransaction();
-      }
-
       // Idempotency race: return existing order for the same (userId, key)
       if (isUniqueViolation(err)) {
-        const existingAfterRace = await this.ordersRepo.findOne({
-          where: { userId, idempotencyKey },
-          relations: { items: true },
-        });
+        const existingAfterRace = await this.findExistingOrderByIdempotency(
+          userId,
+          idempotencyKey,
+        );
         if (existingAfterRace)
           return { order: existingAfterRace, isCreated: false };
 
@@ -309,9 +326,89 @@ export class OrdersService {
       }
 
       throw err;
-    } finally {
-      await queryRunner.release();
     }
+  }
+
+  /**
+   * Heavy order processing path for worker:
+   * - run in DB transaction
+   * - lock order + products
+   * - compute order items/total and decrement stock
+   * - mark order as PROCESSED
+   *
+   * The worker ACKs the message only after this method resolves,
+   * so ACK happens strictly after transaction commit.
+   */
+  async processPendingOrder(
+    orderId: string,
+    messageId: string,
+  ): Promise<ProcessPendingOrderResult> {
+    return this.dataSource.transaction(async (manager) => {
+      // Worker-level idempotency by messageId.
+      // If this message was already committed before, skip business logic.
+      const isNewMessage = await this.reserveProcessedMessage(
+        manager,
+        messageId,
+        orderId,
+      );
+
+      if (!isNewMessage) {
+        return 'duplicate';
+      }
+
+      const orderRepoTx = manager.getRepository(OrderEntity);
+      const itemsRepoTx = manager.getRepository(OrderItemEntity);
+
+      const order = await orderRepoTx
+        .createQueryBuilder('o')
+        .setLock('pessimistic_write')
+        .where('o.id = :id', { id: orderId })
+        .getOne();
+
+      if (!order) {
+        throw new NotFoundException(`Order with id ${orderId} not found`);
+      }
+
+      // Idempotent guard at business level for retries:
+      // if the order is already processed, do nothing and commit.
+      if (order.status === OrderStatus.PROCESSED) {
+        return 'processed';
+      }
+
+      const requestedItems = order.requestedItems;
+      if (!Array.isArray(requestedItems) || requestedItems.length === 0) {
+        throw new BadRequestException(
+          `Order ${order.id} has empty requested items payload`,
+        );
+      }
+
+      const productMap = await this.lockAndLoadProducts(
+        manager,
+        requestedItems,
+      );
+      const qtyByProductId = this.aggregateQuantities(requestedItems);
+
+      this.assertSufficientStock(productMap, qtyByProductId);
+
+      const orderItems = await this.saveOrderItems(
+        itemsRepoTx,
+        order.id,
+        requestedItems,
+        productMap,
+      );
+
+      this.decrementStock(productMap, qtyByProductId);
+      await manager.save(ProductEntity, [...productMap.values()]);
+
+      order.totalAmount = this.getOrderTotalFromItems(orderItems);
+      order.status = OrderStatus.PROCESSED;
+      order.processedAt = new Date();
+      // Once processed, source payload is no longer needed for worker.
+      order.requestedItems = [];
+
+      await orderRepoTx.save(order);
+      return 'processed';
+    });
   }
 
   async findByUserId(userId: string) {
@@ -330,21 +427,19 @@ export class OrdersService {
   }
 
   async remove(id: string): Promise<{ status: 'deleted'; id: string }> {
-    // Hard delete is fine for now (draft mode). Later we can switch to soft delete if needed.
+    // Hard delete is fine for now. Later we can switch to soft delete if needed.
     await this.findOne(id);
     await this.ordersRepo.delete(id);
 
     return { status: 'deleted', id };
   }
 
-  // async test(): Promise<void> {
-  //   const msg = this.rabbit.createBaseMessage('test-order-2');
-  //   await this.rabbit.publishProcess(msg);
-  // }
-
   // Add into OrdersService class
-  async testPublishRabbit(orderId: string): Promise<void> {
-    const msg = this.rabbit.createBaseMessage(orderId);
+  async testPublishRabbit(
+    orderId: string,
+    correlationId?: string,
+  ): Promise<void> {
+    const msg = this.rabbit.createBaseMessage(orderId, correlationId);
     await this.rabbit.publishProcess(msg);
   }
 }

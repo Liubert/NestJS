@@ -6,20 +6,23 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import type {
+  Channel,
+  ChannelModel,
+  ConfirmChannel,
+  ConsumeMessage,
+} from 'amqplib';
+import * as amqp from 'amqplib';
 import { randomUUID } from 'crypto';
-import {
-  Connection,
-  Consumer,
-  ConsumerStatus,
-  Publisher,
-} from 'rabbitmq-client';
 import { AppConfig } from '../config/app.config';
 
-const ROUTING_KEYS = {
-  process: 'process',
-  retry: 'retry',
-  dlq: 'dlq',
-} as const;
+type RabbitRoutingConfig = {
+  routingKeyProcess: string;
+  routingKeyRetry: string;
+  routingKeyDlq: string;
+};
+
+type RabbitTopologyConfig = AppConfig['rabbitmq'] & RabbitRoutingConfig;
 
 export type OrderProcessMessage = {
   messageId: string; // UUID
@@ -35,50 +38,57 @@ export type OrderProcessMessage = {
 export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RabbitMQService.name);
 
-  private rabbitmqConfig!: AppConfig['rabbitmq'];
+  private config!: RabbitTopologyConfig;
 
-  private conn: Connection | null = null;
-  private pub: Publisher | null = null;
-  private consumer: Consumer | null = null;
+  private conn: ChannelModel | null = null;
+  private pubCh: ConfirmChannel | null = null;
+  private consCh: Channel | null = null;
+
+  private consumerTag: string | null = null;
+  private ready = false;
 
   constructor(private readonly configService: ConfigService) {}
 
   getMaxAttempts(): number {
-    return this.rabbitmqConfig.maxAttempts;
+    return this.config.maxAttempts;
+  }
+
+  isReady(): boolean {
+    return this.ready;
   }
 
   async onModuleInit(): Promise<void> {
-    const { rabbitmq } = this.configService.getOrThrow<AppConfig>('app');
-    this.rabbitmqConfig = rabbitmq;
+    this.config = this.readConfig();
 
-    this.conn = new Connection(this.rabbitmqConfig.url);
-    this.conn.on('error', (err: unknown) => {
+    const conn = await amqp.connect(this.config.url);
+    this.conn = conn;
+
+    conn.on('error', (err: unknown) => {
+      this.ready = false;
       this.logger.error(
         `RabbitMQ connection error: ${err instanceof Error ? err.message : String(err)}`,
       );
     });
-    this.conn.on('connection', () => {
-      this.logger.log('RabbitMQ connection established/re-established');
+
+    conn.on('close', () => {
+      this.ready = false;
+      // For homework: fail fast is acceptable.
+      // Production: implement reconnect with backoff.
+      this.logger.warn('RabbitMQ connection closed');
     });
 
-    // confirm=true => broker confirms publish (confirm channel analogue)
-    this.pub = this.conn.createPublisher({
-      confirm: true,
-      // Keep it simple: no internal retry here, we implement retries ourselves (assignment)
-      maxAttempts: 1,
-      exchanges: [
-        {
-          exchange: this.rabbitmqConfig.exchange,
-          type: 'direct',
-          durable: true,
-        },
-      ],
-    });
+    this.pubCh = await conn.createConfirmChannel();
+    this.consCh = await conn.createChannel();
+    await this.consCh.prefetch(this.config.prefetch);
 
     await this.assertTopology();
+    this.ready = true;
+
+    this.logger.log('RabbitMQ ready');
   }
 
   async onModuleDestroy(): Promise<void> {
+    this.ready = false;
     await this.close();
   }
 
@@ -102,213 +112,165 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   // ------------------------ publish ------------------------
 
   async publishProcess(message: OrderProcessMessage): Promise<void> {
-    const pub = this.requirePublisher();
-
-    await pub.send(
-      {
-        exchange: this.rabbitmqConfig.exchange,
-        routingKey: ROUTING_KEYS.process,
-        contentType: 'application/json',
-        durable: true, // persistent message
-        messageId: message.messageId,
-        correlationId: message.correlationId,
-        // rabbitmq-client expects timestamp in seconds
-        timestamp: Math.floor(Date.now() / 1000),
-        type: message.eventName,
-        appId: message.producer,
-      },
-      message,
-    );
+    const ch = this.requirePubChannel();
+    this.publishToExchange(ch, this.config.routingKeyProcess, message);
+    await ch.waitForConfirms();
   }
 
   async publishRetry(message: OrderProcessMessage): Promise<void> {
-    const pub = this.requirePublisher();
-
-    await pub.send(
-      {
-        exchange: this.rabbitmqConfig.exchange,
-        routingKey: ROUTING_KEYS.retry,
-        contentType: 'application/json',
-        durable: true,
-        messageId: message.messageId,
-        correlationId: message.correlationId,
-        timestamp: Math.floor(Date.now() / 1000),
-        type: message.eventName,
-        appId: message.producer,
-      },
-      message,
-    );
+    const ch = this.requirePubChannel();
+    this.publishToExchange(ch, this.config.routingKeyRetry, message);
+    await ch.waitForConfirms();
   }
 
   async publishDlq(
     message: OrderProcessMessage,
     reason?: string,
   ): Promise<void> {
-    const pub = this.requirePublisher();
+    const ch = this.requirePubChannel();
 
-    await pub.send(
-      {
-        exchange: this.rabbitmqConfig.exchange,
-        routingKey: ROUTING_KEYS.dlq,
-        contentType: 'application/json',
-        durable: true,
-        messageId: message.messageId,
-        correlationId: message.correlationId,
-        timestamp: Math.floor(Date.now() / 1000),
-        type: message.eventName,
-        appId: message.producer,
-        headers: reason ? { reason } : undefined,
-      },
-      { ...message, reason },
+    const payload = Buffer.from(
+      JSON.stringify({ ...message, reason }),
+      'utf-8',
     );
+
+    ch.publish(this.config.exchange, this.config.routingKeyDlq, payload, {
+      contentType: 'application/json',
+      deliveryMode: 2, // persistent
+      messageId: message.messageId,
+      correlationId: message.correlationId,
+      timestamp: Math.floor(Date.now() / 1000),
+      type: message.eventName,
+      appId: message.producer,
+      headers: reason ? { reason } : undefined,
+    });
+
+    await ch.waitForConfirms();
   }
 
-  // ------------------------ consume (Step 1) ------------------------
+  // ------------------------ consume (manual ack) ------------------------
+
   /**
-   * Consumer for main process queue.
-   *
-   * rabbitmq-client semantics:
-   * - if handler resolves => ACK
-   * - if handler throws => NACK (controlled by "requeue" option)
-   *
-   * For step 1 we set requeue=false to avoid infinite loops.
-   * Step 2 will replace "throw => nack" with explicit publishRetry/publishDlq.
+   * Manual ACK only after handler resolves (=> after TX commit).
+   * On error: republish to retry/dlq and ACK original message (no requeue loops).
    */
   async consumeProcess(
-    handler: (message: OrderProcessMessage) => Promise<void>,
+    handler: (msg: OrderProcessMessage) => Promise<void>,
   ): Promise<void> {
-    const conn = this.requireConnection();
+    const ch = this.requireConsumerChannel();
 
-    // Avoid duplicate consumers on hot reload / re-init
-    if (this.consumer) {
-      await this.consumer.close();
-      this.consumer = null;
+    // Hot reload safety: cancel previous consumer
+    if (this.consumerTag) {
+      await ch.cancel(this.consumerTag);
+      this.consumerTag = null;
     }
 
-    const queue = this.rabbitmqConfig.processQueue;
-
-    const consumer = conn.createConsumer(
-      {
-        queue,
-        queueOptions: { durable: true },
-        qos: { prefetchCount: this.rabbitmqConfig.prefetch },
-        requeue: false,
+    const res = await ch.consume(
+      this.config.processQueue,
+      (raw: ConsumeMessage | null) => {
+        if (!raw) return;
+        void this.handleProcessMessage(raw, ch, handler);
       },
-      async (raw) => {
-        let parsed: OrderProcessMessage;
-        try {
-          parsed = this.parseOrderProcessMessage(raw);
-        } catch (err: unknown) {
-          this.logger.warn(
-            `Dropping invalid message from queue=${queue}: ${err instanceof Error ? err.message : String(err)}`,
-          );
-          return ConsumerStatus.DROP;
-        }
-
-        this.logger.log(
-          `Consume: queue=${queue} orderId=${parsed.orderId} attempt=${parsed.attempt} messageId=${parsed.messageId}`,
-        );
-
-        // If this throws => NACK (requeue=false)
-        await handler(parsed);
-      },
+      { noAck: false },
     );
-    consumer.on('error', (err: unknown) => {
-      this.logger.error(
-        `RabbitMQ consumer error: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    });
-    this.consumer = consumer;
+
+    this.consumerTag = res.consumerTag;
 
     this.logger.log(
-      `Consumer attached: queue=${queue}, prefetch=${this.rabbitmqConfig.prefetch}`,
+      `Consumer attached: queue=${this.config.processQueue}, prefetch=${this.config.prefetch}, maxAttempts=${this.config.maxAttempts}`,
     );
   }
 
   // ------------------------ internals ------------------------
 
+  private readConfig(): RabbitTopologyConfig {
+    const { rabbitmq } = this.configService.getOrThrow<AppConfig>('app');
+
+    // Hardcoded routing keys are OK for homework (stable contract).
+    // If you put them in env - you add config surface and mismatch risk.
+    return {
+      ...rabbitmq,
+      routingKeyProcess: 'process',
+      routingKeyRetry: 'retry',
+      routingKeyDlq: 'dlq',
+    };
+  }
+
+  private publishToExchange(
+    ch: ConfirmChannel,
+    routingKey: string,
+    message: OrderProcessMessage,
+  ): void {
+    const payload = Buffer.from(JSON.stringify(message), 'utf-8');
+
+    ch.publish(this.config.exchange, routingKey, payload, {
+      contentType: 'application/json',
+      deliveryMode: 2, // persistent
+      messageId: message.messageId,
+      correlationId: message.correlationId,
+      timestamp: Math.floor(Date.now() / 1000),
+      type: message.eventName,
+      appId: message.producer,
+    });
+  }
+
+  /**
+   * Idempotent topology setup (safe on restart).
+   * NOTE: durable must match existing objects, otherwise you get PRECONDITION_FAILED.
+   */
   private async assertTopology(): Promise<void> {
-    const conn = this.requireConnection();
+    const pub = this.requirePubChannel();
 
-    await conn.exchangeDeclare({
-      exchange: this.rabbitmqConfig.exchange,
-      type: 'direct',
-      durable: true,
-    });
+    await pub.assertExchange(this.config.exchange, 'direct', { durable: true });
 
-    await conn.queueDeclare({
-      queue: this.rabbitmqConfig.processQueue,
-      durable: true,
-    });
+    await pub.assertQueue(this.config.processQueue, { durable: true });
 
-    await conn.queueDeclare({
-      queue: this.rabbitmqConfig.retryQueue,
+    await pub.assertQueue(this.config.retryQueue, {
       durable: true,
       arguments: {
-        'x-message-ttl': this.rabbitmqConfig.retryDelayMs,
-        'x-dead-letter-exchange': this.rabbitmqConfig.exchange,
-        'x-dead-letter-routing-key': ROUTING_KEYS.process,
+        'x-message-ttl': this.config.retryDelayMs,
+        'x-dead-letter-exchange': this.config.exchange,
+        'x-dead-letter-routing-key': this.config.routingKeyProcess,
       },
     });
 
-    await conn.queueDeclare({
-      queue: this.rabbitmqConfig.dlqQueue,
-      durable: true,
-    });
+    await pub.assertQueue(this.config.dlqQueue, { durable: true });
 
-    await conn.queueBind({
-      queue: this.rabbitmqConfig.processQueue,
-      exchange: this.rabbitmqConfig.exchange,
-      routingKey: ROUTING_KEYS.process,
-    });
-
-    await conn.queueBind({
-      queue: this.rabbitmqConfig.retryQueue,
-      exchange: this.rabbitmqConfig.exchange,
-      routingKey: ROUTING_KEYS.retry,
-    });
-
-    await conn.queueBind({
-      queue: this.rabbitmqConfig.dlqQueue,
-      exchange: this.rabbitmqConfig.exchange,
-      routingKey: ROUTING_KEYS.dlq,
-    });
+    await pub.bindQueue(
+      this.config.processQueue,
+      this.config.exchange,
+      this.config.routingKeyProcess,
+    );
+    await pub.bindQueue(
+      this.config.retryQueue,
+      this.config.exchange,
+      this.config.routingKeyRetry,
+    );
+    await pub.bindQueue(
+      this.config.dlqQueue,
+      this.config.exchange,
+      this.config.routingKeyDlq,
+    );
 
     this.logger.log(
-      `Rabbit topology ready: exchange=${this.rabbitmqConfig.exchange}, queues=[${this.rabbitmqConfig.processQueue}, ${this.rabbitmqConfig.retryQueue}, ${this.rabbitmqConfig.dlqQueue}]`,
+      `Rabbit topology ready: exchange=${this.config.exchange}, queues=[${this.config.processQueue}, ${this.config.retryQueue}, ${this.config.dlqQueue}]`,
     );
   }
 
-  private parseOrderProcessMessage(raw: unknown): OrderProcessMessage {
-    /**
-     * rabbitmq-client passes an AsyncMessage-like object.
-     * It contains: body (can be object/string/buffer), properties, etc.
-     * We'll only rely on body + contentType.
-     */
-    if (!raw || typeof raw !== 'object') {
-      throw new Error('Invalid raw message');
-    }
+  private parseMessage(raw: ConsumeMessage): OrderProcessMessage {
+    const contentType =
+      typeof raw.properties.contentType === 'string'
+        ? raw.properties.contentType
+        : undefined;
 
-    const msg = raw as {
-      body?: unknown;
-      properties?: { contentType?: string };
-    };
-
-    const contentType = msg.properties?.contentType;
-    // contentType is optional in AMQP headers; reject only explicit non-JSON values.
-    if (contentType && !contentType.startsWith('application/json')) {
+    // For homework you CAN require strict contentType.
+    // But you already hit "unknown", so we'll accept missing and still parse JSON.
+    if (contentType && contentType !== 'application/json') {
       throw new Error(`Invalid contentType: ${contentType}`);
     }
 
-    const body = msg.body;
-
-    let data: unknown = body;
-
-    if (Buffer.isBuffer(body)) {
-      data = JSON.parse(body.toString('utf-8')) as unknown;
-    } else if (typeof body === 'string') {
-      data = JSON.parse(body) as unknown;
-    }
+    const text = raw.content.toString('utf-8');
+    const data: unknown = JSON.parse(text);
 
     if (!this.isOrderProcessMessage(data)) {
       throw new Error('Invalid message shape');
@@ -317,47 +279,120 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
     return data;
   }
 
-  private isOrderProcessMessage(value: unknown): value is OrderProcessMessage {
-    if (!value || typeof value !== 'object') return false;
-    const v = value as Record<string, unknown>;
+  private async handleProcessMessage(
+    raw: ConsumeMessage,
+    ch: Channel,
+    handler: (msg: OrderProcessMessage) => Promise<void>,
+  ): Promise<void> {
+    try {
+      let parsed: OrderProcessMessage;
+      try {
+        parsed = this.parseMessage(raw);
+        if (
+          !parsed.correlationId &&
+          typeof raw.properties.correlationId === 'string'
+        ) {
+          parsed = { ...parsed, correlationId: raw.properties.correlationId };
+        }
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        const corr =
+          typeof raw.properties.correlationId === 'string'
+            ? raw.properties.correlationId
+            : 'n/a';
+        this.logger.warn(
+          `Dropping invalid message: queue=${this.config.processQueue} correlationId=${corr} reason=${errMsg}`,
+        );
+        ch.ack(raw);
+        return;
+      }
+
+      try {
+        await handler(parsed);
+        ch.ack(raw);
+      } catch (e: unknown) {
+        const errMsg = e instanceof Error ? e.message : String(e);
+        const nextAttempt = parsed.attempt + 1;
+
+        if (nextAttempt >= this.config.maxAttempts) {
+          await this.publishDlq({ ...parsed, attempt: nextAttempt }, errMsg);
+          ch.ack(raw);
+          this.logger.warn(
+            `Message moved to DLQ: correlationId=${parsed.correlationId ?? 'n/a'} orderId=${parsed.orderId} messageId=${parsed.messageId} reason=${errMsg}`,
+          );
+          return;
+        }
+
+        await this.publishRetry({ ...parsed, attempt: nextAttempt });
+        ch.ack(raw);
+        this.logger.warn(
+          `Retry scheduled: correlationId=${parsed.correlationId ?? 'n/a'} orderId=${parsed.orderId} messageId=${parsed.messageId} attempt=${nextAttempt} reason=${errMsg}`,
+        );
+      }
+    } catch (e: unknown) {
+      const errMsg = e instanceof Error ? e.message : String(e);
+      this.logger.error(
+        `Unexpected consumer handler error: queue=${this.config.processQueue} reason=${errMsg}`,
+      );
+      ch.ack(raw);
+    }
+  }
+
+  private isOrderProcessMessage(v: unknown): v is OrderProcessMessage {
+    if (!v || typeof v !== 'object') return false;
+    const obj = v as Record<string, unknown>;
 
     return (
-      typeof v.messageId === 'string' &&
-      typeof v.orderId === 'string' &&
-      typeof v.createdAt === 'string' &&
-      typeof v.attempt === 'number'
+      typeof obj.messageId === 'string' &&
+      typeof obj.orderId === 'string' &&
+      typeof obj.createdAt === 'string' &&
+      typeof obj.attempt === 'number'
     );
   }
 
-  private requireConnection(): Connection {
-    if (!this.conn) throw new Error('RabbitMQ connection is not initialized');
-    return this.conn;
+  private requirePubChannel(): ConfirmChannel {
+    if (!this.pubCh)
+      throw new Error('RabbitMQ publish channel is not initialized');
+    return this.pubCh;
   }
 
-  private requirePublisher(): Publisher {
-    if (!this.pub) throw new Error('RabbitMQ publisher is not initialized');
-    return this.pub;
+  private requireConsumerChannel(): Channel {
+    if (!this.consCh)
+      throw new Error('RabbitMQ consumer channel is not initialized');
+    return this.consCh;
   }
 
   private async close(): Promise<void> {
     try {
-      if (this.consumer) await this.consumer.close();
+      if (this.consCh && this.consumerTag) {
+        await this.consCh.cancel(this.consumerTag);
+      }
     } catch (e: unknown) {
       this.logger.warn(
-        `RabbitMQ consumer close failed: ${e instanceof Error ? e.message : String(e)}`,
+        `RabbitMQ cancel consumer failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
-      this.consumer = null;
+      this.consumerTag = null;
     }
 
     try {
-      if (this.pub) await this.pub.close();
+      if (this.consCh) await this.consCh.close();
     } catch (e: unknown) {
       this.logger.warn(
-        `RabbitMQ publisher close failed: ${e instanceof Error ? e.message : String(e)}`,
+        `RabbitMQ consumer channel close failed: ${e instanceof Error ? e.message : String(e)}`,
       );
     } finally {
-      this.pub = null;
+      this.consCh = null;
+    }
+
+    try {
+      if (this.pubCh) await this.pubCh.close();
+    } catch (e: unknown) {
+      this.logger.warn(
+        `RabbitMQ publish channel close failed: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      this.pubCh = null;
     }
 
     try {
