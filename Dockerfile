@@ -10,7 +10,7 @@ WORKDIR /usr/src/app
 
 # Copy only dependency manifests to maximize Docker layer caching
 COPY package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit
 
 ############################
 # dev

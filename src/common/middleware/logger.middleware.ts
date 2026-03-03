@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 // 1. Defining a custom interface to avoid TS errors
 export interface RequestWithMetadata extends Request {
   requestId: string;
+  correlationId: string;
   requestStartTime: number;
   handlerDuration?: number;
 }
@@ -16,14 +17,23 @@ export class LoggerMiddleware implements NestMiddleware {
   // 2. Use our custom interface for 'req'
   use(req: RequestWithMetadata, res: Response, next: NextFunction) {
     const requestId: string = uuidv4();
+    const correlationHeader = req.headers['x-correlation-id'];
+    const correlationId =
+      typeof correlationHeader === 'string' && correlationHeader.trim()
+        ? correlationHeader.trim()
+        : requestId;
     const startTime: number = Date.now();
 
     req.requestId = requestId;
+    req.correlationId = correlationId;
     req.requestStartTime = startTime;
 
     res.setHeader('X-Request-Id', requestId);
+    res.setHeader('X-Correlation-Id', correlationId);
 
-    this.logger.log(`[${requestId}] START: ${req.method} ${req.originalUrl}`);
+    this.logger.log(
+      `[${requestId}] [correlationId=${correlationId}] START: ${req.method} ${req.originalUrl}`,
+    );
 
     res.on('finish', () => {
       const totalTime = Date.now() - startTime;
@@ -31,7 +41,7 @@ export class LoggerMiddleware implements NestMiddleware {
       const authValTime = totalTime - processingTime; // Consistent naming
 
       this.logger.log(
-        `[${requestId}] END: ${res.statusCode} | Total: ${totalTime}ms (Processing: ${processingTime}ms, Auth&Val: ${authValTime}ms)`,
+        `[${requestId}] [correlationId=${correlationId}] END: ${res.statusCode} | Total: ${totalTime}ms (Processing: ${processingTime}ms, Auth&Val: ${authValTime}ms)`,
       );
     });
 

@@ -63,6 +63,8 @@ enum OrderStatus {
   CREATED
   DELIVERED
   PAID
+  PENDING
+  PROCESSED
 }
 
 input OrdersFilterInput {

@@ -5,12 +5,16 @@ import {
   type OrderProcessMessage,
   RabbitMQService,
 } from '../../rabbitmq/rabbitmq.service';
+import { OrdersService } from './orders.service';
 
 @Injectable()
 export class OrdersWorkerService implements OnModuleInit {
   private readonly logger = new Logger(OrdersWorkerService.name);
 
-  constructor(private readonly rabbit: RabbitMQService) {}
+  constructor(
+    private readonly rabbit: RabbitMQService,
+    private readonly ordersService: OrdersService,
+  ) {}
 
   async onModuleInit(): Promise<void> {
     await this.rabbit.consumeProcess(async (message) => {
@@ -49,7 +53,7 @@ export class OrdersWorkerService implements OnModuleInit {
       };
 
       this.logger.warn(
-        `Process failed, scheduling retry: orderId=${message.orderId} attempt=${attempt} -> ${next.attempt} max=${maxAttempts} reason=${reason}`,
+        `result=retry correlationId=${message.correlationId ?? 'n/a'} messageId=${message.messageId} orderId=${message.orderId} attempt=${attempt} nextAttempt=${next.attempt} maxAttempts=${maxAttempts} reason=${reason}`,
       );
 
       // Put into retry queue (TTL will send it back to process queue)
@@ -61,7 +65,7 @@ export class OrdersWorkerService implements OnModuleInit {
     }
 
     this.logger.error(
-      `Process failed, sending to DLQ: orderId=${message.orderId} attempt=${attempt} max=${maxAttempts} reason=${reason}`,
+      `result=dlq correlationId=${message.correlationId ?? 'n/a'} messageId=${message.messageId} orderId=${message.orderId} attempt=${attempt} maxAttempts=${maxAttempts} reason=${reason}`,
     );
 
     await this.rabbit.publishDlq(message, reason);
@@ -70,19 +74,21 @@ export class OrdersWorkerService implements OnModuleInit {
   }
 
   private async handleProcess(message: OrderProcessMessage): Promise<void> {
-    this.logger.log(
-      `Processing order: orderId=${message.orderId} attempt=${message.attempt} messageId=${message.messageId}`,
-    );
-
-    // --- Homework/test hook ---
-    // If you want to simulate failures for retry/DLQ checks:
+    // Test hook: allows deterministic retry/DLQ checks.
     if (message.orderId.startsWith('fail')) {
       throw new Error('Simulated failure for retry/DLQ flow');
     }
 
-    // Simulate normal work
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Heavy business logic is delegated to service and runs in DB transaction.
+    // `consumeProcess` ACKs only after this method resolves, so commit happens
+    // before ACK (required by homework).
+    const result = await this.ordersService.processPendingOrder(
+      message.orderId,
+      message.messageId,
+    );
 
-    this.logger.log(`Processed OK: orderId=${message.orderId}`);
+    this.logger.log(
+      `result=success correlationId=${message.correlationId ?? 'n/a'} messageId=${message.messageId} orderId=${message.orderId} attempt=${message.attempt} mode=${result}`,
+    );
   }
 }

@@ -47,8 +47,45 @@ services:
     networks:
       - internal
       - public
+    restart: unless-stopped
     ports:
       - "8080:3000"
+
+  worker:
+    image: ${APP_IMAGE}
+    build:
+      context: .
+      target: prod
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-orders.exchange}
+      RABBITMQ_PROCESS_QUEUE: ${RABBITMQ_PROCESS_QUEUE:-orders.process}
+      RABBITMQ_RETRY_QUEUE: ${RABBITMQ_RETRY_QUEUE:-orders.retry}
+      RABBITMQ_DLQ_QUEUE: ${RABBITMQ_DLQ_QUEUE:-orders.dlq}
+      RABBITMQ_RETRY_DELAY_MS: ${RABBITMQ_RETRY_DELAY_MS:-3000}
+      RABBITMQ_MAX_ATTEMPTS: ${RABBITMQ_MAX_ATTEMPTS:-3}
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
+    networks:
+      - internal
+    restart: unless-stopped
+    command: node dist/main.worker.js
 
 
 
