@@ -1,63 +1,102 @@
+SHELL := /bin/bash
+
+COMPOSE := docker compose -f compose.yml
+COMPOSE_DEV := docker compose -f compose.yml -f compose.dev.yml
+
+HEALTH_URL ?= http://localhost:8080/health
+HEALTH_TIMEOUT ?= 60
+
+.PHONY: help \
+	dev dev-up dev-build dev-down dev-restart dev-logs dev-ps dev-health dev-wait \
+	prod prod-build prod-bg \
+	migrate seed init \
+	clean-cache clean-cache-all \
+	reset
+
+help:
+	@echo "Available targets:"
+	@echo "  make dev          - Start dev stack in background and wait for API health"
+	@echo "  make dev-build    - Rebuild and start dev stack, then wait for health"
+	@echo "  make dev-down     - Stop dev stack"
+	@echo "  make dev-logs     - Follow dev logs"
+	@echo "  make dev-ps       - Show dev containers status"
+	@echo "  make prod         - Start production-like stack in foreground"
+	@echo "  make prod-build   - Rebuild and start production-like stack in foreground"
+	@echo "  make prod-bg      - Rebuild and start production-like stack in background"
+	@echo "  make migrate      - Run migrations one-off container"
+	@echo "  make seed         - Run seed one-off container"
+	@echo "  make init         - Full local init (build + db deps + migrate + seed + dev up)"
+	@echo "  make reset        - Reset DB volumes and re-run migrate + seed"
+
 # ---------- Development ----------
 
-dev:
-	docker compose -f compose.yml -f compose.dev.yml up -d
-	$(MAKE) dev-wait
+dev: dev-up dev-wait
+
+dev-up:
+	$(COMPOSE_DEV) up -d
 
 dev-build:
-	docker compose -f compose.yml -f compose.dev.yml up --build -d
+	$(COMPOSE_DEV) up --build -d
 	$(MAKE) dev-wait
 
+dev-down:
+	$(COMPOSE_DEV) down
+
+dev-restart:
+	$(COMPOSE_DEV) restart
+	$(MAKE) dev-wait
+
+dev-logs:
+	$(COMPOSE_DEV) logs -f
+
+dev-ps:
+	$(COMPOSE_DEV) ps
+
+dev-health:
+	curl -fsS $(HEALTH_URL)
+
 dev-wait:
-	@echo "Waiting for API health on http://localhost:8080/health ..."
+	@echo "Waiting for API health on $(HEALTH_URL) ..."
 	@i=0; \
-	until curl -fsS http://localhost:8080/health >/dev/null 2>&1; do \
+	until curl -fsS $(HEALTH_URL) >/dev/null 2>&1; do \
 		i=$$((i + 1)); \
-		if [ $$i -ge 60 ]; then \
-			echo "API is not healthy after 60s"; \
-			docker compose -f compose.yml -f compose.dev.yml ps; \
+		if [ $$i -ge $(HEALTH_TIMEOUT) ]; then \
+			echo "API is not healthy after $(HEALTH_TIMEOUT)s"; \
+			$(COMPOSE_DEV) ps; \
 			exit 1; \
 		fi; \
 		sleep 1; \
 	done; \
 	echo "API is healthy"
 
-dev-health:
-	curl -fsS http://localhost:8080/health
-
-dev-logs:
-	docker compose -f compose.yml -f compose.dev.yml logs -f
-
 # ---------- Production-like ----------
 
 prod:
-	docker compose -f compose.yml up
+	$(COMPOSE) up
 
 prod-build:
-	docker compose -f compose.yml up --build
+	$(COMPOSE) up --build
 
 prod-bg:
-	docker compose -f compose.yml up --build -d
-
+	$(COMPOSE) up --build -d
 
 # ---------- Database jobs (one-off) ----------
 
 migrate:
-	docker compose run --rm migrate
+	$(COMPOSE) run --rm migrate
 
 seed:
-	docker compose run --rm seed
-
+	$(COMPOSE) run --rm seed
 
 # ---------- Project initialization ----------
 
 init:
-	docker compose build
-	docker compose up -d postgres rabbitmq
+	$(COMPOSE) build
+	$(COMPOSE) up -d postgres rabbitmq
 	sleep 5
-	docker compose run --rm migrate
-	docker compose run --rm seed
-	docker compose -f compose.yml -f compose.dev.yml up
+	$(COMPOSE) run --rm migrate
+	$(COMPOSE) run --rm seed
+	$(COMPOSE_DEV) up
 
 clean-cache:
 	docker builder prune -af
@@ -76,9 +115,9 @@ clean-cache-all:
 # All local database data will be permanently deleted.
 
 reset:
-	docker compose down -v
-	docker compose up --build -d postgres rabbitmq
+	$(COMPOSE) down -v
+	$(COMPOSE) up --build -d postgres rabbitmq
 	sleep 5
-	docker compose run --rm migrate
-	docker compose run --rm seed
+	$(COMPOSE) run --rm migrate
+	$(COMPOSE) run --rm seed
 	@echo "Database reset completed"
