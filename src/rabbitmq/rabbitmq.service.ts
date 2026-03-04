@@ -72,8 +72,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
 
     conn.on('close', () => {
       this.ready = false;
-      // For homework: fail fast is acceptable.
-      // Production: implement reconnect with backoff.
+      // Current behavior is fail-fast; reconnect with backoff can be added later.
       this.logger.warn('RabbitMQ connection closed');
     });
 
@@ -186,8 +185,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
   private readConfig(): RabbitTopologyConfig {
     const { rabbitmq } = this.configService.getOrThrow<AppConfig>('app');
 
-    // Hardcoded routing keys are OK for homework (stable contract).
-    // If you put them in env - you add config surface and mismatch risk.
+    // Keep routing keys explicit in code to avoid config drift.
     return {
       ...rabbitmq,
       routingKeyProcess: 'process',
@@ -263,8 +261,7 @@ export class RabbitMQService implements OnModuleInit, OnModuleDestroy {
         ? raw.properties.contentType
         : undefined;
 
-    // For homework you CAN require strict contentType.
-    // But you already hit "unknown", so we'll accept missing and still parse JSON.
+    // Accept missing contentType and still parse JSON payload.
     if (contentType && contentType !== 'application/json') {
       throw new Error(`Invalid contentType: ${contentType}`);
     }

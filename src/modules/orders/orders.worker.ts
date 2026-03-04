@@ -81,7 +81,7 @@ export class OrdersWorkerService implements OnModuleInit {
 
     // Heavy business logic is delegated to service and runs in DB transaction.
     // `consumeProcess` ACKs only after this method resolves, so commit happens
-    // before ACK (required by homework).
+    // before ACK.
     const result = await this.ordersService.processPendingOrder(
       message.orderId,
       message.messageId,

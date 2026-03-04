@@ -434,7 +434,6 @@ export class OrdersService {
     return { status: 'deleted', id };
   }
 
-  // Add into OrdersService class
   async testPublishRabbit(
     orderId: string,
     correlationId?: string,
