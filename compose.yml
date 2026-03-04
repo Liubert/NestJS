@@ -16,13 +16,16 @@ services:
       retries: 20
 
   api:
-    env_file:
-      - .env
+    image: ${APP_IMAGE}
     build:
       context: .
       target: prod
+    env_file:
+      - .env
     depends_on:
       postgres:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     environment:
       NODE_ENV: production
@@ -44,13 +47,53 @@ services:
     networks:
       - internal
       - public
+    restart: unless-stopped
     ports:
       - "8080:3000"
 
-  migrate:
+  worker:
+    image: ${APP_IMAGE}
     build:
       context: .
-      target: build
+      target: prod
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+
+      JWT_SECRET: ${JWT_SECRET}
+
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-orders.exchange}
+      RABBITMQ_PROCESS_QUEUE: ${RABBITMQ_PROCESS_QUEUE:-orders.process}
+      RABBITMQ_RETRY_QUEUE: ${RABBITMQ_RETRY_QUEUE:-orders.retry}
+      RABBITMQ_DLQ_QUEUE: ${RABBITMQ_DLQ_QUEUE:-orders.dlq}
+      RABBITMQ_RETRY_DELAY_MS: ${RABBITMQ_RETRY_DELAY_MS:-3000}
+      RABBITMQ_MAX_ATTEMPTS: ${RABBITMQ_MAX_ATTEMPTS:-3}
+      RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
+    networks:
+      - internal
+    restart: unless-stopped
+    command: node dist/main.worker.js
+
+
+
+  migrate:
+    image: ${APP_IMAGE}
+    build:
+      context: .
+      target: prod
     env_file:
       - .env
     depends_on:
@@ -68,9 +111,10 @@ services:
     command: ["npm", "run", "migration:run:prod"]
 
   seed:
+    image: ${APP_IMAGE}
     build:
       context: .
-      target: build
+      target: prod
     env_file:
       - .env
     depends_on:
@@ -87,8 +131,29 @@ services:
       - internal
     command: ["npm", "run", "seed:prod"]
 
+  rabbitmq:
+    image: rabbitmq:3-management
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    volumes:
+      - rabbitmqdata:/var/lib/rabbitmq
+    networks:
+      - internal
+      - public
+    ports:
+      - "5672:5672"    # AMQP
+      - "15672:15672"  # Management UI
+    healthcheck:
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping" ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
 volumes:
   pgdata:
+  rabbitmqdata:
 
 networks:
   internal:

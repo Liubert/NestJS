@@ -10,8 +10,14 @@ import { RequestWithMetadata } from '../middleware/logger.middleware';
 import { Response } from 'express';
 
 @Injectable()
-export class ResponseTimeInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+export class ResponseTimeInterceptor implements NestInterceptor<
+  unknown,
+  unknown
+> {
+  intercept(
+    context: ExecutionContext,
+    next: CallHandler<unknown>,
+  ): Observable<unknown> {
     // Skip GraphQL requests (no standard HTTP response object here)
     if (context.getType<'http' | 'rpc' | 'ws'>() !== 'http') {
       return next.handle();
@@ -48,9 +54,13 @@ export class ResponseTimeInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       tap(() => setHeaders()), // Runs on success
-      catchError((err) => {
+      catchError((err: unknown) => {
         setHeaders(); // Runs on error
-        return throwError(() => err);
+        const error =
+          err instanceof Error
+            ? err
+            : new Error(`Unknown error: ${String(err)}`);
+        return throwError(() => error);
       }),
     );
   }
