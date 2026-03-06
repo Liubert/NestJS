@@ -9,18 +9,44 @@ const asStringArray = (v: unknown): string[] => {
   return [];
 };
 
+const getErrorPayload = (err: GraphQLError): Record<string, unknown> | null => {
+  const original = (err as GraphQLError & { originalError?: unknown })
+    .originalError;
+  const source = original ?? err.extensions?.originalError;
+  if (!isRecord(source)) return null;
+
+  const getResponse = source['getResponse'];
+  if (typeof getResponse === 'function') {
+    const response = (getResponse as () => unknown).call(source);
+    if (isRecord(response)) return response;
+  }
+
+  const response = source['response'];
+  if (isRecord(response)) return response;
+
+  return source;
+};
+
 const isBadRequest400 = (err: GraphQLError): boolean => {
-  const original = err.extensions?.originalError;
-  return isRecord(original) && original['statusCode'] === 400;
+  const payload = getErrorPayload(err);
+  return isRecord(payload) && payload['statusCode'] === 400;
 };
 
 const getBadRequestMessages = (err: GraphQLError): string[] => {
-  const original = err.extensions?.originalError;
-  if (!isRecord(original)) return [err.message];
+  const payload = getErrorPayload(err);
+  if (!isRecord(payload)) return [err.message];
 
-  const msgs = asStringArray(original['message']);
+  const msgs = asStringArray(payload['message']);
   return msgs.length ? msgs : [err.message];
 };
+
+const toValidationPayload = (messages: string[]) =>
+  messages.map((msg) => {
+    const match = /^([A-Za-z0-9_.[\]-]+)\s+(.+)$/.exec(msg.trim());
+    return match
+      ? { field: match[1], message: match[2] }
+      : { field: 'input', message: msg };
+  });
 
 export const formatGraphQLError = (
   err: GraphQLError,
@@ -32,9 +58,9 @@ export const formatGraphQLError = (
     return {
       message: 'Validation failed',
       extensions: {
-        ...(err.extensions ?? {}),
         code: 'BAD_USER_INPUT',
         messages,
+        validation: toValidationPayload(messages),
       },
       path: err.path,
     };

@@ -12,9 +12,16 @@ I confirmed the **N+1 problem** by enabling **SQL logging** in TypeORM and runni
 
 This was expected because, before DataLoader, the product was fetched one-by-one using an existing service method from a previous homework (e.g., `findOne / findById`), which executes a `SELECT` by a single `id`. As a result, resolving `product` for each item repeated the same “find one product” query many times.
 
+Quantitative check on one fixed scenario:
+- **Before DataLoader**: `4 items -> 4 product SELECT` queries.
+
 ---
 
 ## 4.3 Proof that N+1 is gone (before/after + what changed)
+
+Quantitative metric (same scenario as in 4.1):
+- **Before**: `4 items -> 4 product SELECT`.
+- **After**: `4 items -> 1 batched product SELECT` (`WHERE id IN (...)`).
 
 ### Before
 Classic **N+1**: the number of product queries matched the number of products in the response.  
