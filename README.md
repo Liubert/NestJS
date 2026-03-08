@@ -1,58 +1,85 @@
-<p align="center">
-  <a href="https://nestjs.com" target="_blank">
-    <img src="https://nestjs.com/img/logo-small.svg" width="120" alt="Nest Logo" />
-  </a>
-</p>
+### Requirements
 
-<p align="center">
-  Training project built with <a href="https://nestjs.com" target="_blank">NestJS</a>.
-</p>
+- Docker 24+
+- Docker Compose v2+
+- Make (installed by default on macOS/Linux)
 
----
+## 🛠 First time setup
+```bash
+   make init
+```
+##  Regular dev run
+```bash
+   make dev
+```
 
-## 📦 Project Overview
+# Other Commands
 
-This project was set up according to the initial assignment.  
-The main goal was to get hands-on experience with core NestJS features and understand the request lifecycle.
+## Start production-like stack
+```bash
+  make prod
+```
+# Run database migrations (one-off)
+```bash
+  make migrate
+```
+# Run seed (one-off)
+```bash
+  make seed
+```
 
----
 
-## ✳️ What was done
+# Reset database (removes volumes!)
+```bash
+  make reset
+```
 
-- Created a **new User module** and basic project structure.
-- Connected several **NestJS modules** required for the assignment.
-- Added an **appConfig** file to manage environment variables.
-- Worked with **DTO validation**:
-    - used built-in validators,
-    - added a **custom password validator**.
-- Experimented with **guards**, **filters**, **interceptors**,  **transformation** and **middleware**.
- 
+## 6.3 Non-root verification
 
----
+### Prod image
 
-## 🔍 Notes & Impressions
-
-NestJS feels very modular and structured.  
-There are many moving parts (modules, providers, guards, pipes, interceptors), and it takes time to understand how they all connect.
-
-Even so, the framework looks practical and flexible.  
-The structure reminds me of Angular (even though I haven’t worked much with Angular), and the module-based design seems useful for larger applications.
-
-The current setup is just the beginning, but it provides a clear picture of how NestJS organizes backend logic.
-
----
-
-## 🛠 Project Setup
+The runtime container is configured to run as a non-root user (`USER node`).
 
 ```bash
-npm install
-npm run start:dev
-Start PostgreSQL
-docker start pg-ecom
-docker run -d --name pg-ecom -p 5432:5432 postgres:15
+docker compose run --rm api id 
+```
+Expected output:
 
-Run migrations
+~~~
+uid=1000(node) gid=1000(node)
+~~~
 
-Apply all database migrations:
+## Docker image optimization evidence
 
-npx typeorm-ts-node-commonjs migration:run -d src/data-source.ts
+```bash
+$ docker image ls --format 'table {{.Repository}}\t{{.Tag}}\t{{.ID}}\t{{.Size}}' | grep '^nest-js'
+nest-js       prod-distroless   866fd18e6e5c   301MB
+nest-js       prod              3188da54531d   317MB
+```
+
+```bash
+$ docker history nest-js:prod | head -n 8
+IMAGE          CREATED        CREATED BY                                      SIZE      COMMENT
+3188da54531d   38 hours ago   CMD ["node" "dist/main.js"]                     0B        buildkit.dockerfile.v0
+<missing>      38 hours ago   EXPOSE [3000/tcp]                               0B        buildkit.dockerfile.v0
+<missing>      38 hours ago   COPY --chown=node:node package*.json ./ # bu…   563kB     buildkit.dockerfile.v0
+<missing>      38 hours ago   COPY --chown=node:node /usr/src/app/dist ./d…   265kB     buildkit.dockerfile.v0
+<missing>      38 hours ago   COPY --chown=node:node /usr/src/app/node_mod…   153MB     buildkit.dockerfile.v0
+<missing>      38 hours ago   USER node                                       0B        buildkit.dockerfile.v0
+<missing>      38 hours ago   ENV NODE_ENV=production                         0B        buildkit.dockerfile.v0
+```
+
+```bash
+$ docker history nest-js:prod-distroless | head -n 8
+IMAGE          CREATED        CREATED BY                                      SIZE      COMMENT
+866fd18e6e5c   38 hours ago   CMD ["dist/main.js"]                            0B        buildkit.dockerfile.v0
+<missing>      38 hours ago   EXPOSE [3000/tcp]                               0B        buildkit.dockerfile.v0
+<missing>      38 hours ago   COPY /usr/src/app/package*.json ./ # buildkit   562kB     buildkit.dockerfile.v0
+<missing>      38 hours ago   COPY /usr/src/app/dist ./dist # buildkit        265kB     buildkit.dockerfile.v0
+<missing>      38 hours ago   COPY /usr/src/app/node_modules ./node_module…   153MB     buildkit.dockerfile.v0
+<missing>      38 hours ago   ENV NODE_ENV=production                         0B        buildkit.dockerfile.v0
+<missing>      39 hours ago   WORKDIR /usr/src/app                            0B        buildkit.dockerfile.v0
+```
+
+`prod-distroless` is smaller (`301MB` vs `317MB`) because the runtime base is stripped down and excludes shell/package-manager tooling.
+It is also more secure by default due to the distroless non-root runtime and reduced attack surface.
