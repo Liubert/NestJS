@@ -51,6 +51,7 @@ services:
     build:
       context: .
       target: build
+    profiles: ["migrate", "seed"]
     env_file:
       - .env
     depends_on:
@@ -71,11 +72,12 @@ services:
     build:
       context: .
       target: build
+    profiles: ["seed"]
     env_file:
       - .env
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DB_HOST: postgres
