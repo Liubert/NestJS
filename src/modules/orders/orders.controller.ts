@@ -34,17 +34,21 @@ export class OrdersController {
   ) {
     // Producer endpoint:
     // 1) persist order intent as PENDING in DB
-    // 2) publish "process order" message to RabbitMQ
-    // 3) return HTTP response immediately (no heavy sync processing here)
+    // 2) call Payments.Authorize over gRPC
+    // 3) publish "process order" message to RabbitMQ
+    // 4) return HTTP response with order + payment result
 
-    const { order, isCreated } = await this.ordersService.create(
+    const { order, isCreated, payment } = await this.ordersService.create(
       dto,
       idempotencyKey,
       user.userId,
       req.correlationId,
     );
     res.status(isCreated ? 201 : 200);
-    return order;
+    return {
+      order,
+      payment,
+    };
   }
 
   @Get()

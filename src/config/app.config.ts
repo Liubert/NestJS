@@ -37,6 +37,27 @@ type RabbitMqConfig = {
   connection: ConnectionOptions;
 };
 
+type PaymentsGrpcConfig = {
+  // Client target that Orders-service will use for outgoing gRPC calls.
+  url: string;
+  // Bind address where Payments gRPC server will listen.
+  bindUrl: string;
+  // Shared proto path used by both services.
+  protoPath: string;
+  // Proto package name from payments.proto.
+  packageName: string;
+  // Timeout for Orders -> Payments call (ms), controlled by env.
+  timeoutMs: number;
+};
+
+type PaymentsServiceConfig = {
+  // Dedicated port for standalone payments process bootstrap.
+  port: number;
+  // Optional artificial authorize delay for local resilience checks.
+  authorizeDelayMs: number;
+  grpc: PaymentsGrpcConfig;
+};
+
 export type BaseAppConfig = {
   port: number;
   env: Envs;
@@ -44,6 +65,7 @@ export type BaseAppConfig = {
   auth: AuthConfig;
   s3: S3Config;
   rabbitmq: RabbitMqConfig;
+  payments: PaymentsServiceConfig;
 };
 
 export function loadBaseConfig(): BaseAppConfig {
@@ -92,6 +114,19 @@ export function loadBaseConfig(): BaseAppConfig {
         port: Number(process.env.RABBITMQ_PORT!),
         username: process.env.RABBITMQ_USER!,
         password: process.env.RABBITMQ_PASS!,
+      },
+    },
+
+    payments: {
+      port: Number(process.env.PAYMENTS_APP_PORT ?? 3001),
+      authorizeDelayMs: Number(process.env.PAYMENTS_AUTHORIZE_DELAY_MS ?? 0),
+      grpc: {
+        url: process.env.PAYMENTS_GRPC_URL ?? 'localhost:50051',
+        bindUrl: process.env.PAYMENTS_GRPC_BIND_URL ?? '0.0.0.0:50051',
+        protoPath:
+          process.env.PAYMENTS_GRPC_PROTO_PATH ?? 'proto/payments.proto',
+        packageName: process.env.PAYMENTS_GRPC_PACKAGE ?? 'payments',
+        timeoutMs: Number(process.env.PAYMENTS_GRPC_TIMEOUT_MS ?? 1500),
       },
     },
   };

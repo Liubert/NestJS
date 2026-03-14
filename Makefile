@@ -4,7 +4,7 @@ COMPOSE := docker compose -f compose.yml
 COMPOSE_DEV := docker compose -f compose.yml -f compose.dev.yml
 
 HEALTH_URL ?= http://localhost:8080/health
-HEALTH_TIMEOUT ?= 60
+HEALTH_TIMEOUT ?= 120
 
 .PHONY: help \
 	dev dev-up dev-build dev-down dev-restart dev-logs dev-ps dev-health dev-wait \

@@ -4,6 +4,8 @@ import {
   Injectable,
   InternalServerErrorException,
   NotFoundException,
+  Optional,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
@@ -21,11 +23,18 @@ import { OrderItemEntity } from './entities/order-item.entity';
 import { ProcessedMessageEntity } from './entities/processed-message.entity';
 import { OrderStatus } from '../../graphql/orders/order-status.enum';
 import { RabbitMQService } from '../../rabbitmq/rabbitmq.service';
+import { PaymentsGrpcClient } from './payments-grpc.client';
+import type { PaymentsAuthorizeResponse } from './types/payments-contract.types';
 
 const MAX_LIMIT = 50;
 const WORKER_HANDLER_NAME = 'orders.process';
 
 export type ProcessPendingOrderResult = 'processed' | 'duplicate';
+export type CreateOrderResult = {
+  order: OrderEntity;
+  isCreated: boolean;
+  payment: PaymentsAuthorizeResponse | null;
+};
 
 function isUniqueViolation(error: unknown): boolean {
   if (!(error instanceof QueryFailedError)) return false;
@@ -41,6 +50,7 @@ export class OrdersService {
     private readonly ordersRepo: Repository<OrderEntity>,
     private readonly dataSource: DataSource,
     private readonly rabbit: RabbitMQService,
+    @Optional() private readonly paymentsClient?: PaymentsGrpcClient,
   ) {}
 
   async findAll(): Promise<OrderEntity[]> {
@@ -267,12 +277,44 @@ export class OrdersService {
     }
   }
 
+  private async calculateAuthorizeAmountMinor(
+    items: CreateOrderItemDto[],
+  ): Promise<number> {
+    const productIds = [...new Set(items.map((i) => i.productId))];
+    const products = await this.dataSource
+      .getRepository(ProductEntity)
+      .findBy(productIds.map((id) => ({ id })));
+
+    if (products.length !== productIds.length) {
+      const found = new Set(products.map((p) => p.id));
+      const missing = productIds.filter((id) => !found.has(id));
+      throw new BadRequestException(
+        `Some products not found: ${missing.join(', ')}`,
+      );
+    }
+
+    const priceByProductId = new Map(
+      products.map((p) => [p.id, Number(p.price)]),
+    );
+    const totalMajor = items.reduce((sum, item) => {
+      const price = priceByProductId.get(item.productId);
+      if (price === undefined) {
+        throw new BadRequestException(`Product not found: ${item.productId}`);
+      }
+
+      return sum + price * item.quantity;
+    }, 0);
+
+    // Contract expects integer minor units.
+    return Math.round(totalMajor * 100);
+  }
+
   async create(
     dto: CreateOrderDto,
     idempotencyKey: string,
     userId: string,
     correlationId?: string,
-  ): Promise<{ order: OrderEntity; isCreated: boolean }> {
+  ): Promise<CreateOrderResult> {
     try {
       // Step 0 (Idempotency): if this request already processed/accepted
       // for the same (userId, idempotencyKey), return existing order.
@@ -282,8 +324,10 @@ export class OrdersService {
         idempotencyKey,
       );
       if (existing) {
-        return { order: existing, isCreated: false };
+        return { order: existing, isCreated: false, payment: null };
       }
+
+      const amountMinor = await this.calculateAuthorizeAmountMinor(dto.items);
 
       // Step 1 (DB): create lightweight PENDING order.
       const savedOrder = await this.savePendingOrder(
@@ -293,7 +337,23 @@ export class OrdersService {
         dto.items,
       );
 
-      // Step 2 (Broker): publish message to processing queue.
+      if (!this.paymentsClient) {
+        throw new ServiceUnavailableException(
+          'Payments gRPC client is not configured in this runtime',
+        );
+      }
+
+      // Step 2 (gRPC): request payment authorization for the newly created order.
+      // Request fields must stay aligned with payments.proto contract.
+      const payment = await this.paymentsClient.authorize({
+        orderId: savedOrder.id,
+        amount: String(amountMinor),
+        // Current catalog has no per-product currency yet, so we use one service-wide default.
+        currency: 'USD',
+        idempotencyKey,
+      });
+
+      // Step 3 (Broker): publish message to processing queue.
       // Message contains unique messageId (generated in createBaseMessage),
       // orderId, createdAt and attempt=0.
       //
@@ -309,7 +369,7 @@ export class OrdersService {
       // Step 3 (HTTP response): return immediately with persisted PENDING order.
       // We intentionally avoid extra "read-after-publish" query to keep latency low
       // and avoid race where worker already flips status before producer responds.
-      return { order: savedOrder, isCreated: true };
+      return { order: savedOrder, isCreated: true, payment };
     } catch (err: unknown) {
       // Idempotency race: return existing order for the same (userId, key)
       if (isUniqueViolation(err)) {
@@ -318,7 +378,11 @@ export class OrdersService {
           idempotencyKey,
         );
         if (existingAfterRace)
-          return { order: existingAfterRace, isCreated: false };
+          return {
+            order: existingAfterRace,
+            isCreated: false,
+            payment: null,
+          };
 
         throw new InternalServerErrorException(
           'Unique violation, but order not found afterwards',

@@ -29,6 +29,7 @@ COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY package*.json ./
 COPY tsconfig*.json ./
 COPY src ./src
+COPY proto ./proto
 
 EXPOSE 3000
 CMD ["npm", "run", "start:dev"]
@@ -50,6 +51,7 @@ COPY --from=deps /usr/src/app/node_modules ./node_modules
 COPY package*.json ./
 COPY tsconfig*.json ./
 COPY src ./src
+COPY proto ./proto
 
 # Build the app (expects output in dist/)
 # Then prune dev deps so runtime stages stay clean
@@ -72,6 +74,7 @@ USER node
 # Copy only what runtime needs
 COPY --chown=node:node --from=build /usr/src/app/node_modules ./node_modules
 COPY --chown=node:node --from=build /usr/src/app/dist ./dist
+COPY --chown=node:node --from=build /usr/src/app/proto ./proto
 COPY --chown=node:node package*.json ./
 
 EXPOSE 3000
@@ -92,6 +95,7 @@ ENV NODE_ENV=production
 # Same minimal runtime artifacts as prod stage
 COPY --from=build /usr/src/app/node_modules ./node_modules
 COPY --from=build /usr/src/app/dist ./dist
+COPY --from=build /usr/src/app/proto ./proto
 COPY --from=build /usr/src/app/package*.json ./
 
 EXPOSE 3000
