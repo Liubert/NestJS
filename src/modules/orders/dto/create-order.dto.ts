@@ -19,9 +19,6 @@ export class CreateOrderItemDto {
 }
 
 export class CreateOrderDto {
-  @IsUUID()
-  userId!: string;
-
   @IsArray()
   @ArrayMinSize(1)
   @ArrayUnique((i: CreateOrderItemDto) => i.productId)
