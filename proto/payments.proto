@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package payments;
+
+// Payments gRPC contract.
+// Orders-service can call only these RPC methods and does not import Payments code directly.
+service Payments {
+  // Reserves funds for an order and returns created payment id + current status.
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+
+  // Returns the latest status for an existing payment id.
+  rpc GetPaymentStatus(GetPaymentStatusRequest)
+      returns (GetPaymentStatusResponse);
+
+  // Declared in the contract now; server implementation can be added independently.
+  rpc Capture(CaptureRequest) returns (CaptureResponse);
+
+  // Declared in the contract now; server implementation can be added independently.
+  rpc Refund(RefundRequest) returns (RefundResponse);
+}
+
+message AuthorizeRequest {
+  string order_id = 1;
+
+  // Monetary value in minor units (e.g. cents), so we avoid float precision issues.
+  int64 amount = 2;
+
+  // ISO currency code (for example: "USD", "EUR", "UAH").
+  string currency = 3;
+
+  // Optional idempotency key from caller.
+  optional string idempotency_key = 4;
+}
+
+message AuthorizeResponse {
+  string payment_id = 1;
+  // Suggested values: AUTHORIZED, DECLINED, CAPTURED, REFUNDED.
+  string status = 2;
+}
+
+message GetPaymentStatusRequest {
+  string payment_id = 1;
+}
+
+message GetPaymentStatusResponse {
+  string payment_id = 1;
+  // Suggested values: AUTHORIZED, DECLINED, CAPTURED, REFUNDED.
+  string status = 2;
+}
+
+message CaptureRequest {
+  string payment_id = 1;
+  int64 amount_minor = 2;
+}
+
+message CaptureResponse {
+  string payment_id = 1;
+  string status = 2;
+}
+
+message RefundRequest {
+  string payment_id = 1;
+  int64 amount_minor = 2;
+}
+
+message RefundResponse {
+  string payment_id = 1;
+  string status = 2;
+}
