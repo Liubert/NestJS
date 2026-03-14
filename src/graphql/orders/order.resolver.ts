@@ -78,7 +78,6 @@ export class OrdersResolver {
     }
 
     const dto: CreateOrderDto = {
-      userId: user.userId,
       items: input.items.map((it) => ({
         productId: it.productId,
         quantity: it.quantity,

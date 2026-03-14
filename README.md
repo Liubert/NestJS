@@ -85,6 +85,7 @@ curl -sS -X POST http://localhost:8080/orders \
   -H 'Content-Type: application/json' \
   -d '{"items":[{"productId":"<PRODUCT_ID>","quantity":1}]}'
 ```
+`userId` is taken from JWT (`Authorization` header), so it is not sent in request body.
 3. First response is `pending`, then worker moves order to `processed`.
 
 #### 2) Retry
