@@ -127,3 +127,57 @@ In worker transaction I do:
 - if new -> run business logic and commit
 
 This gives us safe behavior for RabbitMQ at-least-once delivery and protects from duplicate side effects.
+
+---
+
+## CI/CD Pipeline (Homework CI/CD)
+
+### Workflows
+
+- `.github/workflows/pr-checks.yml`
+  - Trigger: pull requests to `develop` and `main`
+  - Steps: `npm ci` -> `lint:check` -> `unit tests` -> Docker build validation (`--target prod`)
+
+- `.github/workflows/build-and-stage.yml`
+  - Trigger: push to `develop` (and manual `workflow_dispatch`)
+  - Builds and pushes immutable image to GHCR with tag `sha-<commit_sha>`
+  - Creates `release-manifest.json` artifact (commit + image + digest)
+  - Deploys the same image to `stage` environment with smoke check
+
+- `.github/workflows/deploy-prod.yml`
+  - Trigger: manual `workflow_dispatch` with `commit_sha`
+  - Verifies immutable image exists in GHCR
+  - Deploys to `production` environment without image rebuild
+  - Uses `concurrency` lock for production deploys
+
+### GitHub Environments
+
+Create two environments in repository settings:
+- `stage`
+- `production` (configure required reviewers for manual approval)
+
+### Required Secrets
+
+Stage:
+- `STAGE_SSH_HOST`
+- `STAGE_SSH_PORT` (optional, default `22`)
+- `STAGE_SSH_USER`
+- `STAGE_SSH_PRIVATE_KEY`
+- `STAGE_DEPLOY_PATH`
+- `STAGE_COMPOSE_FILE` (optional, default `compose.yml`)
+- `STAGE_SERVICES` (optional, default `api worker`)
+- `STAGE_HEALTHCHECK_URL` (optional, default `http://localhost:8080/health`)
+
+Production:
+- `PROD_SSH_HOST`
+- `PROD_SSH_PORT` (optional, default `22`)
+- `PROD_SSH_USER`
+- `PROD_SSH_PRIVATE_KEY`
+- `PROD_DEPLOY_PATH`
+- `PROD_COMPOSE_FILE` (optional, default `compose.yml`)
+- `PROD_SERVICES` (optional, default `api worker`)
+- `PROD_HEALTHCHECK_URL` (optional, default `http://localhost:8080/health`)
+
+### Branch Protection
+
+Set `PR Checks` workflow as required status check for `develop` and `main`, so PR merge is blocked on failed checks.

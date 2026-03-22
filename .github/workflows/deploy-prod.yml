@@ -1,0 +1,97 @@
+name: Deploy Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Commit SHA used for image tag sha-<commit_sha>"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  deploy-production:
+    name: Deploy To Production
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+
+    steps:
+      - name: Prepare release metadata
+        id: meta
+        run: |
+          INPUT_SHA="${{ inputs.commit_sha }}"
+          CLEAN_SHA="${INPUT_SHA#sha-}"
+          IMAGE_REPO="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          IMAGE_TAG="sha-${CLEAN_SHA}"
+          IMAGE_REF="${IMAGE_REPO}:${IMAGE_TAG}"
+          {
+            echo "commit_sha=${CLEAN_SHA}"
+            echo "image_ref=${IMAGE_REF}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify immutable artifact exists (no rebuild)
+        run: docker buildx imagetools inspect "${{ steps.meta.outputs.image_ref }}"
+
+      - name: Log deployment metadata
+        run: |
+          echo "commit=${{ steps.meta.outputs.commit_sha }}"
+          echo "image=${{ steps.meta.outputs.image_ref }}"
+          echo "target=production"
+
+      - name: Deploy on production VM through SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_REF: ${{ steps.meta.outputs.image_ref }}
+          DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
+          PROD_HEALTHCHECK_URL: ${{ secrets.PROD_HEALTHCHECK_URL }}
+          COMPOSE_FILE: ${{ secrets.PROD_COMPOSE_FILE }}
+          SERVICES: ${{ secrets.PROD_SERVICES }}
+        with:
+          host: ${{ secrets.PROD_SSH_HOST }}
+          username: ${{ secrets.PROD_SSH_USER }}
+          key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.PROD_SSH_PORT || '22' }}
+          envs: IMAGE_REF,DEPLOY_PATH,PROD_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "${DEPLOY_PATH}"
+            COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
+            SERVICES="${SERVICES:-api worker}"
+            PROD_HEALTHCHECK_URL="${PROD_HEALTHCHECK_URL:-http://localhost:8080/health}"
+
+            cat > .env.cicd <<EOF
+            APP_IMAGE=${IMAGE_REF}
+            EOF
+
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES}
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd up -d --no-build ${SERVICES}
+
+            for i in $(seq 1 20); do
+              if curl -fsS "${PROD_HEALTHCHECK_URL}" >/dev/null 2>&1; then
+                echo "Production smoke check passed: ${PROD_HEALTHCHECK_URL}"
+                exit 0
+              fi
+              sleep 3
+            done
+
+            echo "Production smoke check failed: ${PROD_HEALTHCHECK_URL}"
+            exit 1

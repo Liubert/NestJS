@@ -9,8 +9,5 @@ export const AppDataSource = new DataSource({
   // Keep both globs so the same DataSource works in ts-mode (ts-node)
   // and dist-mode (compiled JS).
   entities: ['src/modules/**/*.entity.ts', 'dist/modules/**/*.entity.js'],
-  migrations: [
-    'src/database/migrations/*.ts',
-    'dist/database/migrations/*.js',
-  ],
+  migrations: ['src/database/migrations/*.ts', 'dist/database/migrations/*.js'],
 });

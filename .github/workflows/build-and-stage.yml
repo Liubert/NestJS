@@ -1,0 +1,139 @@
+name: Build And Stage Deploy
+
+on:
+  push:
+    branches:
+      - develop
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: Build And Push Immutable Artifact
+    runs-on: ubuntu-latest
+    outputs:
+      image_repo: ${{ steps.meta.outputs.image_repo }}
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      image_ref: ${{ steps.meta.outputs.image_ref }}
+      image_digest: ${{ steps.build.outputs.digest }}
+      commit_sha: ${{ github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare image metadata
+        id: meta
+        run: |
+          IMAGE_REPO="${REGISTRY}/${GITHUB_REPOSITORY,,}"
+          IMAGE_TAG="sha-${GITHUB_SHA}"
+          IMAGE_REF="${IMAGE_REPO}:${IMAGE_TAG}"
+          {
+            echo "image_repo=${IMAGE_REPO}"
+            echo "image_tag=${IMAGE_TAG}"
+            echo "image_ref=${IMAGE_REF}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: prod
+          push: true
+          tags: ${{ steps.meta.outputs.image_ref }}
+          provenance: false
+          sbom: false
+
+      - name: Create release manifest
+        run: |
+          cat > release-manifest.json <<EOF
+          {
+            "commit": "${{ github.sha }}",
+            "services": {
+              "api": {
+                "image": "${{ steps.meta.outputs.image_ref }}",
+                "digest": "${{ steps.build.outputs.digest }}"
+              }
+            }
+          }
+          EOF
+          cat release-manifest.json
+
+      - name: Upload release manifest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-manifest-${{ github.sha }}
+          path: release-manifest.json
+          retention-days: 14
+
+  deploy-stage:
+    name: Deploy To Stage
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: stage
+
+    steps:
+      - name: Log deployment metadata
+        run: |
+          echo "commit=${{ needs.build.outputs.commit_sha }}"
+          echo "image=${{ needs.build.outputs.image_ref }}"
+          echo "digest=${{ needs.build.outputs.image_digest }}"
+          echo "target=stage"
+
+      - name: Deploy on stage VM through SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_REF: ${{ needs.build.outputs.image_ref }}
+          DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
+          STAGE_HEALTHCHECK_URL: ${{ secrets.STAGE_HEALTHCHECK_URL }}
+          COMPOSE_FILE: ${{ secrets.STAGE_COMPOSE_FILE }}
+          SERVICES: ${{ secrets.STAGE_SERVICES }}
+        with:
+          host: ${{ secrets.STAGE_SSH_HOST }}
+          username: ${{ secrets.STAGE_SSH_USER }}
+          key: ${{ secrets.STAGE_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.STAGE_SSH_PORT || '22' }}
+          envs: IMAGE_REF,DEPLOY_PATH,STAGE_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd "${DEPLOY_PATH}"
+            COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
+            SERVICES="${SERVICES:-api worker}"
+            STAGE_HEALTHCHECK_URL="${STAGE_HEALTHCHECK_URL:-http://localhost:8080/health}"
+
+            cat > .env.cicd <<EOF
+            APP_IMAGE=${IMAGE_REF}
+            EOF
+
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES}
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd up -d --no-build ${SERVICES}
+
+            for i in $(seq 1 20); do
+              if curl -fsS "${STAGE_HEALTHCHECK_URL}" >/dev/null 2>&1; then
+                echo "Stage smoke check passed: ${STAGE_HEALTHCHECK_URL}"
+                exit 0
+              fi
+              sleep 3
+            done
+
+            echo "Stage smoke check failed: ${STAGE_HEALTHCHECK_URL}"
+            exit 1
