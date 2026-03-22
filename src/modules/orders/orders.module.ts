@@ -20,12 +20,7 @@ import { ProductLoader } from '../../graphql/products/product.loader';
     ProductsModule,
   ],
   controllers: [OrdersController],
-  providers: [
-    OrdersService,
-    OrdersResolver,
-    OrderItemResolver,
-    ProductLoader,
-  ],
+  providers: [OrdersService, OrdersResolver, OrderItemResolver, ProductLoader],
   exports: [OrdersService],
 })
 export class OrdersModule {}
