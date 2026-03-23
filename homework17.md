@@ -24,7 +24,7 @@
 - Docker build validation is the extra quality gate — it catches build errors before merge.
 - `PR Checks` workflow is set as required status check in branch protection.
 
-**Screenshot:** `docs/screenshots/pr_checks.png`
+**Screenshot:** [pr_checks.png](hw17-evidence/pr_checks.png)
 
 ---
 
@@ -38,7 +38,7 @@
 - `release-manifest.json` is saved as workflow artifact with commit, image tag, and digest.
 - Deploy runs on the stage VM over SSH using `appleboy/ssh-action`. After deploy, it polls `/health` for up to 60 seconds as smoke check.
 
-**Screenshot:** `docs/screenshots/stage_deploy.png`
+**Screenshot:** [stage_deploy.png](hw17-evidence/stage_deploy.png)
 
 ---
 
@@ -54,8 +54,8 @@
 - Deploys the same image that was tested on stage, then runs smoke check on `/health`.
 
 **Screenshots:**
-- Approval screen: `docs/screenshots/prod_approval.png`
-- Successful prod deploy: `docs/screenshots/prod_deploy.png`
+- Approval screen: [prod_approval.png](hw17-evidence/prod_approval.png)
+- Successful prod deploy: [prod_deploy.png](hw17-evidence/prod_deploy.png)
 
 ---
 
