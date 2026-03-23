@@ -4,8 +4,8 @@ import { loadBaseConfig } from '../../config/app.config';
 
 const { db } = loadBaseConfig();
 
-export const dataSource = new DataSource({
+export const AppDataSource = new DataSource({
   ...db,
-  entities: ['src/modules/**/*.entity.ts'],
-  migrations: ['src/database/migrations/*.ts'],
+  entities: ['dist/modules/**/*.entity.js'],
+  migrations: ['dist/database/migrations/*.js'],
 });
