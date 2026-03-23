@@ -57,6 +57,10 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Local agent/assistant artifacts
 /skills/
+CLAUDE.md
+.claude/
+homework_ci_cd_plan.md
+tsconfig.build.tsbuildinfo
 
 # Local SSH keys used for cloud access
 /test/*.key
