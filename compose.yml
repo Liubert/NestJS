@@ -146,7 +146,7 @@ services:
       - "5672:5672"    # AMQP
       - "15672:15672"  # Management UI
     healthcheck:
-      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping" ]
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q ping && rabbitmq-diagnostics -q check_port_connectivity" ]
       interval: 5s
       timeout: 5s
       retries: 20
