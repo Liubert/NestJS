@@ -132,6 +132,28 @@ This gives us safe behavior for RabbitMQ at-least-once delivery and protects fro
 
 ## CI/CD Pipeline (Homework CI/CD)
 
+### Deployment Flow
+
+```
+feature/* branch
+      │
+      ▼ Pull Request
+   develop ──── PR Checks (lint + tests + docker build)
+      │              └─ merge blocked if checks fail
+      │
+      ▼ merge to develop
+  Build & Stage Deploy
+      ├─ builds immutable Docker image → GHCR (tag: sha-<commit>)
+      ├─ saves release-manifest.json (commit + image + digest)
+      └─ deploys to stage + smoke check (/health)
+      │
+      ▼ manual trigger (workflow_dispatch + commit_sha)
+  Deploy Production
+      ├─ verifies image exists in GHCR (no rebuild)
+      ├─ waits for manual approval (required reviewers)
+      └─ deploys same image to production + smoke check
+```
+
 ### Workflows
 
 - `.github/workflows/pr-checks.yml`
