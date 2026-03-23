@@ -64,12 +64,14 @@ jobs:
           PROD_HEALTHCHECK_URL: ${{ secrets.PROD_HEALTHCHECK_URL }}
           COMPOSE_FILE: ${{ secrets.PROD_COMPOSE_FILE }}
           SERVICES: ${{ secrets.PROD_SERVICES }}
+          GHCR_USERNAME: ${{ secrets.PROD_GHCR_USERNAME }}
+          GHCR_TOKEN: ${{ secrets.PROD_GHCR_TOKEN }}
         with:
           host: ${{ secrets.PROD_SSH_HOST }}
           username: ${{ secrets.PROD_SSH_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           port: ${{ secrets.PROD_SSH_PORT || '22' }}
-          envs: IMAGE_REF,DEPLOY_PATH,PROD_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
+          envs: IMAGE_REF,DEPLOY_PATH,PROD_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES,GHCR_USERNAME,GHCR_TOKEN
           script_stop: true
           script: |
             set -euo pipefail
@@ -77,6 +79,10 @@ jobs:
             COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
             SERVICES="${SERVICES:-api worker}"
             PROD_HEALTHCHECK_URL="${PROD_HEALTHCHECK_URL:-http://localhost:8080/health}"
+
+            if [ -n "${GHCR_USERNAME:-}" ] && [ -n "${GHCR_TOKEN:-}" ]; then
+              echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+            fi
 
             cat > .env.cicd <<EOF
             APP_IMAGE=${IMAGE_REF}

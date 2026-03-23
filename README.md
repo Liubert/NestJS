@@ -167,6 +167,8 @@ Stage:
 - `STAGE_COMPOSE_FILE` (optional, default `compose.yml`)
 - `STAGE_SERVICES` (optional, default `api worker`)
 - `STAGE_HEALTHCHECK_URL` (optional, default `http://localhost:8080/health`)
+- `STAGE_GHCR_USERNAME` (recommended for private GHCR images)
+- `STAGE_GHCR_TOKEN` (PAT with `read:packages`)
 
 Production:
 - `PROD_SSH_HOST`
@@ -177,6 +179,8 @@ Production:
 - `PROD_COMPOSE_FILE` (optional, default `compose.yml`)
 - `PROD_SERVICES` (optional, default `api worker`)
 - `PROD_HEALTHCHECK_URL` (optional, default `http://localhost:8080/health`)
+- `PROD_GHCR_USERNAME` (recommended for private GHCR images)
+- `PROD_GHCR_TOKEN` (PAT with `read:packages`)
 
 ### Branch Protection
 
