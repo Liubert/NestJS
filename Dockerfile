@@ -90,9 +90,9 @@ WORKDIR /usr/src/app
 ENV NODE_ENV=production
 
 # Same minimal runtime artifacts as prod stage
-COPY --from=build /usr/src/app/node_modules ./node_modules
-COPY --from=build /usr/src/app/dist ./dist
-COPY --from=build /usr/src/app/package*.json ./
+COPY --chown=65532:65532 --from=build /usr/src/app/node_modules ./node_modules
+COPY --chown=65532:65532 --from=build /usr/src/app/dist ./dist
+COPY --chown=65532:65532 --from=build /usr/src/app/package*.json ./
 
 EXPOSE 3000
 

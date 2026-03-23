@@ -45,7 +45,7 @@ services:
       - internal
       - public
     ports:
-      - "8080:3000"
+      - "${PORT:-8080}:3000"
 
   migrate:
     build:

@@ -34,6 +34,22 @@
   make reset
 ```
 
+## Direct Docker commands (without Make)
+
+```bash
+# Dev with hot reload
+docker compose -f compose.yml -f compose.dev.yml up --build
+
+# Production-like
+docker compose -f compose.yml up --build
+
+# Migrations (one-off)
+docker compose -f compose.yml run --rm migrate
+
+# Seed (one-off)
+docker compose -f compose.yml run --rm seed
+```
+
 ## 6.3 Non-root verification
 
 ### Prod image
