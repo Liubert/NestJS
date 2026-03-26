@@ -22,6 +22,8 @@ jobs:
       image_tag: ${{ steps.meta.outputs.image_tag }}
       image_ref: ${{ steps.meta.outputs.image_ref }}
       image_digest: ${{ steps.build.outputs.digest }}
+      admin_ui_image_ref: ${{ steps.meta.outputs.admin_ui_image_ref }}
+      admin_ui_digest: ${{ steps.build-admin-ui.outputs.digest }}
       commit_sha: ${{ github.sha }}
 
     steps:
@@ -44,13 +46,15 @@ jobs:
           IMAGE_REPO="${REGISTRY}/${GITHUB_REPOSITORY,,}"
           IMAGE_TAG="sha-${GITHUB_SHA}"
           IMAGE_REF="${IMAGE_REPO}:${IMAGE_TAG}"
+          ADMIN_UI_IMAGE_REF="${IMAGE_REPO}-admin-ui:${IMAGE_TAG}"
           {
             echo "image_repo=${IMAGE_REPO}"
             echo "image_tag=${IMAGE_TAG}"
             echo "image_ref=${IMAGE_REF}"
+            echo "admin_ui_image_ref=${ADMIN_UI_IMAGE_REF}"
           } >> "$GITHUB_OUTPUT"
 
-      - name: Build and push image
+      - name: Build and push API image
         id: build
         uses: docker/build-push-action@v6
         with:
@@ -58,6 +62,17 @@ jobs:
           target: prod
           push: true
           tags: ${{ steps.meta.outputs.image_ref }}
+          provenance: false
+          sbom: false
+
+      - name: Build and push admin-ui image
+        id: build-admin-ui
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: admin-ui
+          push: true
+          tags: ${{ steps.meta.outputs.admin_ui_image_ref }}
           provenance: false
           sbom: false
 
@@ -70,6 +85,10 @@ jobs:
               "api": {
                 "image": "${{ steps.meta.outputs.image_ref }}",
                 "digest": "${{ steps.build.outputs.digest }}"
+              },
+              "admin-ui": {
+                "image": "${{ steps.meta.outputs.admin_ui_image_ref }}",
+                "digest": "${{ steps.build-admin-ui.outputs.digest }}"
               }
             }
           }
@@ -102,6 +121,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           IMAGE_REF: ${{ needs.build.outputs.image_ref }}
+          ADMIN_UI_IMAGE_REF: ${{ needs.build.outputs.admin_ui_image_ref }}
           DEPLOY_PATH: ${{ secrets.STAGE_DEPLOY_PATH }}
           STAGE_HEALTHCHECK_URL: ${{ secrets.STAGE_HEALTHCHECK_URL }}
           COMPOSE_FILE: ${{ secrets.STAGE_COMPOSE_FILE }}
@@ -111,20 +131,25 @@ jobs:
           username: ${{ secrets.STAGE_SSH_USER }}
           key: ${{ secrets.STAGE_SSH_PRIVATE_KEY }}
           port: ${{ secrets.STAGE_SSH_PORT || '22' }}
-          envs: IMAGE_REF,DEPLOY_PATH,STAGE_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
+          envs: IMAGE_REF,ADMIN_UI_IMAGE_REF,DEPLOY_PATH,STAGE_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
           script_stop: true
           script: |
             set -euo pipefail
             cd "${DEPLOY_PATH}"
             COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
-            SERVICES="${SERVICES:-api worker}"
+            SERVICES="${SERVICES:-api worker admin-ui}"
             STAGE_HEALTHCHECK_URL="${STAGE_HEALTHCHECK_URL:-http://localhost:8080/health}"
 
             cat > .env.cicd <<EOF
             APP_IMAGE=${IMAGE_REF}
+            ADMIN_UI_IMAGE=${ADMIN_UI_IMAGE_REF}
             EOF
 
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES}
+
+            echo "Running database migrations..."
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd run --rm migrate
+
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd up -d --no-build ${SERVICES}
 
             for i in $(seq 1 20); do

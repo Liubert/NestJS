@@ -80,6 +80,35 @@ EXPOSE 3000
 CMD ["node", "dist/main.js"]
 
 ############################
+# frontend-deps
+# - Install admin-ui npm dependencies
+############################
+FROM node:22-alpine AS frontend-deps
+WORKDIR /usr/src/app
+COPY admin-ui/package*.json ./
+RUN --mount=type=cache,target=/root/.npm npm ci --prefer-offline --no-audit
+
+############################
+# frontend-build
+# - Build admin-ui Vite app
+############################
+FROM node:22-alpine AS frontend-build
+WORKDIR /usr/src/app
+COPY --from=frontend-deps /usr/src/app/node_modules ./node_modules
+COPY admin-ui/ ./
+RUN npm run build
+
+############################
+# admin-ui
+# - Serve compiled SPA via nginx
+# - Proxies /api/* to backend api service
+############################
+FROM nginx:alpine AS admin-ui
+COPY --from=frontend-build /usr/src/app/dist /usr/share/nginx/html
+COPY admin-ui/nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+
+############################
 # prod-distroless
 # - Ultra-minimal runtime (no shell)
 # - Non-root by default (:nonroot)

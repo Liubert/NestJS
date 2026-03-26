@@ -33,5 +33,8 @@ jobs:
       - name: Unit tests
         run: npm test -- --runInBand --passWithNoTests
 
-      - name: "Quality gate: Docker build validation"
+      - name: "Quality gate: Docker build validation (API)"
         run: docker build --target prod --tag local/nest-js:pr-${{ github.sha }} .
+
+      - name: "Quality gate: Docker build validation (admin-ui)"
+        run: docker build --target admin-ui --tag local/nest-js-admin-ui:pr-${{ github.sha }} .
