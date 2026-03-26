@@ -19,6 +19,7 @@ import { AuthModule } from './modules/auth/auth.module';
 import { FilesModule } from './modules/files/files.module';
 import { ReqWithUser } from './modules/auth/types/auth.types';
 import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
+import { TranslationsModule } from './modules/translations/translations.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
     OrdersModule,
     FilesModule,
     RabbitMQModule,
+    TranslationsModule,
   ],
   controllers: [AppController],
   providers: [AppService, AppResolver],

@@ -6,8 +6,12 @@ const { db } = loadBaseConfig();
 
 export const AppDataSource = new DataSource({
   ...db,
-  // Keep both globs so the same DataSource works in ts-mode (ts-node)
-  // and dist-mode (compiled JS).
-  entities: ['src/modules/**/*.entity.ts', 'dist/modules/**/*.entity.js'],
-  migrations: ['src/database/migrations/*.ts', 'dist/database/migrations/*.js'],
+  entities:
+    process.env.NODE_ENV === 'production'
+      ? ['dist/modules/**/*.entity.js']
+      : ['src/modules/**/*.entity.ts'],
+  migrations:
+    process.env.NODE_ENV === 'production'
+      ? ['dist/database/migrations/*.js']
+      : ['src/database/migrations/*.ts'],
 });
