@@ -1,4 +1,8 @@
-import { Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  BadGatewayException,
+  Injectable,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -22,7 +26,7 @@ export class AiTranslateService {
     }
 
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
     const langList = Object.entries(TARGET_LOCALES)
       .map(([code, name]) => `${name} (${code})`)
@@ -42,8 +46,14 @@ English text: "${text}"
 
 Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "..."}`;
 
-    const result = await model.generateContent(prompt);
-    const raw = result.response.text().trim();
+    let raw: string;
+    try {
+      const result = await model.generateContent(prompt);
+      raw = result.response.text().trim();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadGatewayException(`Gemini API error: ${msg}`);
+    }
 
     // Strip optional markdown code fences
     const cleaned = raw
@@ -51,6 +61,12 @@ Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "...
       .replace(/\s*```$/, '')
       .trim();
 
-    return JSON.parse(cleaned) as Record<string, string>;
+    try {
+      return JSON.parse(cleaned) as Record<string, string>;
+    } catch {
+      throw new BadGatewayException(
+        `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,
+      );
+    }
   }
 }

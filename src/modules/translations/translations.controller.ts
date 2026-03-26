@@ -32,6 +32,7 @@ import { AiTranslateDto } from './dto/ai-translate.dto.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { CreateNamespaceDto } from './dto/create-namespace.dto.js';
+import { CreateLocaleDto } from './dto/create-locale.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
@@ -189,6 +190,18 @@ export class TranslationsController {
     @Body() dto: CreateNamespaceDto,
   ) {
     return this.translationsService.createNamespace(slug, dto);
+  }
+
+  @Post('projects/:slug/locales')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a locale to a project' })
+  @ApiParam({ name: 'slug', example: 'travis' })
+  async createLocale(
+    @Param('slug') slug: string,
+    @Body() dto: CreateLocaleDto,
+  ) {
+    return this.translationsService.createLocale(slug, dto.code, dto.isDefault);
   }
 
   @Delete('projects/:slug/namespaces/:ns')

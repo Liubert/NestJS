@@ -138,6 +138,31 @@ export class TranslationsService {
     );
   }
 
+  async createLocale(
+    projectSlug: string,
+    code: string,
+    isDefault = false,
+  ): Promise<LocaleEntity> {
+    const project = await this.projectRepo.findOne({
+      where: { slug: projectSlug },
+    });
+    if (!project)
+      throw new NotFoundException(`Project "${projectSlug}" not found`);
+
+    const exists = await this.localeRepo.existsBy({
+      projectId: project.id,
+      code,
+    });
+    if (exists)
+      throw new ConflictException(
+        `Locale "${code}" already exists in project "${projectSlug}"`,
+      );
+
+    return this.localeRepo.save(
+      this.localeRepo.create({ projectId: project.id, code, isDefault }),
+    );
+  }
+
   async deleteNamespace(projectSlug: string, nsSlug: string): Promise<void> {
     const project = await this.projectRepo.findOne({
       where: { slug: projectSlug },
