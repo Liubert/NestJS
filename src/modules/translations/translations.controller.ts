@@ -29,6 +29,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { TranslationsService } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiTranslateDto } from './dto/ai-translate.dto.js';
+import { CheckQualityDto } from './dto/check-quality.dto.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { CreateNamespaceDto } from './dto/create-namespace.dto.js';
@@ -139,6 +140,28 @@ export class TranslationsController {
     @Body() dto: AiTranslateDto,
   ): Promise<Record<string, string>> {
     return this.aiTranslateService.translate(dto.text);
+  }
+
+  @Post('ai-quality-check')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Check translation quality using AI' })
+  @ApiResponse({
+    status: 200,
+    schema: {
+      example: {
+        score: 7,
+        level: 'average',
+        comment: 'Wording sounds unnatural for UI context.',
+      },
+    },
+  })
+  async checkQuality(@Body() dto: CheckQualityDto) {
+    return this.aiTranslateService.checkQuality(
+      dto.source,
+      dto.translation,
+      dto.locale,
+    );
   }
 
   // ─── Projects (protected) ─────────────────────────────────────────────────
