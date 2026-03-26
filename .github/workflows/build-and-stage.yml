@@ -146,6 +146,10 @@ jobs:
             EOF
 
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES}
+
+            echo "Running database migrations..."
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd run --rm migrate
+
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd up -d --no-build ${SERVICES}
 
             for i in $(seq 1 20); do
