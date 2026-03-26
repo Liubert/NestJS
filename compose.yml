@@ -51,6 +51,20 @@ services:
     ports:
       - "8080:3000"
 
+  admin-ui:
+    image: ${ADMIN_UI_IMAGE}
+    build:
+      context: .
+      target: admin-ui
+    depends_on:
+      - api
+    networks:
+      - internal
+      - public
+    ports:
+      - "3001:80"
+    restart: unless-stopped
+
   worker:
     image: ${APP_IMAGE}
     build:

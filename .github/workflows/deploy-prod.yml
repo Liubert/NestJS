@@ -35,9 +35,11 @@ jobs:
           IMAGE_REPO="${REGISTRY}/${GITHUB_REPOSITORY,,}"
           IMAGE_TAG="sha-${CLEAN_SHA}"
           IMAGE_REF="${IMAGE_REPO}:${IMAGE_TAG}"
+          ADMIN_UI_IMAGE_REF="${IMAGE_REPO}-admin-ui:${IMAGE_TAG}"
           {
             echo "commit_sha=${CLEAN_SHA}"
             echo "image_ref=${IMAGE_REF}"
+            echo "admin_ui_image_ref=${ADMIN_UI_IMAGE_REF}"
           } >> "$GITHUB_OUTPUT"
 
       - name: Login to GHCR
@@ -47,8 +49,10 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify immutable artifact exists (no rebuild)
-        run: docker buildx imagetools inspect "${{ steps.meta.outputs.image_ref }}"
+      - name: Verify immutable artifacts exist (no rebuild)
+        run: |
+          docker buildx imagetools inspect "${{ steps.meta.outputs.image_ref }}"
+          docker buildx imagetools inspect "${{ steps.meta.outputs.admin_ui_image_ref }}"
 
       - name: Log deployment metadata
         run: |
@@ -60,6 +64,7 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           IMAGE_REF: ${{ steps.meta.outputs.image_ref }}
+          ADMIN_UI_IMAGE_REF: ${{ steps.meta.outputs.admin_ui_image_ref }}
           DEPLOY_PATH: ${{ secrets.PROD_DEPLOY_PATH }}
           PROD_HEALTHCHECK_URL: ${{ secrets.PROD_HEALTHCHECK_URL }}
           COMPOSE_FILE: ${{ secrets.PROD_COMPOSE_FILE }}
@@ -69,17 +74,18 @@ jobs:
           username: ${{ secrets.PROD_SSH_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           port: ${{ secrets.PROD_SSH_PORT || '22' }}
-          envs: IMAGE_REF,DEPLOY_PATH,PROD_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
+          envs: IMAGE_REF,ADMIN_UI_IMAGE_REF,DEPLOY_PATH,PROD_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
           script_stop: true
           script: |
             set -euo pipefail
             cd "${DEPLOY_PATH}"
             COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
-            SERVICES="${SERVICES:-api worker}"
+            SERVICES="${SERVICES:-api worker admin-ui}"
             PROD_HEALTHCHECK_URL="${PROD_HEALTHCHECK_URL:-http://localhost:8080/health}"
 
             cat > .env.cicd <<EOF
             APP_IMAGE=${IMAGE_REF}
+            ADMIN_UI_IMAGE=${ADMIN_UI_IMAGE_REF}
             EOF
 
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES}
