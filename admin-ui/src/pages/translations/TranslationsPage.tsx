@@ -4,7 +4,7 @@ import {
   Form, message, Tooltip, Popconfirm, Tag, Row, Col,
 } from 'antd';
 import {
-  SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined,
+  SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined, ThunderboltOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -40,6 +40,11 @@ interface PaginatedEntries {
 }
 
 // ─── API calls ────────────────────────────────────────────────────────────────
+
+const aiTranslate = async (text: string): Promise<Record<string, string>> => {
+  const res = await apiClient.post('/translations/ai-translate', { text });
+  return res.data;
+};
 
 const fetchProjects = async (): Promise<Project[]> => {
   const res = await apiClient.get('/translations/projects?limit=200');
@@ -112,8 +117,11 @@ interface EditModalProps {
   saving: boolean;
 }
 
+const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
+
 const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onClose, onSave, saving }) => {
   const [form] = Form.useForm();
+  const [aiLoading, setAiLoading] = useState(false);
 
   React.useEffect(() => {
     if (open) {
@@ -135,6 +143,31 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
       onSave(key, values);
     });
   };
+
+  const handleAiGenerate = async () => {
+    const enText: string = form.getFieldValue('en') ?? '';
+    if (!enText.trim()) {
+      message.warning('Enter English text first');
+      return;
+    }
+    setAiLoading(true);
+    try {
+      const result = await aiTranslate(enText);
+      const patch: Record<string, string> = {};
+      for (const locale of AI_LOCALES) {
+        if (result[locale] !== undefined) patch[locale] = result[locale];
+      }
+      form.setFieldsValue(patch);
+      message.success('Translations generated');
+    } catch {
+      message.error('AI translation failed. Check that GEMINI_API_KEY is set.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const hasEnLocale = locales.includes('en');
+  const hasAiLocales = AI_LOCALES.some((l) => locales.includes(l));
 
   return (
     <Modal
@@ -160,7 +193,27 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
           </Form.Item>
         )}
         {locales.map((locale) => (
-          <Form.Item key={locale} name={locale} label={locale}>
+          <Form.Item
+            key={locale}
+            name={locale}
+            label={
+              locale === 'en' && hasAiLocales ? (
+                <Space>
+                  <span>en</span>
+                  <Button
+                    size="small"
+                    icon={<ThunderboltOutlined />}
+                    loading={aiLoading}
+                    onClick={handleAiGenerate}
+                    type="dashed"
+                    disabled={!hasEnLocale}
+                  >
+                    Generate with AI
+                  </Button>
+                </Space>
+              ) : locale
+            }
+          >
             <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} />
           </Form.Item>
         ))}

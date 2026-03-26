@@ -27,6 +27,8 @@ import {
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { TranslationsService } from './translations.service.js';
+import { AiTranslateService } from './ai-translate.service.js';
+import { AiTranslateDto } from './dto/ai-translate.dto.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { CreateNamespaceDto } from './dto/create-namespace.dto.js';
@@ -38,7 +40,10 @@ import { PaginationDto } from '../../common/dto/pagination.dto.js';
 @ApiTags('translations')
 @Controller('translations')
 export class TranslationsController {
-  constructor(private readonly translationsService: TranslationsService) {}
+  constructor(
+    private readonly translationsService: TranslationsService,
+    private readonly aiTranslateService: AiTranslateService,
+  ) {}
 
   // ─── Public (Locize-compatible) ───────────────────────────────────────────
 
@@ -111,6 +116,28 @@ export class TranslationsController {
       return { error: 'No file uploaded' };
     }
     return this.translationsService.importFromZip(file.buffer, dto);
+  }
+
+  // ─── AI Translation helper (protected) ───────────────────────────────────
+
+  @Post('ai-translate')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'AI-generate translations for Ukrainian, Norwegian, Swedish, Danish',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Translated values keyed by locale code',
+    schema: {
+      example: { uk: '...', 'nb-NO': '...', sv: '...', 'da-DK': '...' },
+    },
+  })
+  async aiTranslate(
+    @Body() dto: AiTranslateDto,
+  ): Promise<Record<string, string>> {
+    return this.aiTranslateService.translate(dto.text);
   }
 
   // ─── Projects (protected) ─────────────────────────────────────────────────

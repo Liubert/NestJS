@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TranslationsController } from './translations.controller.js';
 import { TranslationsService } from './translations.service.js';
+import { AiTranslateService } from './ai-translate.service.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
@@ -19,7 +20,7 @@ import { TranslationValueEntity } from './entities/translation-value.entity.js';
     ]),
   ],
   controllers: [TranslationsController],
-  providers: [TranslationsService],
+  providers: [TranslationsService, AiTranslateService],
   exports: [TranslationsService],
 })
 export class TranslationsModule {}
