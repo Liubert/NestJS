@@ -76,7 +76,7 @@ Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "...
     locale: string,
   ): Promise<{
     score: number;
-    level: 'good' | 'average' | 'bad';
+    level: 'green' | 'yellow' | 'red';
     comment: string | null;
   }> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
@@ -89,25 +89,38 @@ Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "...
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const prompt = `You are a software localization quality reviewer. Evaluate the quality of this UI/product text translation.
+    const prompt = `You are a strict software localization quality evaluator. Evaluate this UI/product text translation with high professional standards.
 
 Source (English): "${source}"
 Translation (${locale}): "${translation}"
 
-Evaluate based on:
-- Meaning accuracy: does the translation preserve the original meaning?
-- Natural wording: does it sound natural for UI/product usage in that language?
-- Grammar: are there any grammar mistakes?
-- Placeholders: are variables/tokens like {{name}}, %s, {count} preserved exactly?
-- Completeness: is any important meaning lost or misleading?
+Evaluation criteria (be demanding, not generous):
+- Meaning accuracy: must fully and accurately convey the source meaning
+- Natural wording: must sound native and natural for product/UI usage in that language
+- Grammar: must be grammatically correct with no errors
+- Placeholders: variables/tokens like {{name}}, %s, {count} must be preserved exactly as-is
+- Quality bar: "understandable" is not enough — the translation must be polished and professional
 
-Scoring:
-- 8–10 → level: "good", comment: null
-- 5–7  → level: "average", comment: short issue description (max 20 words)
-- 1–4  → level: "bad", comment: short issue description (max 20 words)
+Scoring guide (strict):
+- 10: perfect — no issues whatsoever
+- 9: very good — only a minor stylistic improvement possible, meaning and grammar perfect
+- 8: acceptable — has one noticeable wording, style, or minor accuracy issue
+- 5–7: clear problems — unnatural phrasing, accuracy issues, or awkward grammar
+- 1–4: poor quality — wrong meaning, serious grammar errors, or missing/broken placeholders
+
+Comment rules:
+- score 10 → comment: null
+- score 9  → comment: what could still be improved (max 20 words)
+- score 8  → comment: describe the noticeable issue (max 20 words)
+- score 1–7 → comment: describe the main problem (max 20 words)
+
+Level mapping:
+- score 9–10 → level: "green"
+- score 8    → level: "yellow"
+- score 1–7  → level: "red"
 
 Return ONLY a valid JSON object, no markdown, no extra text:
-{"score": <1-10>, "level": "<good|average|bad>", "comment": "<short issue or null>"}`;
+{"score": <1-10>, "level": "<green|yellow|red>", "comment": "<text or null>"}`;
 
     let raw: string;
     try {
@@ -126,13 +139,15 @@ Return ONLY a valid JSON object, no markdown, no extra text:
     try {
       const parsed = JSON.parse(cleaned) as {
         score: number;
-        level: 'good' | 'average' | 'bad';
         comment: string | null;
       };
+      const score = Math.min(10, Math.max(1, Math.round(parsed.score)));
+      const level: 'green' | 'yellow' | 'red' =
+        score >= 9 ? 'green' : score === 8 ? 'yellow' : 'red';
       return {
-        score: parsed.score,
-        level: parsed.level,
-        comment: parsed.level === 'good' ? null : (parsed.comment ?? null),
+        score,
+        level,
+        comment: score === 10 ? null : (parsed.comment ?? null),
       };
     } catch {
       throw new BadGatewayException(

@@ -49,7 +49,7 @@ const aiTranslate = async (text: string): Promise<Record<string, string>> => {
 
 interface QualityResult {
   score: number;
-  level: 'good' | 'average' | 'bad';
+  level: 'green' | 'yellow' | 'red';
   comment: string | null;
 }
 
@@ -136,9 +136,9 @@ interface EditModalProps {
 const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
 
 const QUALITY_CONFIG = {
-  good:    { color: 'success', label: 'Good' },
-  average: { color: 'warning', label: 'Below average' },
-  bad:     { color: 'error',   label: 'Bad' },
+  green:  { color: 'success', label: 'Good' },
+  yellow: { color: 'warning', label: 'Review' },
+  red:    { color: 'error',   label: 'Poor' },
 } as const;
 
 const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onClose, onSave, saving }) => {
@@ -297,14 +297,14 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
             </Form.Item>
           );
         })}
-        {Object.values(qualityResults).some((r) => r.level !== 'good') && (
+        {Object.values(qualityResults).some((r) => r.comment) && (
           <div style={{ marginTop: 8 }}>
             {Object.entries(qualityResults)
-              .filter(([, r]) => r.level !== 'good' && r.comment)
+              .filter(([, r]) => r.comment)
               .map(([locale, r]) => (
                 <Alert
                   key={locale}
-                  type={r.level === 'bad' ? 'error' : 'warning'}
+                  type={r.level === 'red' ? 'error' : r.level === 'yellow' ? 'warning' : 'info'}
                   message={<><Tag>{locale}</Tag>{r.comment}</>}
                   style={{ marginBottom: 6 }}
                   showIcon
