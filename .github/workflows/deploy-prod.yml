@@ -69,12 +69,13 @@ jobs:
           PROD_HEALTHCHECK_URL: ${{ secrets.PROD_HEALTHCHECK_URL }}
           COMPOSE_FILE: ${{ secrets.PROD_COMPOSE_FILE }}
           SERVICES: ${{ secrets.PROD_SERVICES }}
+          GEMINI_API_KEY: ${{ secrets.PROD_GEMINI_API_KEY }}
         with:
           host: ${{ secrets.PROD_SSH_HOST }}
           username: ${{ secrets.PROD_SSH_USER }}
           key: ${{ secrets.PROD_SSH_PRIVATE_KEY }}
           port: ${{ secrets.PROD_SSH_PORT || '22' }}
-          envs: IMAGE_REF,ADMIN_UI_IMAGE_REF,DEPLOY_PATH,PROD_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
+          envs: IMAGE_REF,ADMIN_UI_IMAGE_REF,DEPLOY_PATH,PROD_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES,GEMINI_API_KEY
           script_stop: true
           script: |
             set -euo pipefail
@@ -86,6 +87,7 @@ jobs:
             cat > .env.cicd <<EOF
             APP_IMAGE=${IMAGE_REF}
             ADMIN_UI_IMAGE=${ADMIN_UI_IMAGE_REF}
+            GEMINI_API_KEY=${GEMINI_API_KEY}
             EOF
 
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES}

@@ -126,12 +126,13 @@ jobs:
           STAGE_HEALTHCHECK_URL: ${{ secrets.STAGE_HEALTHCHECK_URL }}
           COMPOSE_FILE: ${{ secrets.STAGE_COMPOSE_FILE }}
           SERVICES: ${{ secrets.STAGE_SERVICES }}
+          GEMINI_API_KEY: ${{ secrets.STAGE_GEMINI_API_KEY }}
         with:
           host: ${{ secrets.STAGE_SSH_HOST }}
           username: ${{ secrets.STAGE_SSH_USER }}
           key: ${{ secrets.STAGE_SSH_PRIVATE_KEY }}
           port: ${{ secrets.STAGE_SSH_PORT || '22' }}
-          envs: IMAGE_REF,ADMIN_UI_IMAGE_REF,DEPLOY_PATH,STAGE_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES
+          envs: IMAGE_REF,ADMIN_UI_IMAGE_REF,DEPLOY_PATH,STAGE_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES,GEMINI_API_KEY
           command_timeout: 15m
           script_stop: true
           script: |
@@ -144,6 +145,7 @@ jobs:
             cat > .env.cicd <<EOF
             APP_IMAGE=${IMAGE_REF}
             ADMIN_UI_IMAGE=${ADMIN_UI_IMAGE_REF}
+            GEMINI_API_KEY=${GEMINI_API_KEY}
             EOF
 
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES} migrate
