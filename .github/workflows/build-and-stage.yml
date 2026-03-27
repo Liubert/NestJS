@@ -110,12 +110,25 @@ jobs:
       name: stage
 
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Log deployment metadata
         run: |
           echo "commit=${{ needs.build.outputs.commit_sha }}"
           echo "image=${{ needs.build.outputs.image_ref }}"
           echo "digest=${{ needs.build.outputs.image_digest }}"
           echo "target=stage"
+
+      - name: Copy compose.yml to stage
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.STAGE_SSH_HOST }}
+          username: ${{ secrets.STAGE_SSH_USER }}
+          key: ${{ secrets.STAGE_SSH_PRIVATE_KEY }}
+          port: ${{ secrets.STAGE_SSH_PORT || '22' }}
+          source: compose.yml
+          target: ${{ secrets.STAGE_DEPLOY_PATH }}
 
       - name: Deploy on stage VM through SSH
         uses: appleboy/ssh-action@v1.2.0
