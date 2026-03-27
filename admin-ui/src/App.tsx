@@ -10,6 +10,8 @@ import {
   UserOutlined 
 } from '@ant-design/icons';
 import TranslationsPage from './pages/translations/TranslationsPage';
+import ProjectsPage from './pages/projects/ProjectsPage';
+import ProjectSettingsPage from './pages/projects/ProjectSettingsPage';
 import LoginPage from './pages/LoginPage';
 
 const { Header, Content, Sider } = Layout;
@@ -127,9 +129,10 @@ function App() {
                   <AppLayout>
                     <Routes>
                       <Route path="/" element={<Navigate to="/translations" replace />} />
-                      <Route path="/projects" element={<div>Projects Management (Soon)</div>} />
+                      <Route path="/projects" element={<ProjectsPage />} />
+                      <Route path="/projects/:slug" element={<ProjectSettingsPage />} />
                       <Route path="/translations" element={<TranslationsPage />} />
-                      <Route path="/locales" element={<div>Locales Management (Soon)</div>} />
+                      <Route path="/locales" element={<Navigate to="/projects" replace />} />
                     </Routes>
                   </AppLayout>
                 </PrivateRoute>

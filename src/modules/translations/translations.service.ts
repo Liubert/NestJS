@@ -163,6 +163,21 @@ export class TranslationsService {
     );
   }
 
+  async deleteLocale(projectSlug: string, code: string): Promise<void> {
+    const project = await this.projectRepo.findOne({
+      where: { slug: projectSlug },
+    });
+    if (!project)
+      throw new NotFoundException(`Project "${projectSlug}" not found`);
+
+    const locale = await this.localeRepo.findOne({
+      where: { projectId: project.id, code },
+    });
+    if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
+
+    await this.localeRepo.remove(locale);
+  }
+
   async deleteNamespace(projectSlug: string, nsSlug: string): Promise<void> {
     const project = await this.projectRepo.findOne({
       where: { slug: projectSlug },

@@ -228,6 +228,20 @@ export class TranslationsController {
     return this.translationsService.createLocale(slug, dto.code, dto.isDefault);
   }
 
+  @Delete('projects/:slug/locales/:code')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a locale from a project' })
+  @ApiParam({ name: 'slug', example: 'travis' })
+  @ApiParam({ name: 'code', example: 'uk' })
+  async deleteLocale(
+    @Param('slug') slug: string,
+    @Param('code') code: string,
+  ): Promise<void> {
+    return this.translationsService.deleteLocale(slug, code);
+  }
+
   @Delete('projects/:slug/namespaces/:ns')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
