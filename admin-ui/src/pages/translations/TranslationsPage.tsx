@@ -165,7 +165,8 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
 
   const handleOk = () => {
     form.validateFields().then((vals) => {
-      const { key, ...rest } = vals;
+      const { key: formKey, ...rest } = vals;
+      const key = isNew ? formKey : (entry?.key ?? '');
       const values: Record<string, string> = {};
       for (const locale of locales) {
         values[locale] = rest[locale] ?? '';
