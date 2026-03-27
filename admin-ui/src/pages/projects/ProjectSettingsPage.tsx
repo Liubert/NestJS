@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
   Typography, Button, Tag, Space, Divider, Spin, Modal, Form, Input,
-  Popconfirm, message, Breadcrumb,
+  Popconfirm, message, Breadcrumb, Table,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, TranslationOutlined,
@@ -16,13 +16,27 @@ interface ProjectDetails {
   id: string;
   slug: string;
   name: string;
+  ownerId: string | null;
   createdAt: string;
   locales: string[];
   namespaces: string[];
 }
 
+interface MemberRow {
+  userId: string;
+  email: string;
+  firstName: string;
+  lastName: string | null;
+  role: 'owner' | 'member';
+}
+
 const fetchProjectDetails = async (slug: string): Promise<ProjectDetails> => {
   const res = await apiClient.get(`/translations/projects/${slug}`);
+  return res.data;
+};
+
+const fetchMembers = async (slug: string): Promise<MemberRow[]> => {
+  const res = await apiClient.get(`/translations/projects/${slug}/members`);
   return res.data;
 };
 
@@ -32,8 +46,10 @@ const ProjectSettingsPage: React.FC = () => {
   const qc = useQueryClient();
   const [localeForm] = Form.useForm();
   const [nsForm] = Form.useForm();
+  const [memberForm] = Form.useForm();
   const [localeModalOpen, setLocaleModalOpen] = useState(false);
   const [nsModalOpen, setNsModalOpen] = useState(false);
+  const [memberModalOpen, setMemberModalOpen] = useState(false);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', slug],
@@ -41,53 +57,106 @@ const ProjectSettingsPage: React.FC = () => {
     enabled: !!slug,
   } as any);
 
-  const invalidate = () => {
+  const { data: members = [] } = useQuery({
+    queryKey: ['project-members', slug],
+    queryFn: () => fetchMembers(slug!),
+    enabled: !!slug,
+  } as any);
+
+  const invalidateProject = () => {
     qc.invalidateQueries({ queryKey: ['project', slug] });
     qc.invalidateQueries({ queryKey: ['projects'] });
+  };
+
+  const invalidateMembers = () => {
+    qc.invalidateQueries({ queryKey: ['project-members', slug] });
   };
 
   const addLocaleMutation = useMutation({
     mutationFn: (code: string) =>
       apiClient.post(`/translations/projects/${slug}/locales`, { code }),
-    onSuccess: () => {
-      message.success('Locale added');
-      invalidate();
-      setLocaleModalOpen(false);
-      localeForm.resetFields();
-    },
+    onSuccess: () => { message.success('Locale added'); invalidateProject(); setLocaleModalOpen(false); localeForm.resetFields(); },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error adding locale'),
   });
 
   const removeLocaleMutation = useMutation({
     mutationFn: (code: string) =>
       apiClient.delete(`/translations/projects/${slug}/locales/${code}`),
-    onSuccess: () => { message.success('Locale removed'); invalidate(); },
+    onSuccess: () => { message.success('Locale removed'); invalidateProject(); },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error removing locale'),
   });
 
   const addNsMutation = useMutation({
     mutationFn: (ns: string) =>
       apiClient.post(`/translations/projects/${slug}/namespaces`, { slug: ns }),
-    onSuccess: () => {
-      message.success('Namespace added');
-      invalidate();
-      setNsModalOpen(false);
-      nsForm.resetFields();
-    },
+    onSuccess: () => { message.success('Namespace added'); invalidateProject(); setNsModalOpen(false); nsForm.resetFields(); },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error adding namespace'),
   });
 
   const removeNsMutation = useMutation({
     mutationFn: (ns: string) =>
       apiClient.delete(`/translations/projects/${slug}/namespaces/${ns}`),
-    onSuccess: () => { message.success('Namespace removed'); invalidate(); },
+    onSuccess: () => { message.success('Namespace removed'); invalidateProject(); },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error removing namespace'),
+  });
+
+  const addMemberMutation = useMutation({
+    mutationFn: (email: string) =>
+      apiClient.post(`/translations/projects/${slug}/members`, { email }),
+    onSuccess: () => { message.success('Member added'); invalidateMembers(); setMemberModalOpen(false); memberForm.resetFields(); },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error adding member'),
+  });
+
+  const removeMemberMutation = useMutation({
+    mutationFn: (userId: string) =>
+      apiClient.delete(`/translations/projects/${slug}/members/${userId}`),
+    onSuccess: () => { message.success('Member removed'); invalidateMembers(); },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error removing member'),
   });
 
   if (isLoading) return <Spin />;
   if (!project) return <Text type="danger">Project not found</Text>;
 
   const p = project as ProjectDetails;
+  const memberList = members as MemberRow[];
+
+  const memberColumns = [
+    {
+      title: 'Email',
+      dataIndex: 'email',
+      key: 'email',
+    },
+    {
+      title: 'Name',
+      key: 'name',
+      render: (_: unknown, r: MemberRow) =>
+        [r.firstName, r.lastName].filter(Boolean).join(' ') || '—',
+    },
+    {
+      title: 'Role',
+      dataIndex: 'role',
+      key: 'role',
+      render: (role: string) => (
+        <Tag color={role === 'owner' ? 'gold' : 'blue'}>{role}</Tag>
+      ),
+    },
+    {
+      title: '',
+      key: 'actions',
+      width: 60,
+      render: (_: unknown, record: MemberRow) =>
+        record.role === 'owner' ? null : (
+          <Popconfirm
+            title={`Remove ${record.email} from this project?`}
+            onConfirm={() => removeMemberMutation.mutate(record.userId)}
+            okText="Remove"
+            okButtonProps={{ danger: true }}
+          >
+            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        ),
+    },
+  ];
 
   return (
     <div>
@@ -106,10 +175,7 @@ const ProjectSettingsPage: React.FC = () => {
             /{p.slug}
           </Text>
         </Title>
-        <Button
-          icon={<TranslationOutlined />}
-          onClick={() => navigate('/translations')}
-        >
+        <Button icon={<TranslationOutlined />} onClick={() => navigate('/translations')}>
           Open in Translations
         </Button>
       </div>
@@ -127,14 +193,10 @@ const ProjectSettingsPage: React.FC = () => {
             <Text type="secondary">No locales yet — add at least one to start translating</Text>
           )}
           {p.locales.map((code) => (
-            <Tag
-              key={code}
-              color="blue"
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
+            <Tag key={code} color="blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {code}
               <Popconfirm
-                title={`Remove locale "${code}"? Existing translation values for this locale will be deleted.`}
+                title={`Remove locale "${code}"? Existing translation values will be deleted.`}
                 onConfirm={() => removeLocaleMutation.mutate(code)}
                 okText="Remove"
                 okButtonProps={{ danger: true }}
@@ -149,7 +211,7 @@ const ProjectSettingsPage: React.FC = () => {
       <Divider />
 
       {/* ── Namespaces ── */}
-      <div>
+      <div style={{ marginBottom: 32 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <Title level={5} style={{ margin: 0 }}>Namespaces</Title>
           <Button size="small" icon={<PlusOutlined />} onClick={() => setNsModalOpen(true)}>
@@ -157,14 +219,9 @@ const ProjectSettingsPage: React.FC = () => {
           </Button>
         </div>
         <Space wrap>
-          {p.namespaces.length === 0 && (
-            <Text type="secondary">No namespaces yet</Text>
-          )}
+          {p.namespaces.length === 0 && <Text type="secondary">No namespaces yet</Text>}
           {p.namespaces.map((ns) => (
-            <Tag
-              key={ns}
-              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-            >
+            <Tag key={ns} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
               {ns}
               <Popconfirm
                 title={`Remove namespace "${ns}" and all its translation keys?`}
@@ -179,7 +236,27 @@ const ProjectSettingsPage: React.FC = () => {
         </Space>
       </div>
 
-      {/* ── Add Locale Modal ── */}
+      <Divider />
+
+      {/* ── Members ── */}
+      <div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <Title level={5} style={{ margin: 0 }}>Members</Title>
+          <Button size="small" icon={<PlusOutlined />} onClick={() => setMemberModalOpen(true)}>
+            Add member
+          </Button>
+        </div>
+        <Table
+          rowKey="userId"
+          size="small"
+          columns={memberColumns}
+          dataSource={memberList}
+          pagination={false}
+          style={{ maxWidth: 600 }}
+        />
+      </div>
+
+      {/* ── Modals ── */}
       <Modal
         open={localeModalOpen}
         title="Add locale"
@@ -195,10 +272,7 @@ const ProjectSettingsPage: React.FC = () => {
             extra="e.g. en, uk, nb-NO, sv, da-DK"
             rules={[
               { required: true, message: 'Code is required' },
-              {
-                pattern: /^[a-z]{2,3}(-[A-Z]{2,4})?$/,
-                message: 'Format: en, uk, nb-NO',
-              },
+              { pattern: /^[a-z]{2,3}(-[A-Z]{2,4})?$/, message: 'Format: en, uk, nb-NO' },
             ]}
           >
             <Input placeholder="en" />
@@ -206,7 +280,6 @@ const ProjectSettingsPage: React.FC = () => {
         </Form>
       </Modal>
 
-      {/* ── Add Namespace Modal ── */}
       <Modal
         open={nsModalOpen}
         title="Add namespace"
@@ -222,13 +295,30 @@ const ProjectSettingsPage: React.FC = () => {
             extra="e.g. common, backoffice-translations"
             rules={[
               { required: true, message: 'Slug is required' },
-              {
-                pattern: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/,
-                message: 'Lowercase letters, digits, dashes only',
-              },
+              { pattern: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, message: 'Lowercase, digits, dashes' },
             ]}
           >
             <Input placeholder="common" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={memberModalOpen}
+        title="Add member"
+        onCancel={() => { setMemberModalOpen(false); memberForm.resetFields(); }}
+        onOk={() => memberForm.validateFields().then((v) => addMemberMutation.mutate(v.email))}
+        confirmLoading={addMemberMutation.isPending}
+        destroyOnClose
+      >
+        <Form form={memberForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="email"
+            label="User email"
+            extra="The user must already exist in the system."
+            rules={[{ required: true, type: 'email', message: 'Valid email required' }]}
+          >
+            <Input placeholder="user@example.com" />
           </Form.Item>
         </Form>
       </Modal>

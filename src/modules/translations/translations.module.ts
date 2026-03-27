@@ -8,6 +8,8 @@ import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
+import { ProjectMemberEntity } from './entities/project-member.entity.js';
+import { UserEntity } from '../users/user.entity.js';
 
 @Module({
   imports: [
@@ -17,6 +19,8 @@ import { TranslationValueEntity } from './entities/translation-value.entity.js';
       LocaleEntity,
       TranslationKeyEntity,
       TranslationValueEntity,
+      ProjectMemberEntity,
+      UserEntity,
     ]),
   ],
   controllers: [TranslationsController],

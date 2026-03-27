@@ -26,6 +26,8 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiTranslateDto } from './dto/ai-translate.dto.js';
@@ -37,6 +39,7 @@ import { CreateLocaleDto } from './dto/create-locale.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
+import { AddMemberDto } from './dto/add-member.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
 @ApiTags('translations')
@@ -51,7 +54,6 @@ export class TranslationsController {
 
   @Get(':projectSlug/locales')
   @ApiOperation({ summary: 'Get all supported locales for a project' })
-  @ApiParam({ name: 'projectSlug', example: 'travis' })
   async getLocales(
     @Param('projectSlug') projectSlug: string,
   ): Promise<string[]> {
@@ -60,7 +62,6 @@ export class TranslationsController {
 
   @Get(':projectSlug/namespaces')
   @ApiOperation({ summary: 'Get all namespaces for a project' })
-  @ApiParam({ name: 'projectSlug', example: 'travis' })
   async getNamespaces(
     @Param('projectSlug') projectSlug: string,
   ): Promise<string[]> {
@@ -71,13 +72,7 @@ export class TranslationsController {
   @ApiOperation({
     summary: 'Get translations for a namespace and locale (Locize-compatible)',
   })
-  @ApiParam({ name: 'projectSlug', example: 'travis' })
-  @ApiParam({ name: 'namespace', example: 'backoffice-translations' })
-  @ApiParam({ name: 'locale', example: 'en' })
-  @ApiResponse({
-    status: 200,
-    description: 'Flat key-value translation object',
-  })
+  @ApiResponse({ status: 200, description: 'Flat key-value translation object' })
   async getNamespace(
     @Param('projectSlug') projectSlug: string,
     @Param('namespace') namespace: string,
@@ -104,9 +99,9 @@ export class TranslationsController {
       required: ['file', 'projectSlug'],
       properties: {
         file: { type: 'string', format: 'binary' },
-        projectSlug: { type: 'string', example: 'travis' },
-        projectName: { type: 'string', example: 'TRAVIS' },
-        defaultLocale: { type: 'string', example: 'en' },
+        projectSlug: { type: 'string' },
+        projectName: { type: 'string' },
+        defaultLocale: { type: 'string' },
       },
     },
   })
@@ -114,31 +109,17 @@ export class TranslationsController {
     @UploadedFile() file: Express.Multer.File,
     @Body() dto: ImportTranslationsDto,
   ) {
-    if (!file) {
-      return { error: 'No file uploaded' };
-    }
+    if (!file) return { error: 'No file uploaded' };
     return this.translationsService.importFromZip(file.buffer, dto);
   }
 
-  // ─── AI Translation helper (protected) ───────────────────────────────────
+  // ─── AI (protected) ───────────────────────────────────────────────────────
 
   @Post('ai-translate')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({
-    summary:
-      'AI-generate translations for Ukrainian, Norwegian, Swedish, Danish',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Translated values keyed by locale code',
-    schema: {
-      example: { uk: '...', 'nb-NO': '...', sv: '...', 'da-DK': '...' },
-    },
-  })
-  async aiTranslate(
-    @Body() dto: AiTranslateDto,
-  ): Promise<Record<string, string>> {
+  @ApiOperation({ summary: 'AI-generate translations' })
+  async aiTranslate(@Body() dto: AiTranslateDto): Promise<Record<string, string>> {
     return this.aiTranslateService.translate(dto.text);
   }
 
@@ -146,16 +127,6 @@ export class TranslationsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Check translation quality using AI' })
-  @ApiResponse({
-    status: 200,
-    schema: {
-      example: {
-        score: 7,
-        level: 'average',
-        comment: 'Wording sounds unnatural for UI context.',
-      },
-    },
-  })
   async checkQuality(@Body() dto: CheckQualityDto) {
     return this.aiTranslateService.checkQuality(
       dto.source,
@@ -170,36 +141,99 @@ export class TranslationsController {
   @Get('projects')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'List all projects' })
-  async listProjects(@Query() query: PaginationDto) {
-    return this.translationsService.listProjects(query.page, query.limit);
+  @ApiOperation({ summary: 'List projects accessible to the current user' })
+  async listProjects(
+    @Query() query: PaginationDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.listProjects(
+      query.page,
+      query.limit,
+      user.userId,
+      user.role,
+    );
   }
 
   @Post('projects')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new project' })
-  async createProject(@Body() dto: CreateProjectDto) {
-    return this.translationsService.createProject(dto);
+  async createProject(
+    @Body() dto: CreateProjectDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.createProject(dto, user.userId);
   }
 
   @Get('projects/:slug')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get project details (namespaces + locales)' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  async getProject(@Param('slug') slug: string) {
-    return this.translationsService.getProjectDetails(slug);
+  async getProject(
+    @Param('slug') slug: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.getProjectDetails(
+      slug,
+      user.userId,
+      user.role,
+    );
   }
 
   @Delete('projects/:slug')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete a project (cascades to all data)' })
+  @ApiOperation({ summary: 'Delete a project (owner or admin only)' })
+  async deleteProject(
+    @Param('slug') slug: string,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<void> {
+    return this.translationsService.deleteProject(slug, user.userId, user.role);
+  }
+
+  // ─── Members (protected) ──────────────────────────────────────────────────
+
+  @Get('projects/:slug/members')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'List project members' })
+  async listMembers(
+    @Param('slug') slug: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.listMembers(slug, user.userId, user.role);
+  }
+
+  @Post('projects/:slug/members')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Add a user to a project (owner or admin)' })
   @ApiParam({ name: 'slug', example: 'travis' })
-  async deleteProject(@Param('slug') slug: string): Promise<void> {
-    return this.translationsService.deleteProject(slug);
+  async addMember(
+    @Param('slug') slug: string,
+    @Body() dto: AddMemberDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.addMember(slug, dto, user.userId, user.role);
+  }
+
+  @Delete('projects/:slug/members/:userId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Remove a user from a project (owner or admin)' })
+  async removeMember(
+    @Param('slug') slug: string,
+    @Param('userId') targetUserId: string,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<void> {
+    return this.translationsService.removeMember(
+      slug,
+      targetUserId,
+      user.userId,
+      user.role,
+    );
   }
 
   // ─── Namespaces (protected) ───────────────────────────────────────────────
@@ -208,24 +242,35 @@ export class TranslationsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new namespace in a project' })
-  @ApiParam({ name: 'slug', example: 'travis' })
   async createNamespace(
     @Param('slug') slug: string,
     @Body() dto: CreateNamespaceDto,
+    @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.createNamespace(slug, dto);
+    return this.translationsService.createNamespace(
+      slug,
+      dto,
+      user.userId,
+      user.role,
+    );
   }
 
   @Post('projects/:slug/locales')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Add a locale to a project' })
-  @ApiParam({ name: 'slug', example: 'travis' })
   async createLocale(
     @Param('slug') slug: string,
     @Body() dto: CreateLocaleDto,
+    @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.createLocale(slug, dto.code, dto.isDefault);
+    return this.translationsService.createLocale(
+      slug,
+      dto.code,
+      dto.isDefault,
+      user.userId,
+      user.role,
+    );
   }
 
   @Delete('projects/:slug/locales/:code')
@@ -233,29 +278,35 @@ export class TranslationsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Remove a locale from a project' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'code', example: 'uk' })
   async deleteLocale(
     @Param('slug') slug: string,
     @Param('code') code: string,
+    @CurrentUser() user: CurrentUserType,
   ): Promise<void> {
-    return this.translationsService.deleteLocale(slug, code);
+    return this.translationsService.deleteLocale(
+      slug,
+      code,
+      user.userId,
+      user.role,
+    );
   }
 
   @Delete('projects/:slug/namespaces/:ns')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Delete a namespace (cascades to all keys and values)',
-  })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
+  @ApiOperation({ summary: 'Delete a namespace (cascades to all keys and values)' })
   async deleteNamespace(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
+    @CurrentUser() user: CurrentUserType,
   ): Promise<void> {
-    return this.translationsService.deleteNamespace(slug, ns);
+    return this.translationsService.deleteNamespace(
+      slug,
+      ns,
+      user.userId,
+      user.role,
+    );
   }
 
   // ─── Entries (protected) ──────────────────────────────────────────────────
@@ -263,49 +314,60 @@ export class TranslationsController {
   @Get('projects/:slug/namespaces/:ns/entries')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'List translation entries with search and pagination',
-  })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
+  @ApiOperation({ summary: 'List translation entries with search and pagination' })
   async listEntries(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
     @Query() query: ListEntriesQueryDto,
+    @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.listEntries(slug, ns, query);
+    return this.translationsService.listEntries(
+      slug,
+      ns,
+      query,
+      user.userId,
+      user.role,
+    );
   }
 
   @Post('projects/:slug/namespaces/:ns/entries')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Create a new translation key with optional initial values',
-  })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
+  @ApiOperation({ summary: 'Create a new translation key' })
   async createEntry(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
     @Body() dto: CreateEntryDto,
+    @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.createEntry(slug, ns, dto);
+    return this.translationsService.createEntry(
+      slug,
+      ns,
+      dto,
+      user.userId,
+      user.role,
+    );
   }
 
   @Patch('projects/:slug/namespaces/:ns/entries/:key')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update translation values for a key' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
-  @ApiParam({ name: 'key', example: 'accessControl' })
   async updateEntry(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
     @Param('key') key: string,
     @Body() dto: UpdateEntryDto,
+    @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.updateEntry(slug, ns, key, dto);
+    return this.translationsService.updateEntry(
+      slug,
+      ns,
+      key,
+      dto,
+      user.userId,
+      user.role,
+    );
   }
 
   @Delete('projects/:slug/namespaces/:ns/entries/:key')
@@ -313,14 +375,18 @@ export class TranslationsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a translation key and all its values' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
-  @ApiParam({ name: 'key', example: 'accessControl' })
   async deleteEntry(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
     @Param('key') key: string,
+    @CurrentUser() user: CurrentUserType,
   ): Promise<void> {
-    return this.translationsService.deleteEntry(slug, ns, key);
+    return this.translationsService.deleteEntry(
+      slug,
+      ns,
+      key,
+      user.userId,
+      user.role,
+    );
   }
 }

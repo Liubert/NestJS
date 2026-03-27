@@ -1,16 +1,21 @@
-// src/modules/users/users.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import bcrypt from 'bcryptjs';
 
-import { CreateUserDto } from './dto/create-user.dto/create-user.dto';
-import { UpdateUserDto } from './dto/create-user.dto/update-user.dto';
-import { UserResponseDto } from './dto/create-user.dto/response-user.dto';
-import { UserEntity } from './user.entity';
-import { FilesService } from '../files/files.service';
-import { FileRecordEntity } from '../files/file-record.entity';
-import { PaginationInput } from '../../graphql/common/pagination.input';
+import { AdminCreateUserDto } from './dto/admin-create-user.dto.js';
+import { UpdateUserDto } from './dto/create-user.dto/update-user.dto.js';
+import { UserResponseDto } from './dto/create-user.dto/response-user.dto.js';
+import { UserEntity } from './user.entity.js';
+import { UserRole } from './types/user-role.enum.js';
+import { FilesService } from '../files/files.service.js';
+import { FileRecordEntity } from '../files/file-record.entity.js';
+import { PaginationInput } from '../../graphql/common/pagination.input.js';
 
 @Injectable()
 export class UsersService {
@@ -22,9 +27,8 @@ export class UsersService {
     private readonly fileRepo: Repository<FileRecordEntity>,
   ) {}
 
-  async getAll(): Promise<UserResponseDto[]> {
-    const users = await this.usersRepo.find();
-    return users;
+  async getAll(): Promise<UserEntity[]> {
+    return this.usersRepo.find({ order: { createdAt: 'DESC' } });
   }
 
   async getPaginatedUsers({ limit, offset }: PaginationInput) {
@@ -32,7 +36,6 @@ export class UsersService {
       take: limit,
       skip: offset,
     });
-
     return { items, total };
   }
 
@@ -41,12 +44,10 @@ export class UsersService {
     if (!user) throw new NotFoundException('User not found');
 
     let avatarUrl: string | null = null;
-
     if (user.avatarFileId) {
       const file = await this.fileRepo.findOne({
         where: { id: user.avatarFileId },
       });
-
       avatarUrl = file ? await this.filesService.getViewUrl(file) : null;
     }
 
@@ -59,15 +60,13 @@ export class UsersService {
       role: user.role,
       avatarFileId: user.avatarFileId ?? null,
       avatarUrl,
+      mustChangePassword: user.mustChangePassword,
+      createdAt: user.createdAt,
     };
   }
 
   async findByEmail(email: string): Promise<UserEntity | null> {
     return this.usersRepo.findOne({ where: { email } });
-  }
-
-  async updateAvatarFileId(userId: string, fileId: string) {
-    await this.usersRepo.update(userId, { avatarFileId: fileId });
   }
 
   async findByEmailWithSensitiveData(
@@ -84,33 +83,93 @@ export class UsersService {
     return this.usersRepo.findOne({ where: { id } });
   }
 
-  async create(dto: CreateUserDto): Promise<UserResponseDto> {
-    const passwordHash: string = await bcrypt.hash(dto.password, 10);
+  async findByIdWithSensitiveData(id: string): Promise<UserEntity | null> {
+    return this.usersRepo
+      .createQueryBuilder('u')
+      .addSelect('u.passwordHash')
+      .where('u.id = :id', { id })
+      .getOne();
+  }
+
+  async updateAvatarFileId(userId: string, fileId: string) {
+    await this.usersRepo.update(userId, { avatarFileId: fileId });
+  }
+
+  // ─── Admin: create user ──────────────────────────────────────────────────
+  async adminCreate(dto: AdminCreateUserDto): Promise<UserEntity> {
+    const existing = await this.usersRepo.findOne({
+      where: { email: dto.email },
+    });
+    if (existing) {
+      throw new ConflictException(
+        `User with email "${dto.email}" already exists`,
+      );
+    }
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
 
     const entity = this.usersRepo.create({
+      email: dto.email,
       passwordHash,
-      ...dto,
+      firstName: dto.firstName ?? dto.email.split('@')[0],
+      lastName: dto.lastName ?? null,
+      role: dto.role ?? UserRole.USER,
+      mustChangePassword: true,
     });
 
-    const saved: UserEntity = await this.usersRepo.save(entity);
-    return saved;
+    return this.usersRepo.save(entity);
   }
 
-  async update(id: string, dto: UpdateUserDto): Promise<UserResponseDto> {
+  // ─── Update (self or admin) ───────────────────────────────────────────────
+  async update(
+    id: string,
+    dto: UpdateUserDto,
+    requesterId: string,
+    requesterRole: UserRole,
+  ): Promise<UserResponseDto> {
+    if (requesterId !== id && requesterRole !== UserRole.ADMIN) {
+      throw new ForbiddenException('Cannot modify another user');
+    }
+
     const existing = await this.usersRepo.findOne({ where: { id } });
-    if (!existing) throw new NotFoundException(`User with id ${id} not found`);
+    if (!existing) throw new NotFoundException(`User ${id} not found`);
 
     const updated = this.usersRepo.merge(existing, dto);
-    const saved = await this.usersRepo.save(updated);
-
-    return saved;
+    return this.usersRepo.save(updated);
   }
 
+  // ─── Delete ───────────────────────────────────────────────────────────────
   async remove(id: string): Promise<{ status: string; id: string }> {
     const existing = await this.usersRepo.findOne({ where: { id } });
-    if (!existing) throw new NotFoundException(`User with id ${id} not found`);
+    if (!existing) throw new NotFoundException(`User ${id} not found`);
 
     await this.usersRepo.remove(existing);
     return { status: 'deleted', id };
+  }
+
+  // ─── Password management ──────────────────────────────────────────────────
+  async updatePassword(
+    userId: string,
+    newHash: string,
+    mustChangePassword = false,
+  ): Promise<void> {
+    await this.usersRepo.update(userId, {
+      passwordHash: newHash,
+      mustChangePassword,
+    });
+  }
+
+  // Legacy: kept for backward compat with old GraphQL resolvers
+  async create(dto: {
+    email: string;
+    password: string;
+    role?: UserRole;
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+  }): Promise<UserEntity> {
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const entity = this.usersRepo.create({ ...dto, passwordHash });
+    return this.usersRepo.save(entity);
   }
 }
