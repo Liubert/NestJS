@@ -63,6 +63,22 @@ async function runSeed(): Promise<void> {
           passwordHash: adminHash,
           role: UserRole.ADMIN,
         },
+        {
+          email: 'andriy.papa@ecit.com',
+          firstName: 'Andriy',
+          lastName: 'Papa',
+          phone: null,
+          passwordHash: adminHash,
+          role: UserRole.ADMIN,
+        },
+        {
+          email: 'Lfedyshyn@ecit.com',
+          firstName: 'Liubomyr',
+          lastName: 'Fedyshyn',
+          phone: null,
+          passwordHash: adminHash,
+          role: UserRole.ADMIN,
+        },
       ]);
 
       const buyerId = insertedUsers.identifiers[0]?.id as string;

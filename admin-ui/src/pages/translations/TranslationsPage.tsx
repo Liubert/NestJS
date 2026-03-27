@@ -50,7 +50,7 @@ const aiTranslate = async (text: string): Promise<Record<string, string>> => {
 interface QualityResult {
   score: number;
   level: 'green' | 'yellow' | 'red';
-  comment: string | null;
+  comment: string;
 }
 
 const checkQuality = async (
@@ -58,7 +58,12 @@ const checkQuality = async (
   translation: string,
   locale: string,
 ): Promise<QualityResult> => {
-  const res = await apiClient.post('/translations/ai-quality-check', { source, translation, locale });
+  const res = await apiClient.post('/translations/ai-quality-check', {
+    source,
+    translation,
+    locale,
+    mode: 'translation_quality',
+  });
   return res.data;
 };
 
@@ -297,19 +302,17 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
             </Form.Item>
           );
         })}
-        {Object.values(qualityResults).some((r) => r.comment) && (
+        {Object.keys(qualityResults).length > 0 && (
           <div style={{ marginTop: 8 }}>
-            {Object.entries(qualityResults)
-              .filter(([, r]) => r.comment)
-              .map(([locale, r]) => (
-                <Alert
-                  key={locale}
-                  type={r.level === 'red' ? 'error' : r.level === 'yellow' ? 'warning' : 'info'}
-                  message={<><Tag>{locale}</Tag>{r.comment}</>}
-                  style={{ marginBottom: 6 }}
-                  showIcon
-                />
-              ))}
+            {Object.entries(qualityResults).map(([locale, r]) => (
+              <Alert
+                key={locale}
+                type={r.level === 'red' ? 'error' : r.level === 'yellow' ? 'warning' : 'info'}
+                message={<><Tag>{locale}</Tag>{r.comment || 'Looks good'}</>}
+                style={{ marginBottom: 6 }}
+                showIcon
+              />
+            ))}
           </div>
         )}
       </Form>
@@ -461,11 +464,17 @@ const TranslationsPage: React.FC = () => {
     ...locales.map((locale) => ({
       title: <Tag color="blue">{locale}</Tag>,
       key: locale,
-      ellipsis: true,
+      width: 180,
       render: (_: unknown, record: Entry) => {
         const val = record.values[locale];
         return val
-          ? <Tooltip title={val}><span style={{ color: val ? undefined : '#bbb' }}>{val}</span></Tooltip>
+          ? (
+            <Tooltip title={val}>
+              <span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>
+                {val}
+              </span>
+            </Tooltip>
+          )
           : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>;
       },
     })),
@@ -554,7 +563,7 @@ const TranslationsPage: React.FC = () => {
         columns={columns}
         dataSource={entriesData?.data ?? []}
         loading={entriesLoading}
-        scroll={{ x: 'max-content' }}
+        scroll={{ x: true }}
         onChange={handleTableChange}
         pagination={{
           current: page,

@@ -161,6 +161,7 @@ export class TranslationsController {
       dto.source,
       dto.translation,
       dto.locale,
+      dto.mode,
     );
   }
 

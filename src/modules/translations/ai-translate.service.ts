@@ -74,10 +74,11 @@ Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "...
     source: string,
     translation: string,
     locale: string,
+    mode: 'translation_quality' | 'language_quality' = 'translation_quality',
   ): Promise<{
     score: number;
     level: 'green' | 'yellow' | 'red';
-    comment: string | null;
+    comment: string;
   }> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
@@ -89,38 +90,62 @@ Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "...
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
 
-    const prompt = `You are a strict software localization quality evaluator. Evaluate this UI/product text translation with high professional standards.
-
+    const modeBlock =
+      mode === 'translation_quality'
+        ? `Mode: translation_quality
+You are evaluating a translation. Check both translation accuracy AND writing quality.
 Source (English): "${source}"
 Translation (${locale}): "${translation}"
 
-Evaluation criteria (be demanding, not generous):
-- Meaning accuracy: must fully and accurately convey the source meaning
-- Natural wording: must sound native and natural for product/UI usage in that language
-- Grammar: must be grammatically correct with no errors
-- Placeholders: variables/tokens like {{name}}, %s, {count} must be preserved exactly as-is
-- Quality bar: "understandable" is not enough — the translation must be polished and professional
+Additional checks for this mode:
+- Does the translation accurately convey the meaning of the source?
+- Is nuance preserved correctly?
+- Does the translation sound natural in UI/product context?
+- Meaning errors or lost nuance must reduce the score significantly.`
+        : `Mode: language_quality
+You are evaluating the quality of the text itself. Do NOT compare it to any source.
+Text (${locale}): "${translation}"
 
-Scoring guide (strict):
-- 10: perfect — no issues whatsoever
-- 9: very good — only a minor stylistic improvement possible, meaning and grammar perfect
-- 8: acceptable — has one noticeable wording, style, or minor accuracy issue
-- 5–7: clear problems — unnatural phrasing, accuracy issues, or awkward grammar
-- 1–4: poor quality — wrong meaning, serious grammar errors, or missing/broken placeholders
+Check only whether the text is written correctly and naturally in ${locale}.
+Do not evaluate translation accuracy.`;
+
+    const prompt = `You are a strict software localization and language quality reviewer.
+
+${modeBlock}
+
+Checks to apply (all modes):
+- Grammar: correct forms, agreement, case, verb forms
+- Spelling: correctly spelled in ${locale}
+- Punctuation: follows conventions of ${locale}
+- Comma usage: correct placement
+- Unnatural or awkward phrasing
+- Clumsy sentence structure
+- Natural wording for software/product UI
+- Placeholders, variables, interpolation tokens ({{name}}, %s, {count}, {0}) and markup must be preserved exactly
+
+Scoring rules — be strict. Do NOT round up. Do NOT give benefit of the doubt:
+- 10: excellent, production-ready, no meaningful issues
+- 9: very strong, but still has small improvement opportunities
+- 8: understandable, but clearly imperfect
+- below 8: noticeable quality problems
+
+Important scoring behavior:
+- grammar, spelling, punctuation, or unnatural phrasing must reduce the score
+- multiple writing-quality issues must not receive a green score
 
 Comment rules:
-- score 10 → comment: null
-- score 9  → comment: what could still be improved (max 20 words)
-- score 8  → comment: describe the noticeable issue (max 20 words)
-- score 1–7 → comment: describe the main problem (max 20 words)
+- score 10: comment should be empty string
+- score 9: comment must explain what could still be improved
+- score 8 or below: comment must explain the main issue
+- keep comment practical and concise, up to 30 words
 
-Level mapping:
-- score 9–10 → level: "green"
-- score 8    → level: "yellow"
-- score 1–7  → level: "red"
+Level mapping (strict):
+- green: score 9 or 10
+- yellow: score 8
+- red: score below 8
 
-Return ONLY a valid JSON object, no markdown, no extra text:
-{"score": <1-10>, "level": "<green|yellow|red>", "comment": "<text or null>"}`;
+Return ONLY valid JSON, no markdown, no extra text:
+{"score": <1-10>, "level": "<green|yellow|red>", "comment": "<string>"}`;
 
     let raw: string;
     try {
@@ -139,7 +164,7 @@ Return ONLY a valid JSON object, no markdown, no extra text:
     try {
       const parsed = JSON.parse(cleaned) as {
         score: number;
-        comment: string | null;
+        comment: string;
       };
       const score = Math.min(10, Math.max(1, Math.round(parsed.score)));
       const level: 'green' | 'yellow' | 'red' =
@@ -147,7 +172,7 @@ Return ONLY a valid JSON object, no markdown, no extra text:
       return {
         score,
         level,
-        comment: score === 10 ? null : (parsed.comment ?? null),
+        comment: parsed.comment ?? '',
       };
     } catch {
       throw new BadGatewayException(

@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 export class CheckQualityDto {
   @ApiProperty({
@@ -12,7 +12,7 @@ export class CheckQualityDto {
 
   @ApiProperty({
     example: 'Контроль доступу',
-    description: 'Translated text to evaluate',
+    description: 'Text to evaluate',
   })
   @IsString()
   @MinLength(1)
@@ -22,4 +22,14 @@ export class CheckQualityDto {
   @IsString()
   @MinLength(1)
   locale!: string;
+
+  @ApiPropertyOptional({
+    example: 'translation_quality',
+    enum: ['translation_quality', 'language_quality'],
+    description:
+      'translation_quality: compare to source. language_quality: evaluate text standalone.',
+  })
+  @IsOptional()
+  @IsIn(['translation_quality', 'language_quality'])
+  mode?: 'translation_quality' | 'language_quality';
 }
