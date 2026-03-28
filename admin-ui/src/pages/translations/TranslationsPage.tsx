@@ -1,7 +1,8 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   Table, Typography, Space, Input, Select, Button, Modal,
   Form, message, Tooltip, Popconfirm, Tag, Row, Col, Alert, Spin, Tabs, Empty,
+  Collapse,
 } from 'antd';
 import {
   SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined,
@@ -72,6 +73,14 @@ interface QualityResult {
   score: number;
   level: 'green' | 'yellow' | 'red';
   comment: string;
+}
+
+// Key-level diff (multiple locale diffs collapsed into one)
+interface KeyDiff {
+  namespace: string;
+  key: string;
+  status: 'added' | 'changed' | 'deleted';
+  locales: string[];
 }
 
 // ─── API ──────────────────────────────────────────────────────────────────────
@@ -299,46 +308,102 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
   );
 };
 
-// ─── Diff columns (shared between Sandbox tab and Push modal) ─────────────────
+// ─── Diff helpers ─────────────────────────────────────────────────────────────
 
-const DIFF_STATUS: Record<string, { color: string; label: string }> = {
-  added:   { color: 'green',  label: 'Added' },
-  changed: { color: 'orange', label: 'Changed' },
-  deleted: { color: 'red',    label: 'Deleted' },
+// Row background colours for sandbox view
+const ROW_BG: Record<string, string> = {
+  added:   '#f6ffed',
+  changed: '#fffbe6',
+  deleted: '#fff1f0',
 };
 
-const makeDiffColumns = (): ColumnsType<DiffEntry> => [
-  { title: 'Namespace', dataIndex: 'namespace', key: 'ns', width: 120, ellipsis: true },
-  {
-    title: 'Key', dataIndex: 'key', key: 'key', width: 200, ellipsis: true,
-    render: (t: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{t}</span>,
-  },
-  { title: 'Locale', dataIndex: 'locale', key: 'locale', width: 70 },
-  {
-    title: 'Status', dataIndex: 'status', key: 'status', width: 90,
-    filters: [
-      { text: 'Added', value: 'added' },
-      { text: 'Changed', value: 'changed' },
-      { text: 'Deleted', value: 'deleted' },
-    ],
-    onFilter: (value, record) => record.status === value,
-    render: (s: string) => <Tag color={DIFF_STATUS[s]?.color}>{DIFF_STATUS[s]?.label ?? s}</Tag>,
-  },
-  {
-    title: 'Current (Production)', dataIndex: 'productionValue', key: 'prod', ellipsis: true,
-    render: (v: string | null) =>
-      v != null
-        ? <span style={{ color: '#888' }}>{v}</span>
-        : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>,
-  },
-  {
-    title: 'Incoming (Sandbox)', dataIndex: 'sandboxValue', key: 'sandbox', ellipsis: true,
-    render: (v: string | null) =>
-      v != null
-        ? <span style={{ color: '#237804', fontWeight: 500 }}>{v}</span>
-        : <span style={{ color: '#cf1322', fontStyle: 'italic' }}>deleted</span>,
-  },
-];
+// Group locale-level diff entries into key-level diffs
+function buildKeyDiffs(entries: DiffEntry[]): KeyDiff[] {
+  const map = new Map<string, KeyDiff>();
+  for (const e of entries) {
+    const id = `${e.namespace}/${e.key}`;
+    if (!map.has(id)) {
+      map.set(id, { namespace: e.namespace, key: e.key, status: e.status, locales: [] });
+    }
+    map.get(id)!.locales.push(e.locale);
+  }
+  return Array.from(map.values());
+}
+
+// Build lookup: "namespace/key/locale" → DiffEntry
+function buildDiffLookup(entries: DiffEntry[]): Map<string, DiffEntry> {
+  const m = new Map<string, DiffEntry>();
+  for (const e of entries) m.set(`${e.namespace}/${e.key}/${e.locale}`, e);
+  return m;
+}
+
+// Build lookup: "namespace/key" → dominant status (added > deleted > changed)
+function buildKeyStatusLookup(entries: DiffEntry[]): Map<string, DiffEntry['status']> {
+  const m = new Map<string, DiffEntry['status']>();
+  for (const e of entries) {
+    const k = `${e.namespace}/${e.key}`;
+    const existing = m.get(k);
+    if (!existing || e.status === 'added' || (e.status === 'deleted' && existing === 'changed')) {
+      m.set(k, e.status);
+    }
+  }
+  return m;
+}
+
+// ─── Diff Summary ─────────────────────────────────────────────────────────────
+
+interface DiffSummaryProps {
+  diff: DiffResult;
+}
+
+const DiffSummary: React.FC<DiffSummaryProps> = ({ diff }) => {
+  const keyDiffs = useMemo(() => buildKeyDiffs(diff.entries), [diff]);
+
+  const added   = keyDiffs.filter((k) => k.status === 'added');
+  const changed = keyDiffs.filter((k) => k.status === 'changed');
+  const deleted = keyDiffs.filter((k) => k.status === 'deleted');
+
+  const groups = [
+    { label: 'Added',   color: '#52c41a', bg: '#f6ffed', border: '#b7eb8f', items: added },
+    { label: 'Changed', color: '#fa8c16', bg: '#fffbe6', border: '#ffe58f', items: changed },
+    { label: 'Deleted', color: '#ff4d4f', bg: '#fff1f0', border: '#ffa39e', items: deleted },
+  ].filter((g) => g.items.length > 0);
+
+  if (!groups.length) return null;
+
+  const collapseItems = groups.map((g) => ({
+    key: g.label,
+    label: (
+      <Space>
+        <span style={{ fontWeight: 500 }}>{g.label}</span>
+        <Tag color={g.label === 'Added' ? 'green' : g.label === 'Changed' ? 'orange' : 'red'}>
+          {g.items.length} key{g.items.length !== 1 ? 's' : ''}
+        </Tag>
+      </Space>
+    ),
+    children: (
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        {g.items.map((item) => (
+          <Tooltip key={`${item.namespace}/${item.key}`}
+            title={`${item.locales.length} locale${item.locales.length !== 1 ? 's' : ''}: ${item.locales.join(', ')}`}>
+            <Tag style={{ fontFamily: 'monospace', fontSize: 12, cursor: 'default' }}>
+              <span style={{ color: '#8c8c8c' }}>{item.namespace} /</span> {item.key}
+            </Tag>
+          </Tooltip>
+        ))}
+      </div>
+    ),
+  }));
+
+  return (
+    <Collapse
+      size="small"
+      defaultActiveKey={groups.map((g) => g.label)}
+      style={{ marginBottom: 20 }}
+      items={collapseItems}
+    />
+  );
+};
 
 // ─── Sandbox Tab ──────────────────────────────────────────────────────────────
 
@@ -349,6 +414,13 @@ interface SandboxTabProps {
 const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const qc = useQueryClient();
   const [pushModalOpen, setPushModalOpen] = useState(false);
+  const [namespace, setNamespace] = useState('');
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
+  const [sortBy, setSortBy] = useState<'key' | 'createdAt'>('key');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
 
   const { data: status, isLoading: statusLoading } = useQuery({
     queryKey: ['sandbox-status', projectSlug],
@@ -361,6 +433,51 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     queryFn: () => fetchSandboxDiff(projectSlug),
     enabled: !!projectSlug && !!status?.initialized,
   } as any) as { data: DiffResult | undefined; isLoading: boolean };
+
+  const { data: projectDetails } = useQuery({
+    queryKey: ['project', projectSlug],
+    queryFn: () => fetchProjectDetails(projectSlug),
+    enabled: !!projectSlug,
+  } as any) as { data: ProjectDetails | undefined };
+
+  // Production entries (used as base for sandbox view — overlay diff on top)
+  const { data: entriesData, isLoading: entriesLoading } = useQuery({
+    queryKey: ['entries', projectSlug, namespace, page, pageSize, search, sortBy, sortOrder],
+    queryFn: () => fetchEntries(projectSlug, namespace, page, pageSize, search, sortBy, sortOrder),
+    enabled: !!projectSlug && !!namespace,
+  } as any) as { data: PaginatedEntries | undefined; isLoading: boolean };
+
+  React.useEffect(() => { setNamespace(''); setPage(1); }, [projectSlug]);
+
+  React.useEffect(() => {
+    if (projectDetails && projectDetails.namespaces.length > 0 && !namespace) {
+      setNamespace(projectDetails.namespaces[0]);
+    }
+  }, [projectDetails, namespace]);
+
+  const locales: string[] = projectDetails?.locales ?? [];
+
+  // ── Diff lookups (memoized)
+  const diffLookup     = useMemo(() => buildDiffLookup(diff?.entries ?? []), [diff]);
+  const keyStatusMap   = useMemo(() => buildKeyStatusLookup(diff?.entries ?? []), [diff]);
+
+  // "Added" entries for the current namespace — these won't appear in production entries query
+  const addedEntries = useMemo((): Entry[] => {
+    if (!diff || !namespace) return [];
+    const keyMap = new Map<string, Record<string, string>>();
+    for (const e of diff.entries) {
+      if (e.status === 'added' && e.namespace === namespace) {
+        if (!keyMap.has(e.key)) keyMap.set(e.key, {});
+        if (e.sandboxValue != null) keyMap.get(e.key)![e.locale] = e.sandboxValue;
+      }
+    }
+    return Array.from(keyMap.entries()).map(([key, values]) => ({ key, createdAt: '', values }));
+  }, [diff, namespace]);
+
+  // Table data: added entries first, then production entries
+  const tableData = useMemo((): Entry[] => {
+    return [...addedEntries, ...(entriesData?.data ?? [])];
+  }, [addedEntries, entriesData]);
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
@@ -399,6 +516,22 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Reset failed'),
   });
 
+  const handleSearch = useCallback(() => { setSearch(searchInput); setPage(1); }, [searchInput]);
+
+  const handleTableChange = (
+    pagination: TablePaginationConfig,
+    _filters: Record<string, FilterValue | null>,
+    sorter: SorterResult<Entry> | SorterResult<Entry>[],
+  ) => {
+    setPage(pagination.current ?? 1);
+    setPageSize(pagination.pageSize ?? 50);
+    const s = Array.isArray(sorter) ? sorter[0] : sorter;
+    if (s?.field) {
+      setSortBy(s.field === 'createdAt' ? 'createdAt' : 'key');
+      setSortOrder(s.order === 'descend' ? 'desc' : 'asc');
+    }
+  };
+
   if (!projectSlug) return <Empty description="Select a project" style={{ marginTop: 48 }} />;
   if (statusLoading) return <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>;
 
@@ -421,14 +554,115 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
 
   const hasChanges = !!status?.hasChanges;
   const total = diff?.total ?? 0;
-  const diffColumns = makeDiffColumns();
 
   // ── Status panel colours
   const statusBg     = hasChanges ? '#fffbe6' : '#f6ffed';
   const statusBorder = hasChanges ? '#ffe58f' : '#b7eb8f';
   const statusIcon   = hasChanges
-    ? <span style={{ fontSize: 20 }}>⚡</span>
-    : <CheckCircleOutlined style={{ fontSize: 20, color: '#52c41a' }} />;
+    ? <span style={{ fontSize: 18 }}>⚡</span>
+    : <CheckCircleOutlined style={{ fontSize: 18, color: '#52c41a' }} />;
+
+  // ── Sandbox view columns (show sandbox values; highlight changed)
+  const sandboxColumns: ColumnsType<Entry> = [
+    {
+      title: 'Key', dataIndex: 'key', key: 'key', sorter: true, width: 220, fixed: 'left',
+      render: (text: string) => {
+        const rowStatus = keyStatusMap.get(`${namespace}/${text}`);
+        return (
+          <Space size={6}>
+            <Tooltip title={text}>
+              <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{text}</span>
+            </Tooltip>
+            {rowStatus && (
+              <Tag
+                color={rowStatus === 'added' ? 'green' : rowStatus === 'deleted' ? 'red' : 'orange'}
+                style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', marginLeft: 4 }}
+              >
+                {rowStatus}
+              </Tag>
+            )}
+          </Space>
+        );
+      },
+    },
+    ...locales.map((locale) => ({
+      title: <Tag color="blue">{locale}</Tag>,
+      key: locale,
+      width: 200,
+      render: (_: unknown, record: Entry) => {
+        const diffCell = diffLookup.get(`${namespace}/${record.key}/${locale}`);
+        const isDeleted = keyStatusMap.get(`${namespace}/${record.key}`) === 'deleted';
+
+        // Determine which value to show: sandbox value if changed/added, production otherwise
+        const sandboxVal = diffCell ? diffCell.sandboxValue : record.values[locale];
+        const prodVal    = diffCell ? diffCell.productionValue : record.values[locale];
+        const hasChange  = !!diffCell;
+
+        if (isDeleted) {
+          return (
+            <Tooltip title="Removed in sandbox">
+              <del style={{ color: '#ff4d4f', opacity: 0.7 }}>{prodVal}</del>
+            </Tooltip>
+          );
+        }
+
+        if (!sandboxVal) {
+          return <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>;
+        }
+
+        return (
+          <Tooltip
+            title={hasChange && prodVal !== sandboxVal
+              ? <span>Was: <em>{prodVal || '—'}</em></span>
+              : undefined}
+          >
+            <span style={{
+              display: 'block', wordBreak: 'break-word', whiteSpace: 'normal',
+              fontWeight: hasChange ? 500 : undefined,
+            }}>
+              {sandboxVal}
+            </span>
+          </Tooltip>
+        );
+      },
+    })),
+  ];
+
+  // ── Push modal diff columns
+  const pushDiffColumns: ColumnsType<DiffEntry> = [
+    { title: 'Namespace', dataIndex: 'namespace', key: 'ns', width: 120, ellipsis: true },
+    {
+      title: 'Key', dataIndex: 'key', key: 'key', width: 200, ellipsis: true,
+      render: (t: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{t}</span>,
+    },
+    { title: 'Locale', dataIndex: 'locale', key: 'locale', width: 70 },
+    {
+      title: 'Status', dataIndex: 'status', key: 'status', width: 90,
+      filters: [
+        { text: 'Added', value: 'added' },
+        { text: 'Changed', value: 'changed' },
+        { text: 'Deleted', value: 'deleted' },
+      ],
+      onFilter: (value, record) => record.status === value,
+      render: (s: string) => (
+        <Tag color={s === 'added' ? 'green' : s === 'deleted' ? 'red' : 'orange'}>
+          {s.charAt(0).toUpperCase() + s.slice(1)}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Current (Production)', dataIndex: 'productionValue', key: 'prod', ellipsis: true,
+      render: (v: string | null) =>
+        v != null ? <span style={{ color: '#888' }}>{v}</span>
+                  : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>,
+    },
+    {
+      title: 'Incoming (Sandbox)', dataIndex: 'sandboxValue', key: 'sandbox', ellipsis: true,
+      render: (v: string | null) =>
+        v != null ? <span style={{ color: '#237804', fontWeight: 500 }}>{v}</span>
+                  : <span style={{ color: '#cf1322', fontStyle: 'italic' }}>deleted</span>,
+    },
+  ];
 
   return (
     <>
@@ -437,33 +671,30 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         background: statusBg,
         border: `1px solid ${statusBorder}`,
         borderRadius: 8,
-        padding: '16px 20px',
-        marginBottom: 24,
+        padding: '14px 18px',
+        marginBottom: 20,
       }}>
         <Row align="middle" justify="space-between" wrap={false}>
           <Col flex="auto">
             <Space align="center" size={10}>
               {statusIcon}
               <Space direction="vertical" size={2}>
-                {/* Branch line */}
                 <Space size={6} align="center">
                   <Tag color="blue" style={{ fontFamily: 'monospace', margin: 0 }}>sandbox</Tag>
                   <ArrowRightOutlined style={{ color: '#8c8c8c', fontSize: 11 }} />
                   <Tag color="default" style={{ fontFamily: 'monospace', margin: 0 }}>production</Tag>
                 </Space>
-                {/* Status text */}
                 {hasChanges ? (
                   <Text>
                     Sandbox is{' '}
                     <Text strong>ahead by {total} change{total !== 1 ? 's' : ''}</Text>
                     {diff && (
                       <Text type="secondary" style={{ fontSize: 12 }}>
-                        {' '}·{' '}
-                        {diff.added > 0 && `${diff.added} added`}
-                        {diff.added > 0 && (diff.changed > 0 || diff.deleted > 0) && ', '}
-                        {diff.changed > 0 && `${diff.changed} changed`}
-                        {diff.changed > 0 && diff.deleted > 0 && ', '}
-                        {diff.deleted > 0 && `${diff.deleted} deleted`}
+                        {' '}({[
+                          diff.added   > 0 ? `${diff.added} added`   : null,
+                          diff.changed > 0 ? `${diff.changed} changed` : null,
+                          diff.deleted > 0 ? `${diff.deleted} deleted` : null,
+                        ].filter(Boolean).join(', ')})
                       </Text>
                     )}
                   </Text>
@@ -473,8 +704,6 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
               </Space>
             </Space>
           </Col>
-
-          {/* Actions */}
           <Col>
             <Space>
               <Popconfirm
@@ -488,14 +717,9 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                   Reset
                 </Button>
               </Popconfirm>
-
               {hasChanges && (
-                <Button
-                  type="primary"
-                  size="middle"
-                  icon={<ArrowRightOutlined />}
-                  onClick={() => setPushModalOpen(true)}
-                >
+                <Button type="primary" size="middle" icon={<ArrowRightOutlined />}
+                  onClick={() => setPushModalOpen(true)}>
                   Push to Production
                 </Button>
               )}
@@ -504,85 +728,89 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         </Row>
       </div>
 
-      {/* ── Diff table ── */}
-      {diffLoading ? (
-        <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
-      ) : !hasChanges ? (
-        <Empty description="No pending changes" style={{ marginTop: 48 }} />
-      ) : (
-        <Table<DiffEntry>
-          rowKey={(r) => `${r.namespace}/${r.key}/${r.locale}`}
-          columns={diffColumns}
-          dataSource={diff?.entries ?? []}
-          size="small"
-          scroll={{ x: true }}
-          pagination={{
-            pageSize: 30,
-            showSizeChanger: false,
-            showTotal: (t) => `${t} changed entries`,
-          }}
-        />
+      {/* ── Pending changes summary (collapsible, grouped by status) ── */}
+      {hasChanges && !diffLoading && diff && (
+        <DiffSummary diff={diff} />
       )}
+
+      {/* ── Full sandbox translations list ── */}
+      <Row gutter={12} style={{ marginBottom: 14 }}>
+        <Col>
+          <Select
+            placeholder="Namespace"
+            value={namespace || undefined}
+            onChange={(val) => { setNamespace(val); setPage(1); setSearchInput(''); setSearch(''); }}
+            style={{ width: 220 }}
+            disabled={!projectDetails}
+            options={(projectDetails?.namespaces ?? []).map((ns: string) => ({ value: ns, label: ns }))}
+          />
+        </Col>
+        <Col flex="auto">
+          <Input
+            placeholder="Search by key or value..."
+            prefix={<SearchOutlined />}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onPressEnter={handleSearch}
+            onBlur={handleSearch}
+            allowClear
+            onClear={() => { setSearchInput(''); setSearch(''); setPage(1); }}
+            style={{ maxWidth: 360 }}
+          />
+        </Col>
+      </Row>
+
+      <Table<Entry>
+        rowKey={(r) => r.key}
+        columns={sandboxColumns}
+        dataSource={tableData}
+        loading={entriesLoading || diffLoading}
+        scroll={{ x: true }}
+        onChange={handleTableChange}
+        pagination={{
+          current: page,
+          pageSize,
+          // Added entries injected client-side; offset pagination total accordingly
+          total: (entriesData?.meta.total ?? 0) + addedEntries.length,
+          showSizeChanger: true,
+          pageSizeOptions: ['25', '50', '100'],
+          showTotal: (t) => `${t} keys`,
+        }}
+        size="small"
+        onRow={(record) => {
+          const rowStatus = keyStatusMap.get(`${namespace}/${record.key}`);
+          return rowStatus ? { style: { background: ROW_BG[rowStatus] } } : {};
+        }}
+      />
 
       {/* ── Push to Production modal ── */}
       <Modal
         open={pushModalOpen}
-        title={
-          <Space>
-            <ArrowRightOutlined />
-            <span>Push to Production</span>
-          </Space>
-        }
+        title={<Space><ArrowRightOutlined /><span>Push to Production</span></Space>}
         onCancel={() => setPushModalOpen(false)}
         width={1000}
         footer={[
-          <Button key="cancel" onClick={() => setPushModalOpen(false)}>
-            Cancel
-          </Button>,
-          <Button
-            key="push"
-            type="primary"
-            icon={<ArrowRightOutlined />}
-            loading={promoteMutation.isPending}
-            onClick={() => promoteMutation.mutate()}
-          >
+          <Button key="cancel" onClick={() => setPushModalOpen(false)}>Cancel</Button>,
+          <Button key="push" type="primary" icon={<ArrowRightOutlined />}
+            loading={promoteMutation.isPending} onClick={() => promoteMutation.mutate()}>
             Push {total} change{total !== 1 ? 's' : ''} to Production
           </Button>,
         ]}
       >
-        {/* Summary */}
         <Alert
           type="warning"
-          style={{ marginBottom: 20 }}
-          message={
-            <Space>
-              <span>You are about to replace production with sandbox values.</span>
-              <span>A snapshot of current production will be saved automatically.</span>
-            </Space>
-          }
+          style={{ marginBottom: 16 }}
+          message="Review all pending changes below. A snapshot of current production will be saved automatically before applying."
           showIcon
         />
-
-        <Row gutter={24} style={{ marginBottom: 16 }}>
-          <Col>
-            <Space>
-              <Tag color="green" style={{ fontSize: 13, padding: '2px 10px' }}>
-                +{diff?.added ?? 0} added
-              </Tag>
-              <Tag color="orange" style={{ fontSize: 13, padding: '2px 10px' }}>
-                {diff?.changed ?? 0} changed
-              </Tag>
-              <Tag color="red" style={{ fontSize: 13, padding: '2px 10px' }}>
-                −{diff?.deleted ?? 0} deleted
-              </Tag>
-            </Space>
-          </Col>
-        </Row>
-
-        {/* Full diff table */}
+        <Space style={{ marginBottom: 12 }}>
+          <Tag color="green" style={{ fontSize: 13, padding: '2px 10px' }}>+{diff?.added ?? 0} added</Tag>
+          <Tag color="orange" style={{ fontSize: 13, padding: '2px 10px' }}>{diff?.changed ?? 0} changed</Tag>
+          <Tag color="red" style={{ fontSize: 13, padding: '2px 10px' }}>−{diff?.deleted ?? 0} deleted</Tag>
+        </Space>
         <Table<DiffEntry>
           rowKey={(r) => `${r.namespace}/${r.key}/${r.locale}`}
-          columns={makeDiffColumns()}
+          columns={pushDiffColumns}
           dataSource={diff?.entries ?? []}
           size="small"
           scroll={{ x: true, y: 420 }}
