@@ -303,7 +303,7 @@ export class TranslationsService {
     if (!member) {
       throw new NotFoundException(`User is not a member of this project`);
     }
-    if (member.role === 'owner' && project.ownerId === targetUserId) {
+    if (member.role === 'owner') {
       throw new BadRequestException(
         'Cannot remove the project owner. Transfer ownership first.',
       );

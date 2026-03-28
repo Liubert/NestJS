@@ -117,7 +117,9 @@ export class UsersService {
       mustChangePassword: true,
     });
 
-    return this.usersRepo.save(entity);
+    const saved = await this.usersRepo.save(entity);
+    // Re-fetch from DB so the returned object never contains the in-memory passwordHash.
+    return (await this.usersRepo.findOne({ where: { id: saved.id } }))!;
   }
 
   // ─── Update (self or admin) ───────────────────────────────────────────────

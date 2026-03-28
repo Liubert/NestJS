@@ -5,7 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 
@@ -82,7 +82,7 @@ export class AuthService {
     }
 
     // Invalidate previous unused tokens for this user
-    await this.resetTokenRepo.delete({ userId: user.id, usedAt: undefined as any });
+    await this.resetTokenRepo.delete({ userId: user.id, usedAt: IsNull() });
 
     const rawToken = randomBytes(32).toString('base64url');
     const tokenHash = createHash('sha256').update(rawToken).digest('hex');

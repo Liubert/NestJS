@@ -1,4 +1,4 @@
-import { IsEmail, IsEnum, IsOptional } from 'class-validator';
+import { IsEmail, IsIn, IsOptional } from 'class-validator';
 import { ProjectMemberRole } from '../entities/project-member.entity.js';
 
 export class AddMemberDto {
@@ -6,6 +6,6 @@ export class AddMemberDto {
   email!: string;
 
   @IsOptional()
-  @IsEnum(['owner', 'member'] as const)
+  @IsIn(['owner', 'member'])
   role?: ProjectMemberRole;
 }
