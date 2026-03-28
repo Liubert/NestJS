@@ -5,6 +5,7 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
 import { NamespaceEntity } from './namespace.entity.js';
 import { LocaleEntity } from './locale.entity.js';
 import { ProjectMemberEntity } from './project-member.entity.js';
@@ -25,6 +26,12 @@ export class ProjectEntity {
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+
+  @Column({ name: 'sandbox_initialized_at', type: 'timestamptz', nullable: true })
+  sandboxInitializedAt!: Date | null;
+
+  @Column({ name: 'sandbox_has_changes', type: 'boolean', default: false })
+  sandboxHasChanges!: boolean;
 
   @OneToMany(() => NamespaceEntity, (ns) => ns.project)
   namespaces!: NamespaceEntity[];
