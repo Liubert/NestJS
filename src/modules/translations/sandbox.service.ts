@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -15,8 +16,18 @@ import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
 import { UserRole } from '../users/types/user-role.enum.js';
+import { CreateEntryDto } from './dto/create-entry.dto.js';
+import { UpdateEntryDto } from './dto/update-entry.dto.js';
+import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
+import { paginate, PaginatedResponse } from '../../common/dto/paginated-response.dto.js';
 
 const MAX_SNAPSHOTS = 5;
+
+export interface SandboxEntryRow {
+  key: string;
+  createdAt: Date;
+  values: Record<string, string>;
+}
 
 export type DiffStatus = 'added' | 'changed' | 'deleted' | 'unchanged';
 
@@ -476,5 +487,249 @@ export class SandboxService {
 
     const result = await this.initSandbox(projectSlug, userId, role, true);
     return { copiedRows: result.copiedRows };
+  }
+
+  // ─── Sandbox entries (editable view) ──────────────────────────────────────
+
+  /**
+   * Returns the "sandbox view" of a namespace:
+   * - Production entries not deleted in sandbox (sandbox value if overridden, else production)
+   * - Sandbox-only entries (added in sandbox, not yet in production)
+   * Deleted entries (all locales marked is_deleted=true) are excluded.
+   */
+  async listSandboxEntries(
+    projectSlug: string,
+    nsSlug: string,
+    query: ListEntriesQueryDto,
+    userId: string,
+    role: UserRole,
+  ): Promise<PaginatedResponse<SandboxEntryRow>> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const { page, limit, search, sortBy, sortOrder } = query;
+    const params: unknown[] = [project.id, ns.id];
+
+    let searchCondition = '';
+    if (search && search.length >= 2) {
+      params.push(`%${search}%`);
+      const si = params.length;
+      searchCondition = `
+        AND (
+          tk.key ILIKE $${si}
+          OR EXISTS (
+            SELECT 1 FROM sandbox_values sv2
+            WHERE sv2.key_id = tk.id AND sv2.project_id = $1
+              AND sv2.is_deleted = false AND sv2.value ILIKE $${si}
+          )
+          OR EXISTS (
+            SELECT 1 FROM translation_values tv2
+            WHERE tv2.key_id = tk.id AND tv2.value ILIKE $${si}
+          )
+        )
+      `;
+    }
+
+    // A key is visible in sandbox if:
+    // (a) it has production values OR sandbox-active values, AND
+    // (b) it is NOT fully deleted in sandbox (all sandbox entries are is_deleted=true)
+    const visibilityWhere = `
+      AND NOT (
+        EXISTS (SELECT 1 FROM sandbox_values sv WHERE sv.key_id = tk.id AND sv.project_id = $1 AND sv.is_deleted = true)
+        AND NOT EXISTS (SELECT 1 FROM sandbox_values sv WHERE sv.key_id = tk.id AND sv.project_id = $1 AND sv.is_deleted = false)
+      )
+      AND (
+        EXISTS (SELECT 1 FROM translation_values tv WHERE tv.key_id = tk.id)
+        OR EXISTS (SELECT 1 FROM sandbox_values sv WHERE sv.key_id = tk.id AND sv.project_id = $1 AND sv.is_deleted = false)
+      )
+    `;
+
+    const baseWhere = `tk.namespace_id = $2 ${visibilityWhere} ${searchCondition}`;
+
+    const [{ count }] = await this.dataSource.query<{ count: string }[]>(
+      `SELECT COUNT(DISTINCT tk.id) AS count FROM translation_keys tk WHERE ${baseWhere}`,
+      params,
+    );
+
+    const sortCol = sortBy === 'createdAt' ? 'tk.created_at' : 'tk.key';
+    const sortDir = sortOrder.toUpperCase() as 'ASC' | 'DESC';
+
+    params.push(limit, (page - 1) * limit);
+    const limitIdx = params.length - 1;
+    const offsetIdx = params.length;
+
+    const keys = await this.dataSource.query<{ id: string; key: string; created_at: Date }[]>(
+      `SELECT DISTINCT tk.id, tk.key, tk.created_at
+       FROM translation_keys tk
+       WHERE ${baseWhere}
+       ORDER BY ${sortCol} ${sortDir}
+       LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
+      params,
+    );
+
+    if (!keys.length) return paginate([], Number(count), page, limit);
+
+    const keyIds = keys.map((k) => k.id);
+
+    const values = await this.dataSource.query<{ key_id: string; locale: string; value: string | null }[]>(`
+      -- Production values, overridden by sandbox where available
+      SELECT tv.key_id, l.code AS locale, COALESCE(sv.value, tv.value) AS value
+      FROM translation_values tv
+      JOIN translation_locales l ON l.id = tv.locale_id
+      LEFT JOIN sandbox_values sv
+        ON sv.key_id = tv.key_id AND sv.locale_id = tv.locale_id
+        AND sv.project_id = $1 AND sv.is_deleted = false
+      WHERE tv.key_id = ANY($2)
+
+      UNION ALL
+
+      -- Sandbox-only values (added in sandbox, not present in production)
+      SELECT sv.key_id, l.code AS locale, sv.value
+      FROM sandbox_values sv
+      JOIN translation_locales l ON l.id = sv.locale_id
+      WHERE sv.key_id = ANY($2) AND sv.project_id = $1 AND sv.is_deleted = false
+        AND NOT EXISTS (
+          SELECT 1 FROM translation_values tv2
+          WHERE tv2.key_id = sv.key_id AND tv2.locale_id = sv.locale_id
+        )
+    `, [project.id, keyIds]);
+
+    const valuesByKey = new Map<string, Record<string, string>>();
+    for (const v of values) {
+      if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
+      if (v.value != null) valuesByKey.get(v.key_id)![v.locale] = v.value;
+    }
+
+    const data: SandboxEntryRow[] = keys.map((k) => ({
+      key: k.key,
+      createdAt: k.created_at,
+      values: valuesByKey.get(k.id) ?? {},
+    }));
+
+    return paginate(data, Number(count), page, limit);
+  }
+
+  /**
+   * Creates a new translation key and stores initial values in sandbox only.
+   * The key is visible in production only after promote().
+   */
+  async createSandboxEntry(
+    projectSlug: string,
+    nsSlug: string,
+    dto: CreateEntryDto,
+    userId: string,
+    role: UserRole,
+  ): Promise<SandboxEntryRow> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const exists = await this.keyRepo.existsBy({ namespaceId: ns.id, key: dto.key });
+    if (exists) {
+      throw new ConflictException(`Key "${dto.key}" already exists in namespace "${nsSlug}"`);
+    }
+
+    const keyEntity = await this.keyRepo.save(
+      this.keyRepo.create({ namespaceId: ns.id, key: dto.key }),
+    );
+
+    const locales = await this.localeRepo.findBy({ projectId: project.id });
+    const resultValues: Record<string, string> = {};
+
+    for (const locale of locales) {
+      const val = dto.values?.[locale.code];
+      if (val !== undefined) {
+        await this.upsertSandboxValue(project.id, keyEntity.id, locale.id, val);
+        resultValues[locale.code] = val;
+      }
+    }
+
+    return { key: keyEntity.key, createdAt: keyEntity.createdAt, values: resultValues };
+  }
+
+  /**
+   * Updates sandbox values for an existing key (does not touch production).
+   */
+  async updateSandboxEntry(
+    projectSlug: string,
+    nsSlug: string,
+    key: string,
+    dto: UpdateEntryDto,
+    userId: string,
+    role: UserRole,
+  ): Promise<SandboxEntryRow> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const keyEntity = await this.keyRepo.findOne({ where: { namespaceId: ns.id, key } });
+    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    const locales = await this.localeRepo.findBy({ projectId: project.id });
+    const resultValues: Record<string, string> = {};
+
+    for (const locale of locales) {
+      const val = dto.values[locale.code];
+      if (val !== undefined) {
+        await this.upsertSandboxValue(project.id, keyEntity.id, locale.id, val);
+        resultValues[locale.code] = val;
+      }
+    }
+
+    return { key: keyEntity.key, createdAt: keyEntity.createdAt, values: resultValues };
+  }
+
+  /**
+   * Soft-deletes a key in sandbox across all locales (marks is_deleted=true).
+   * The key is removed from production only after promote().
+   */
+  async deleteSandboxEntry(
+    projectSlug: string,
+    nsSlug: string,
+    key: string,
+    userId: string,
+    role: UserRole,
+  ): Promise<void> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const keyEntity = await this.keyRepo.findOne({ where: { namespaceId: ns.id, key } });
+    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    const locales = await this.localeRepo.findBy({ projectId: project.id });
+
+    for (const locale of locales) {
+      await this.deleteSandboxValue(project.id, keyEntity.id, locale.id);
+    }
   }
 }

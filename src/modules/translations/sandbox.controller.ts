@@ -1,11 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
+  Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -15,6 +18,9 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { SandboxService } from './sandbox.service.js';
+import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
+import { CreateEntryDto } from './dto/create-entry.dto.js';
+import { UpdateEntryDto } from './dto/update-entry.dto.js';
 
 class InitSandboxDto {
   @IsOptional()
@@ -94,5 +100,53 @@ export class SandboxController {
   @ApiOperation({ summary: 'List production snapshots (for revert)' })
   listSnapshots(@Param('slug') slug: string) {
     return this.sandboxService.listSnapshots(slug);
+  }
+
+  // ─── Sandbox entry management ──────────────────────────────────────────────
+
+  @Get('namespaces/:ns/entries')
+  @ApiOperation({ summary: 'List sandbox entries for a namespace (sandbox view with diff overlay)' })
+  listEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Query() query: ListEntriesQueryDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.listSandboxEntries(slug, ns, query, user.userId, user.role);
+  }
+
+  @Post('namespaces/:ns/entries')
+  @ApiOperation({ summary: 'Create a new translation key in sandbox (not visible in production until promoted)' })
+  createEntry(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: CreateEntryDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.createSandboxEntry(slug, ns, dto, user.userId, user.role);
+  }
+
+  @Patch('namespaces/:ns/entries/:key')
+  @ApiOperation({ summary: 'Update translation values for a key in sandbox' })
+  updateEntry(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @Body() dto: UpdateEntryDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.updateSandboxEntry(slug, ns, decodeURIComponent(key), dto, user.userId, user.role);
+  }
+
+  @Delete('namespaces/:ns/entries/:key')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a translation key in sandbox (soft delete; not removed from production until promoted)' })
+  deleteEntry(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.deleteSandboxEntry(slug, ns, decodeURIComponent(key), user.userId, user.role);
   }
 }

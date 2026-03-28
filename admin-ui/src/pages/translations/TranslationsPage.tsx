@@ -157,6 +157,43 @@ const fetchSnapshots = async (slug: string): Promise<Snapshot[]> => {
   return res.data;
 };
 
+const fetchSandboxEntries = async (
+  slug: string, ns: string, page: number, limit: number,
+  search: string, sortBy: string, sortOrder: string,
+): Promise<PaginatedEntries> => {
+  const params: Record<string, string | number> = { page, limit, sortBy, sortOrder };
+  if (search.length >= 2) params.search = search;
+  const res = await apiClient.get(
+    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries`, { params },
+  );
+  return res.data;
+};
+
+const createSandboxEntry = async (
+  slug: string, ns: string, payload: { key: string; values: Record<string, string> },
+) => {
+  const res = await apiClient.post(
+    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries`, payload,
+  );
+  return res.data;
+};
+
+const updateSandboxEntry = async (
+  slug: string, ns: string, key: string, values: Record<string, string>,
+) => {
+  const res = await apiClient.patch(
+    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
+    { values },
+  );
+  return res.data;
+};
+
+const deleteSandboxEntry = async (slug: string, ns: string, key: string) => {
+  await apiClient.delete(
+    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
+  );
+};
+
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 
 const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
@@ -330,13 +367,6 @@ function buildKeyDiffs(entries: DiffEntry[]): KeyDiff[] {
   return Array.from(map.values());
 }
 
-// Build lookup: "namespace/key/locale" → DiffEntry
-function buildDiffLookup(entries: DiffEntry[]): Map<string, DiffEntry> {
-  const m = new Map<string, DiffEntry>();
-  for (const e of entries) m.set(`${e.namespace}/${e.key}/${e.locale}`, e);
-  return m;
-}
-
 // Build lookup: "namespace/key" → dominant status (added > deleted > changed)
 function buildKeyStatusLookup(entries: DiffEntry[]): Map<string, DiffEntry['status']> {
   const m = new Map<string, DiffEntry['status']>();
@@ -414,6 +444,9 @@ interface SandboxTabProps {
 const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const qc = useQueryClient();
   const [pushModalOpen, setPushModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editEntry, setEditEntry] = useState<Entry | null>(null);
+  const [isNewEntry, setIsNewEntry] = useState(false);
   const [namespace, setNamespace] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -440,11 +473,11 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     enabled: !!projectSlug,
   } as any) as { data: ProjectDetails | undefined };
 
-  // Production entries (used as base for sandbox view — overlay diff on top)
-  const { data: entriesData, isLoading: entriesLoading } = useQuery({
-    queryKey: ['entries', projectSlug, namespace, page, pageSize, search, sortBy, sortOrder],
-    queryFn: () => fetchEntries(projectSlug, namespace, page, pageSize, search, sortBy, sortOrder),
-    enabled: !!projectSlug && !!namespace,
+  // Sandbox-specific entries (true sandbox view, not production overlay)
+  const { data: sandboxEntries, isLoading: entriesLoading } = useQuery({
+    queryKey: ['sandbox-entries', projectSlug, namespace, page, pageSize, search, sortBy, sortOrder],
+    queryFn: () => fetchSandboxEntries(projectSlug, namespace, page, pageSize, search, sortBy, sortOrder),
+    enabled: !!projectSlug && !!namespace && !!status?.initialized,
   } as any) as { data: PaginatedEntries | undefined; isLoading: boolean };
 
   React.useEffect(() => { setNamespace(''); setPage(1); }, [projectSlug]);
@@ -457,31 +490,13 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
 
   const locales: string[] = projectDetails?.locales ?? [];
 
-  // ── Diff lookups (memoized)
-  const diffLookup     = useMemo(() => buildDiffLookup(diff?.entries ?? []), [diff]);
-  const keyStatusMap   = useMemo(() => buildKeyStatusLookup(diff?.entries ?? []), [diff]);
+  // Diff key-status lookup for row highlighting (ns/key → status)
+  const keyStatusMap = useMemo(() => buildKeyStatusLookup(diff?.entries ?? []), [diff]);
 
-  // "Added" entries for the current namespace — these won't appear in production entries query
-  const addedEntries = useMemo((): Entry[] => {
-    if (!diff || !namespace) return [];
-    const keyMap = new Map<string, Record<string, string>>();
-    for (const e of diff.entries) {
-      if (e.status === 'added' && e.namespace === namespace) {
-        if (!keyMap.has(e.key)) keyMap.set(e.key, {});
-        if (e.sandboxValue != null) keyMap.get(e.key)![e.locale] = e.sandboxValue;
-      }
-    }
-    return Array.from(keyMap.entries()).map(([key, values]) => ({ key, createdAt: '', values }));
-  }, [diff, namespace]);
-
-  // Table data: added entries first, then production entries
-  const tableData = useMemo((): Entry[] => {
-    return [...addedEntries, ...(entriesData?.data ?? [])];
-  }, [addedEntries, entriesData]);
-
-  const invalidate = () => {
+  const invalidateSandbox = () => {
     qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
     qc.invalidateQueries({ queryKey: ['sandbox-diff', projectSlug] });
+    qc.invalidateQueries({ queryKey: ['sandbox-entries', projectSlug] });
   };
 
   const initMutation = useMutation({
@@ -489,9 +504,40 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       apiClient.post(`/translations/projects/${projectSlug}/sandbox/init`, { force: false }).then((r) => r.data),
     onSuccess: (data: any) => {
       message.success(`Sandbox initialized — ${data.copiedRows} rows copied from production`);
-      invalidate();
+      invalidateSandbox();
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Failed to initialize'),
+  });
+
+  const createMutation = useMutation({
+    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
+      createSandboxEntry(projectSlug, namespace, { key, values }),
+    onSuccess: () => {
+      message.success('Key created in sandbox');
+      invalidateSandbox();
+      setEditModalOpen(false);
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error creating key'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
+      updateSandboxEntry(projectSlug, namespace, key, values),
+    onSuccess: () => {
+      message.success('Saved to sandbox');
+      invalidateSandbox();
+      setEditModalOpen(false);
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error saving'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (key: string) => deleteSandboxEntry(projectSlug, namespace, key),
+    onSuccess: () => {
+      message.success('Key removed from sandbox');
+      invalidateSandbox();
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error deleting'),
   });
 
   const promoteMutation = useMutation({
@@ -499,7 +545,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       apiClient.post(`/translations/projects/${projectSlug}/sandbox/promote`).then((r) => r.data),
     onSuccess: (data: any) => {
       message.success(`Pushed — ${data.promoted} entries are now live in production`);
-      invalidate();
+      invalidateSandbox();
       qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
       setPushModalOpen(false);
     },
@@ -511,7 +557,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       apiClient.post(`/translations/projects/${projectSlug}/sandbox/reset`).then((r) => r.data),
     onSuccess: (data: any) => {
       message.success(`Sandbox reset — ${data.copiedRows} rows re-copied from production`);
-      invalidate();
+      invalidateSandbox();
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Reset failed'),
   });
@@ -555,14 +601,13 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const hasChanges = !!status?.hasChanges;
   const total = diff?.total ?? 0;
 
-  // ── Status panel colours
   const statusBg     = hasChanges ? '#fffbe6' : '#f6ffed';
   const statusBorder = hasChanges ? '#ffe58f' : '#b7eb8f';
   const statusIcon   = hasChanges
     ? <span style={{ fontSize: 18 }}>⚡</span>
     : <CheckCircleOutlined style={{ fontSize: 18, color: '#52c41a' }} />;
 
-  // ── Sandbox view columns (show sandbox values; highlight changed)
+  // Sandbox entries table columns — shows true sandbox values, highlights changed rows
   const sandboxColumns: ColumnsType<Entry> = [
     {
       title: 'Key', dataIndex: 'key', key: 'key', sorter: true, width: 220, fixed: 'left',
@@ -576,7 +621,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
             {rowStatus && (
               <Tag
                 color={rowStatus === 'added' ? 'green' : rowStatus === 'deleted' ? 'red' : 'orange'}
-                style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px', marginLeft: 4 }}
+                style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px' }}
               >
                 {rowStatus}
               </Tag>
@@ -588,47 +633,33 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     ...locales.map((locale) => ({
       title: <Tag color="blue">{locale}</Tag>,
       key: locale,
-      width: 200,
+      width: 180,
       render: (_: unknown, record: Entry) => {
-        const diffCell = diffLookup.get(`${namespace}/${record.key}/${locale}`);
-        const isDeleted = keyStatusMap.get(`${namespace}/${record.key}`) === 'deleted';
-
-        // Determine which value to show: sandbox value if changed/added, production otherwise
-        const sandboxVal = diffCell ? diffCell.sandboxValue : record.values[locale];
-        const prodVal    = diffCell ? diffCell.productionValue : record.values[locale];
-        const hasChange  = !!diffCell;
-
-        if (isDeleted) {
-          return (
-            <Tooltip title="Removed in sandbox">
-              <del style={{ color: '#ff4d4f', opacity: 0.7 }}>{prodVal}</del>
-            </Tooltip>
-          );
-        }
-
-        if (!sandboxVal) {
-          return <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>;
-        }
-
-        return (
-          <Tooltip
-            title={hasChange && prodVal !== sandboxVal
-              ? <span>Was: <em>{prodVal || '—'}</em></span>
-              : undefined}
-          >
-            <span style={{
-              display: 'block', wordBreak: 'break-word', whiteSpace: 'normal',
-              fontWeight: hasChange ? 500 : undefined,
-            }}>
-              {sandboxVal}
-            </span>
-          </Tooltip>
-        );
+        const val = record.values[locale];
+        return val
+          ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
+          : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>;
       },
     })),
+    {
+      title: '', key: 'actions', width: 80, fixed: 'right',
+      render: (_: unknown, record: Entry) => (
+        <Space size={4}>
+          <Button type="text" size="small" icon={<EditOutlined />}
+            onClick={() => { setEditEntry(record); setIsNewEntry(false); setEditModalOpen(true); }} />
+          <Popconfirm
+            title="Remove this key from sandbox?"
+            description="The key will be marked for deletion and removed from production when you push."
+            onConfirm={() => deleteMutation.mutate(record.key)}
+            okText="Remove" okButtonProps={{ danger: true }}
+          >
+            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
   ];
 
-  // ── Push modal diff columns
   const pushDiffColumns: ColumnsType<DiffEntry> = [
     { title: 'Namespace', dataIndex: 'namespace', key: 'ns', width: 120, ellipsis: true },
     {
@@ -668,11 +699,8 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     <>
       {/* ── Git-style status panel ── */}
       <div style={{
-        background: statusBg,
-        border: `1px solid ${statusBorder}`,
-        borderRadius: 8,
-        padding: '14px 18px',
-        marginBottom: 20,
+        background: statusBg, border: `1px solid ${statusBorder}`,
+        borderRadius: 8, padding: '14px 18px', marginBottom: 20,
       }}>
         <Row align="middle" justify="space-between" wrap={false}>
           <Col flex="auto">
@@ -686,14 +714,13 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                 </Space>
                 {hasChanges ? (
                   <Text>
-                    Sandbox is{' '}
-                    <Text strong>ahead by {total} change{total !== 1 ? 's' : ''}</Text>
+                    Sandbox is <Text strong>ahead by {total} change{total !== 1 ? 's' : ''}</Text>
                     {diff && (
                       <Text type="secondary" style={{ fontSize: 12 }}>
                         {' '}({[
-                          diff.added   > 0 ? `${diff.added} added`   : null,
-                          diff.changed > 0 ? `${diff.changed} changed` : null,
-                          diff.deleted > 0 ? `${diff.deleted} deleted` : null,
+                          diff.added   > 0 ? `${diff.added} added`     : null,
+                          diff.changed > 0 ? `${diff.changed} changed`  : null,
+                          diff.deleted > 0 ? `${diff.deleted} deleted`  : null,
                         ].filter(Boolean).join(', ')})
                       </Text>
                     )}
@@ -710,15 +737,12 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                 title="Reset sandbox?"
                 description="All changes will be discarded. The sandbox will be re-copied from current production."
                 onConfirm={() => resetMutation.mutate()}
-                okText="Reset"
-                okButtonProps={{ danger: true }}
+                okText="Reset" okButtonProps={{ danger: true }}
               >
-                <Button icon={<SyncOutlined />} size="small" loading={resetMutation.isPending}>
-                  Reset
-                </Button>
+                <Button icon={<SyncOutlined />} size="small" loading={resetMutation.isPending}>Reset</Button>
               </Popconfirm>
               {hasChanges && (
-                <Button type="primary" size="middle" icon={<ArrowRightOutlined />}
+                <Button type="primary" icon={<ArrowRightOutlined />}
                   onClick={() => setPushModalOpen(true)}>
                   Push to Production
                 </Button>
@@ -728,12 +752,10 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         </Row>
       </div>
 
-      {/* ── Pending changes summary (collapsible, grouped by status) ── */}
-      {hasChanges && !diffLoading && diff && (
-        <DiffSummary diff={diff} />
-      )}
+      {/* ── Pending changes summary ── */}
+      {hasChanges && !diffLoading && diff && <DiffSummary diff={diff} />}
 
-      {/* ── Full sandbox translations list ── */}
+      {/* ── Sandbox entries controls ── */}
       <Row gutter={12} style={{ marginBottom: 14 }}>
         <Col>
           <Select
@@ -758,20 +780,25 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
             style={{ maxWidth: 360 }}
           />
         </Col>
+        <Col>
+          <Button type="primary" icon={<PlusOutlined />} disabled={!namespace}
+            onClick={() => { setEditEntry(null); setIsNewEntry(true); setEditModalOpen(true); }}>
+            Add key
+          </Button>
+        </Col>
       </Row>
 
+      {/* ── Sandbox entries table ── */}
       <Table<Entry>
-        rowKey={(r) => r.key}
+        rowKey="key"
         columns={sandboxColumns}
-        dataSource={tableData}
-        loading={entriesLoading || diffLoading}
+        dataSource={sandboxEntries?.data ?? []}
+        loading={entriesLoading}
         scroll={{ x: true }}
         onChange={handleTableChange}
         pagination={{
-          current: page,
-          pageSize,
-          // Added entries injected client-side; offset pagination total accordingly
-          total: (entriesData?.meta.total ?? 0) + addedEntries.length,
+          current: page, pageSize,
+          total: sandboxEntries?.meta.total ?? 0,
           showSizeChanger: true,
           pageSizeOptions: ['25', '50', '100'],
           showTotal: (t) => `${t} keys`,
@@ -781,6 +808,20 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
           const rowStatus = keyStatusMap.get(`${namespace}/${record.key}`);
           return rowStatus ? { style: { background: ROW_BG[rowStatus] } } : {};
         }}
+      />
+
+      {/* ── Edit / Add modal (saves to sandbox) ── */}
+      <EditModal
+        open={editModalOpen}
+        entry={editEntry}
+        locales={locales}
+        isNew={isNewEntry}
+        onClose={() => setEditModalOpen(false)}
+        onSave={(key, values) => {
+          if (isNewEntry) createMutation.mutate({ key, values });
+          else updateMutation.mutate({ key, values });
+        }}
+        saving={createMutation.isPending || updateMutation.isPending}
       />
 
       {/* ── Push to Production modal ── */}
