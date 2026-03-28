@@ -1,11 +1,12 @@
 import React, { useState, useCallback } from 'react';
 import {
   Table, Typography, Space, Input, Select, Button, Modal,
-  Form, message, Tooltip, Popconfirm, Tag, Row, Col, Alert,
+  Form, message, Tooltip, Popconfirm, Tag, Row, Col, Alert, Spin,
 } from 'antd';
 import {
   SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined,
   ThunderboltOutlined, SafetyCertificateOutlined,
+  BranchesOutlined, CloudUploadOutlined, DiffOutlined, RollbackOutlined, SyncOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -38,6 +39,37 @@ interface Entry {
 interface PaginatedEntries {
   data: Entry[];
   meta: { page: number; limit: number; total: number; totalPages: number };
+}
+
+interface SandboxStatus {
+  initialized: boolean;
+  initializedAt: string | null;
+  hasChanges: boolean;
+  snapshotCount: number;
+}
+
+interface DiffEntry {
+  namespace: string;
+  key: string;
+  locale: string;
+  status: 'added' | 'changed' | 'deleted';
+  productionValue: string | null;
+  sandboxValue: string | null;
+}
+
+interface DiffResult {
+  total: number;
+  added: number;
+  changed: number;
+  deleted: number;
+  entries: DiffEntry[];
+}
+
+interface Snapshot {
+  id: string;
+  label: string | null;
+  createdAt: string;
+  entryCount: number;
 }
 
 // ─── API calls ────────────────────────────────────────────────────────────────
@@ -124,6 +156,41 @@ const deleteEntry = async (projectSlug: string, ns: string, key: string) => {
   await apiClient.delete(
     `/translations/projects/${projectSlug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
   );
+};
+
+const fetchSandboxStatus = async (slug: string): Promise<SandboxStatus> => {
+  const res = await apiClient.get(`/translations/projects/${slug}/sandbox/status`);
+  return res.data;
+};
+
+const apiInitSandbox = async (slug: string, force = false) => {
+  const res = await apiClient.post(`/translations/projects/${slug}/sandbox/init`, { force });
+  return res.data;
+};
+
+const fetchSandboxDiff = async (slug: string): Promise<DiffResult> => {
+  const res = await apiClient.get(`/translations/projects/${slug}/sandbox/diff`);
+  return res.data;
+};
+
+const apiPromoteSandbox = async (slug: string) => {
+  const res = await apiClient.post(`/translations/projects/${slug}/sandbox/promote`);
+  return res.data;
+};
+
+const apiRevertSandbox = async (slug: string, snapshotId: string) => {
+  const res = await apiClient.post(`/translations/projects/${slug}/sandbox/revert`, { snapshotId });
+  return res.data;
+};
+
+const apiResetSandbox = async (slug: string) => {
+  const res = await apiClient.post(`/translations/projects/${slug}/sandbox/reset`);
+  return res.data;
+};
+
+const fetchSnapshots = async (slug: string): Promise<Snapshot[]> => {
+  const res = await apiClient.get(`/translations/projects/${slug}/sandbox/snapshots`);
+  return res.data;
 };
 
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
@@ -321,6 +388,69 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
   );
 };
 
+// ─── Diff status config ────────────────────────────────────────────────────────
+
+const DIFF_STATUS: Record<string, { color: string; label: string }> = {
+  added:   { color: 'green',  label: 'Added' },
+  changed: { color: 'orange', label: 'Changed' },
+  deleted: { color: 'red',    label: 'Deleted' },
+};
+
+const diffColumns: ColumnsType<DiffEntry> = [
+  {
+    title: 'NS',
+    dataIndex: 'namespace',
+    key: 'ns',
+    width: 110,
+    ellipsis: true,
+  },
+  {
+    title: 'Key',
+    dataIndex: 'key',
+    key: 'key',
+    width: 200,
+    ellipsis: true,
+    render: (t: string) => (
+      <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{t}</span>
+    ),
+  },
+  {
+    title: 'Locale',
+    dataIndex: 'locale',
+    key: 'locale',
+    width: 70,
+  },
+  {
+    title: 'Status',
+    dataIndex: 'status',
+    key: 'status',
+    width: 90,
+    render: (s: string) => (
+      <Tag color={DIFF_STATUS[s]?.color}>{DIFF_STATUS[s]?.label ?? s}</Tag>
+    ),
+  },
+  {
+    title: 'Production',
+    dataIndex: 'productionValue',
+    key: 'prod',
+    ellipsis: true,
+    render: (v: string | null) =>
+      v != null
+        ? <span style={{ color: '#d32f2f' }}>{v}</span>
+        : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>,
+  },
+  {
+    title: 'Sandbox',
+    dataIndex: 'sandboxValue',
+    key: 'sandbox',
+    ellipsis: true,
+    render: (v: string | null) =>
+      v != null
+        ? <span style={{ color: '#388e3c' }}>{v}</span>
+        : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>,
+  },
+];
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TranslationsPage: React.FC = () => {
@@ -338,6 +468,10 @@ const TranslationsPage: React.FC = () => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [isNewEntry, setIsNewEntry] = useState(false);
+
+  const [diffModalOpen, setDiffModalOpen] = useState(false);
+  const [revertModalOpen, setRevertModalOpen] = useState(false);
+  const [selectedSnapshotId, setSelectedSnapshotId] = useState<string>('');
 
   // ── Projects list
   const { data: projects = [], isLoading: projectsLoading } = useQuery({
@@ -375,6 +509,27 @@ const TranslationsPage: React.FC = () => {
     enabled: !!projectSlug && !!namespace,
   } as any);
 
+  // ── Sandbox status
+  const { data: sandboxStatus } = useQuery({
+    queryKey: ['sandbox-status', projectSlug],
+    queryFn: () => fetchSandboxStatus(projectSlug),
+    enabled: !!projectSlug,
+  } as any) as { data: SandboxStatus | undefined };
+
+  // ── Sandbox diff (only when modal is open)
+  const { data: diffData, isLoading: diffLoading } = useQuery({
+    queryKey: ['sandbox-diff', projectSlug],
+    queryFn: () => fetchSandboxDiff(projectSlug),
+    enabled: !!projectSlug && !!sandboxStatus?.initialized && diffModalOpen,
+  } as any) as { data: DiffResult | undefined; isLoading: boolean };
+
+  // ── Snapshots (only when revert modal is open)
+  const { data: snapshots = [] } = useQuery({
+    queryKey: ['sandbox-snapshots', projectSlug],
+    queryFn: () => fetchSnapshots(projectSlug),
+    enabled: !!projectSlug && revertModalOpen,
+  } as any) as { data: Snapshot[] };
+
   // ── Mutations
   const createMutation = useMutation({
     mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
@@ -405,6 +560,48 @@ const TranslationsPage: React.FC = () => {
       qc.invalidateQueries({ queryKey: ['entries', projectSlug, namespace] });
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Error deleting'),
+  });
+
+  const initMutation = useMutation({
+    mutationFn: (force: boolean) => apiInitSandbox(projectSlug, force),
+    onSuccess: (data: any) => {
+      message.success(`Sandbox initialized (${data.copiedRows} rows copied)`);
+      qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Failed to initialize sandbox'),
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: () => apiPromoteSandbox(projectSlug),
+    onSuccess: (data: any) => {
+      message.success(`Promoted ${data.promoted} entries to production`);
+      qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
+      qc.invalidateQueries({ queryKey: ['sandbox-diff', projectSlug] });
+      qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
+      setDiffModalOpen(false);
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Promote failed'),
+  });
+
+  const revertMutation = useMutation({
+    mutationFn: (snapshotId: string) => apiRevertSandbox(projectSlug, snapshotId),
+    onSuccess: (data: any) => {
+      message.success(`Reverted — ${data.restored} entries restored`);
+      qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
+      setRevertModalOpen(false);
+      setSelectedSnapshotId('');
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Revert failed'),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: () => apiResetSandbox(projectSlug),
+    onSuccess: (data: any) => {
+      message.success(`Sandbox reset (${data.copiedRows} rows)`);
+      qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
+      qc.invalidateQueries({ queryKey: ['sandbox-diff', projectSlug] });
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Reset failed'),
   });
 
   // ── Handlers
@@ -506,6 +703,7 @@ const TranslationsPage: React.FC = () => {
   ];
 
   const canShow = !!projectSlug && !!namespace;
+  const sb = sandboxStatus as SandboxStatus | undefined;
 
   return (
     <div>
@@ -558,6 +756,98 @@ const TranslationsPage: React.FC = () => {
         </Col>
       </Row>
 
+      {/* ── Sandbox bar ── */}
+      {projectSlug && (
+        <div style={{
+          marginBottom: 16,
+          padding: '8px 14px',
+          background: '#fafafa',
+          border: '1px solid #e8e8e8',
+          borderRadius: 6,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 12,
+          flexWrap: 'wrap',
+        }}>
+          <Space size={6}>
+            <BranchesOutlined style={{ color: '#595959' }} />
+            <span style={{ fontWeight: 500, color: '#595959' }}>Sandbox</span>
+          </Space>
+
+          {!sb?.initialized ? (
+            <>
+              <Tag>Not initialized</Tag>
+              <Button
+                size="small"
+                loading={initMutation.isPending}
+                onClick={() => initMutation.mutate(false)}
+              >
+                Initialize
+              </Button>
+            </>
+          ) : (
+            <>
+              <Tag color={sb.hasChanges ? 'orange' : 'green'}>
+                {sb.hasChanges ? 'Has changes' : 'In sync'}
+              </Tag>
+
+              <Button
+                size="small"
+                icon={<DiffOutlined />}
+                onClick={() => setDiffModalOpen(true)}
+              >
+                View diff
+              </Button>
+
+              <Popconfirm
+                title="Promote sandbox to production?"
+                description="Current production will be snapshotted before being replaced."
+                onConfirm={() => promoteMutation.mutate()}
+                okText="Promote"
+                okButtonProps={{ type: 'primary' }}
+              >
+                <Button
+                  size="small"
+                  type="primary"
+                  icon={<CloudUploadOutlined />}
+                  disabled={!sb.hasChanges}
+                  loading={promoteMutation.isPending}
+                >
+                  Promote
+                </Button>
+              </Popconfirm>
+
+              <Popconfirm
+                title="Reset sandbox?"
+                description="All sandbox changes will be discarded and re-copied from production."
+                onConfirm={() => resetMutation.mutate()}
+                okText="Reset"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  size="small"
+                  icon={<SyncOutlined />}
+                  danger
+                  loading={resetMutation.isPending}
+                >
+                  Reset
+                </Button>
+              </Popconfirm>
+
+              {sb.snapshotCount > 0 && (
+                <Button
+                  size="small"
+                  icon={<RollbackOutlined />}
+                  onClick={() => { setSelectedSnapshotId(''); setRevertModalOpen(true); }}
+                >
+                  Revert ({sb.snapshotCount})
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* ── Table ── */}
       <Table<Entry>
         rowKey="key"
@@ -587,6 +877,105 @@ const TranslationsPage: React.FC = () => {
         onSave={handleSave}
         saving={createMutation.isPending || updateMutation.isPending}
       />
+
+      {/* ── Diff Modal ── */}
+      <Modal
+        open={diffModalOpen}
+        title={`Sandbox diff${diffData ? ` — ${diffData.total} change${diffData.total !== 1 ? 's' : ''}` : ''}`}
+        onCancel={() => setDiffModalOpen(false)}
+        width={960}
+        footer={[
+          <Button key="close" onClick={() => setDiffModalOpen(false)}>Close</Button>,
+          <Popconfirm
+            key="promote"
+            title="Promote all changes to production?"
+            description="Current production will be snapshotted before being replaced."
+            onConfirm={() => promoteMutation.mutate()}
+            okText="Promote"
+            okButtonProps={{ type: 'primary' }}
+            disabled={!diffData?.total}
+          >
+            <Button
+              type="primary"
+              icon={<CloudUploadOutlined />}
+              loading={promoteMutation.isPending}
+              disabled={!diffData?.total}
+            >
+              Promote to Production
+            </Button>
+          </Popconfirm>,
+        ]}
+      >
+        {diffLoading ? (
+          <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
+        ) : (
+          <>
+            <Space style={{ marginBottom: 12 }}>
+              <Tag color="green">+{diffData?.added ?? 0} added</Tag>
+              <Tag color="orange">{diffData?.changed ?? 0} changed</Tag>
+              <Tag color="red">−{diffData?.deleted ?? 0} deleted</Tag>
+            </Space>
+            <Table<DiffEntry>
+              rowKey={(r) => `${r.namespace}/${r.key}/${r.locale}`}
+              columns={diffColumns}
+              dataSource={diffData?.entries ?? []}
+              size="small"
+              pagination={{ pageSize: 25, showSizeChanger: false, showTotal: (t) => `${t} entries` }}
+              scroll={{ x: true }}
+            />
+          </>
+        )}
+      </Modal>
+
+      {/* ── Revert Modal ── */}
+      <Modal
+        open={revertModalOpen}
+        title="Revert production to snapshot"
+        onCancel={() => { setRevertModalOpen(false); setSelectedSnapshotId(''); }}
+        onOk={() => { if (selectedSnapshotId) revertMutation.mutate(selectedSnapshotId); }}
+        confirmLoading={revertMutation.isPending}
+        okText="Revert"
+        okButtonProps={{ danger: true, disabled: !selectedSnapshotId }}
+        width={640}
+      >
+        <Alert
+          type="warning"
+          message="This replaces current production values with those from the selected snapshot. Sandbox is not affected."
+          style={{ marginBottom: 16 }}
+          showIcon
+        />
+        <Table<Snapshot>
+          rowKey="id"
+          dataSource={snapshots}
+          size="small"
+          pagination={false}
+          rowSelection={{
+            type: 'radio',
+            selectedRowKeys: selectedSnapshotId ? [selectedSnapshotId] : [],
+            onChange: (keys) => setSelectedSnapshotId(keys[0] as string),
+          }}
+          columns={[
+            {
+              title: 'Label',
+              dataIndex: 'label',
+              key: 'label',
+              render: (v: string | null) => v ?? <span style={{ color: '#aaa' }}>—</span>,
+            },
+            {
+              title: 'Created',
+              dataIndex: 'createdAt',
+              key: 'createdAt',
+              render: (v: string) => new Date(v).toLocaleString(),
+            },
+            {
+              title: 'Entries',
+              dataIndex: 'entryCount',
+              key: 'entryCount',
+              width: 80,
+            },
+          ]}
+        />
+      </Modal>
     </div>
   );
 };
