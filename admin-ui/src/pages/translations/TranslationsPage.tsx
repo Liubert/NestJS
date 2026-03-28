@@ -6,14 +6,14 @@ import {
 import {
   SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined,
   ThunderboltOutlined, SafetyCertificateOutlined,
-  CloudUploadOutlined, RollbackOutlined, SyncOutlined,
+  ArrowRightOutlined, RollbackOutlined, SyncOutlined, CheckCircleOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import apiClient from '../../api/client';
 
-const { Title } = Typography;
+const { Title, Text } = Typography;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -92,16 +92,22 @@ const fetchEntries = async (
 ): Promise<PaginatedEntries> => {
   const params: Record<string, string | number> = { page, limit, sortBy, sortOrder };
   if (search.length >= 2) params.search = search;
-  const res = await apiClient.get(`/translations/projects/${slug}/namespaces/${ns}/entries`, { params });
+  const res = await apiClient.get(
+    `/translations/projects/${slug}/namespaces/${ns}/entries`, { params },
+  );
   return res.data;
 };
 
-const createEntry = async (slug: string, ns: string, payload: { key: string; values: Record<string, string> }) => {
+const createEntry = async (
+  slug: string, ns: string, payload: { key: string; values: Record<string, string> },
+) => {
   const res = await apiClient.post(`/translations/projects/${slug}/namespaces/${ns}/entries`, payload);
   return res.data;
 };
 
-const updateEntry = async (slug: string, ns: string, key: string, values: Record<string, string>) => {
+const updateEntry = async (
+  slug: string, ns: string, key: string, values: Record<string, string>,
+) => {
   const res = await apiClient.patch(
     `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
     { values },
@@ -110,7 +116,9 @@ const updateEntry = async (slug: string, ns: string, key: string, values: Record
 };
 
 const deleteEntry = async (slug: string, ns: string, key: string) => {
-  await apiClient.delete(`/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`);
+  await apiClient.delete(
+    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
+  );
 };
 
 const aiTranslate = async (text: string): Promise<Record<string, string>> => {
@@ -119,7 +127,9 @@ const aiTranslate = async (text: string): Promise<Record<string, string>> => {
 };
 
 const checkQuality = async (source: string, translation: string, locale: string): Promise<QualityResult> => {
-  const res = await apiClient.post('/translations/ai-quality-check', { source, translation, locale, mode: 'translation_quality' });
+  const res = await apiClient.post('/translations/ai-quality-check', {
+    source, translation, locale, mode: 'translation_quality',
+  });
   return res.data;
 };
 
@@ -138,7 +148,7 @@ const fetchSnapshots = async (slug: string): Promise<Snapshot[]> => {
   return res.data;
 };
 
-// ─── Edit Modal (for Production tab) ─────────────────────────────────────────
+// ─── Edit Modal ───────────────────────────────────────────────────────────────
 
 const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
 
@@ -289,6 +299,301 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
   );
 };
 
+// ─── Diff columns (shared between Sandbox tab and Push modal) ─────────────────
+
+const DIFF_STATUS: Record<string, { color: string; label: string }> = {
+  added:   { color: 'green',  label: 'Added' },
+  changed: { color: 'orange', label: 'Changed' },
+  deleted: { color: 'red',    label: 'Deleted' },
+};
+
+const makeDiffColumns = (): ColumnsType<DiffEntry> => [
+  { title: 'Namespace', dataIndex: 'namespace', key: 'ns', width: 120, ellipsis: true },
+  {
+    title: 'Key', dataIndex: 'key', key: 'key', width: 200, ellipsis: true,
+    render: (t: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{t}</span>,
+  },
+  { title: 'Locale', dataIndex: 'locale', key: 'locale', width: 70 },
+  {
+    title: 'Status', dataIndex: 'status', key: 'status', width: 90,
+    filters: [
+      { text: 'Added', value: 'added' },
+      { text: 'Changed', value: 'changed' },
+      { text: 'Deleted', value: 'deleted' },
+    ],
+    onFilter: (value, record) => record.status === value,
+    render: (s: string) => <Tag color={DIFF_STATUS[s]?.color}>{DIFF_STATUS[s]?.label ?? s}</Tag>,
+  },
+  {
+    title: 'Current (Production)', dataIndex: 'productionValue', key: 'prod', ellipsis: true,
+    render: (v: string | null) =>
+      v != null
+        ? <span style={{ color: '#888' }}>{v}</span>
+        : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>,
+  },
+  {
+    title: 'Incoming (Sandbox)', dataIndex: 'sandboxValue', key: 'sandbox', ellipsis: true,
+    render: (v: string | null) =>
+      v != null
+        ? <span style={{ color: '#237804', fontWeight: 500 }}>{v}</span>
+        : <span style={{ color: '#cf1322', fontStyle: 'italic' }}>deleted</span>,
+  },
+];
+
+// ─── Sandbox Tab ──────────────────────────────────────────────────────────────
+
+interface SandboxTabProps {
+  projectSlug: string;
+}
+
+const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
+  const qc = useQueryClient();
+  const [pushModalOpen, setPushModalOpen] = useState(false);
+
+  const { data: status, isLoading: statusLoading } = useQuery({
+    queryKey: ['sandbox-status', projectSlug],
+    queryFn: () => fetchSandboxStatus(projectSlug),
+    enabled: !!projectSlug,
+  } as any) as { data: SandboxStatus | undefined; isLoading: boolean };
+
+  const { data: diff, isLoading: diffLoading } = useQuery({
+    queryKey: ['sandbox-diff', projectSlug],
+    queryFn: () => fetchSandboxDiff(projectSlug),
+    enabled: !!projectSlug && !!status?.initialized,
+  } as any) as { data: DiffResult | undefined; isLoading: boolean };
+
+  const invalidate = () => {
+    qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
+    qc.invalidateQueries({ queryKey: ['sandbox-diff', projectSlug] });
+  };
+
+  const initMutation = useMutation({
+    mutationFn: () =>
+      apiClient.post(`/translations/projects/${projectSlug}/sandbox/init`, { force: false }).then((r) => r.data),
+    onSuccess: (data: any) => {
+      message.success(`Sandbox initialized — ${data.copiedRows} rows copied from production`);
+      invalidate();
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Failed to initialize'),
+  });
+
+  const promoteMutation = useMutation({
+    mutationFn: () =>
+      apiClient.post(`/translations/projects/${projectSlug}/sandbox/promote`).then((r) => r.data),
+    onSuccess: (data: any) => {
+      message.success(`Pushed — ${data.promoted} entries are now live in production`);
+      invalidate();
+      qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
+      setPushModalOpen(false);
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Push failed'),
+  });
+
+  const resetMutation = useMutation({
+    mutationFn: () =>
+      apiClient.post(`/translations/projects/${projectSlug}/sandbox/reset`).then((r) => r.data),
+    onSuccess: (data: any) => {
+      message.success(`Sandbox reset — ${data.copiedRows} rows re-copied from production`);
+      invalidate();
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Reset failed'),
+  });
+
+  if (!projectSlug) return <Empty description="Select a project" style={{ marginTop: 48 }} />;
+  if (statusLoading) return <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>;
+
+  // ── Not initialized
+  if (!status?.initialized) {
+    return (
+      <div style={{ maxWidth: 520, margin: '56px auto', textAlign: 'center' }}>
+        <Title level={4} style={{ fontWeight: 400, marginBottom: 8 }}>Sandbox is not initialized</Title>
+        <p style={{ color: '#8c8c8c', marginBottom: 28, lineHeight: 1.7 }}>
+          The sandbox is a working copy of production. Initialize it to start making changes
+          that will not affect production until you explicitly push them.
+        </p>
+        <Button type="primary" size="large" loading={initMutation.isPending}
+          onClick={() => initMutation.mutate()}>
+          Initialize sandbox
+        </Button>
+      </div>
+    );
+  }
+
+  const hasChanges = !!status?.hasChanges;
+  const total = diff?.total ?? 0;
+  const diffColumns = makeDiffColumns();
+
+  // ── Status panel colours
+  const statusBg     = hasChanges ? '#fffbe6' : '#f6ffed';
+  const statusBorder = hasChanges ? '#ffe58f' : '#b7eb8f';
+  const statusIcon   = hasChanges
+    ? <span style={{ fontSize: 20 }}>⚡</span>
+    : <CheckCircleOutlined style={{ fontSize: 20, color: '#52c41a' }} />;
+
+  return (
+    <>
+      {/* ── Git-style status panel ── */}
+      <div style={{
+        background: statusBg,
+        border: `1px solid ${statusBorder}`,
+        borderRadius: 8,
+        padding: '16px 20px',
+        marginBottom: 24,
+      }}>
+        <Row align="middle" justify="space-between" wrap={false}>
+          <Col flex="auto">
+            <Space align="center" size={10}>
+              {statusIcon}
+              <Space direction="vertical" size={2}>
+                {/* Branch line */}
+                <Space size={6} align="center">
+                  <Tag color="blue" style={{ fontFamily: 'monospace', margin: 0 }}>sandbox</Tag>
+                  <ArrowRightOutlined style={{ color: '#8c8c8c', fontSize: 11 }} />
+                  <Tag color="default" style={{ fontFamily: 'monospace', margin: 0 }}>production</Tag>
+                </Space>
+                {/* Status text */}
+                {hasChanges ? (
+                  <Text>
+                    Sandbox is{' '}
+                    <Text strong>ahead by {total} change{total !== 1 ? 's' : ''}</Text>
+                    {diff && (
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {' '}·{' '}
+                        {diff.added > 0 && `${diff.added} added`}
+                        {diff.added > 0 && (diff.changed > 0 || diff.deleted > 0) && ', '}
+                        {diff.changed > 0 && `${diff.changed} changed`}
+                        {diff.changed > 0 && diff.deleted > 0 && ', '}
+                        {diff.deleted > 0 && `${diff.deleted} deleted`}
+                      </Text>
+                    )}
+                  </Text>
+                ) : (
+                  <Text type="success">Sandbox is up to date with production — nothing to push.</Text>
+                )}
+              </Space>
+            </Space>
+          </Col>
+
+          {/* Actions */}
+          <Col>
+            <Space>
+              <Popconfirm
+                title="Reset sandbox?"
+                description="All changes will be discarded. The sandbox will be re-copied from current production."
+                onConfirm={() => resetMutation.mutate()}
+                okText="Reset"
+                okButtonProps={{ danger: true }}
+              >
+                <Button icon={<SyncOutlined />} size="small" loading={resetMutation.isPending}>
+                  Reset
+                </Button>
+              </Popconfirm>
+
+              {hasChanges && (
+                <Button
+                  type="primary"
+                  size="middle"
+                  icon={<ArrowRightOutlined />}
+                  onClick={() => setPushModalOpen(true)}
+                >
+                  Push to Production
+                </Button>
+              )}
+            </Space>
+          </Col>
+        </Row>
+      </div>
+
+      {/* ── Diff table ── */}
+      {diffLoading ? (
+        <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
+      ) : !hasChanges ? (
+        <Empty description="No pending changes" style={{ marginTop: 48 }} />
+      ) : (
+        <Table<DiffEntry>
+          rowKey={(r) => `${r.namespace}/${r.key}/${r.locale}`}
+          columns={diffColumns}
+          dataSource={diff?.entries ?? []}
+          size="small"
+          scroll={{ x: true }}
+          pagination={{
+            pageSize: 30,
+            showSizeChanger: false,
+            showTotal: (t) => `${t} changed entries`,
+          }}
+        />
+      )}
+
+      {/* ── Push to Production modal ── */}
+      <Modal
+        open={pushModalOpen}
+        title={
+          <Space>
+            <ArrowRightOutlined />
+            <span>Push to Production</span>
+          </Space>
+        }
+        onCancel={() => setPushModalOpen(false)}
+        width={1000}
+        footer={[
+          <Button key="cancel" onClick={() => setPushModalOpen(false)}>
+            Cancel
+          </Button>,
+          <Button
+            key="push"
+            type="primary"
+            icon={<ArrowRightOutlined />}
+            loading={promoteMutation.isPending}
+            onClick={() => promoteMutation.mutate()}
+          >
+            Push {total} change{total !== 1 ? 's' : ''} to Production
+          </Button>,
+        ]}
+      >
+        {/* Summary */}
+        <Alert
+          type="warning"
+          style={{ marginBottom: 20 }}
+          message={
+            <Space>
+              <span>You are about to replace production with sandbox values.</span>
+              <span>A snapshot of current production will be saved automatically.</span>
+            </Space>
+          }
+          showIcon
+        />
+
+        <Row gutter={24} style={{ marginBottom: 16 }}>
+          <Col>
+            <Space>
+              <Tag color="green" style={{ fontSize: 13, padding: '2px 10px' }}>
+                +{diff?.added ?? 0} added
+              </Tag>
+              <Tag color="orange" style={{ fontSize: 13, padding: '2px 10px' }}>
+                {diff?.changed ?? 0} changed
+              </Tag>
+              <Tag color="red" style={{ fontSize: 13, padding: '2px 10px' }}>
+                −{diff?.deleted ?? 0} deleted
+              </Tag>
+            </Space>
+          </Col>
+        </Row>
+
+        {/* Full diff table */}
+        <Table<DiffEntry>
+          rowKey={(r) => `${r.namespace}/${r.key}/${r.locale}`}
+          columns={makeDiffColumns()}
+          dataSource={diff?.entries ?? []}
+          size="small"
+          scroll={{ x: true, y: 420 }}
+          pagination={false}
+          sticky
+        />
+      </Modal>
+    </>
+  );
+};
+
 // ─── Production Tab ───────────────────────────────────────────────────────────
 
 interface ProductionTabProps {
@@ -307,8 +612,6 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [isNewEntry, setIsNewEntry] = useState(false);
-
-  // Snapshot revert state
   const [revertModalOpen, setRevertModalOpen] = useState(false);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState('');
 
@@ -318,9 +621,7 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
     enabled: !!projectSlug,
   } as any) as { data: ProjectDetails | undefined };
 
-  React.useEffect(() => {
-    setNamespace('');
-  }, [projectSlug]);
+  React.useEffect(() => { setNamespace(''); }, [projectSlug]);
 
   React.useEffect(() => {
     if (projectDetails && projectDetails.namespaces.length > 0 && !namespace) {
@@ -438,7 +739,6 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
 
   return (
     <>
-      {/* Controls */}
       <Row gutter={12} style={{ marginBottom: 16 }}>
         <Col>
           <Select
@@ -477,7 +777,6 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
         </Col>
       </Row>
 
-      {/* Entries table */}
       <Table<Entry>
         rowKey="key"
         columns={columns}
@@ -495,7 +794,6 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
         size="small"
       />
 
-      {/* Edit/Add modal */}
       <EditModal
         open={editModalOpen}
         entry={editEntry}
@@ -509,7 +807,6 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
         saving={createMutation.isPending || updateMutation.isPending}
       />
 
-      {/* Revert modal */}
       <Modal
         open={revertModalOpen}
         title="Revert production to snapshot"
@@ -551,194 +848,11 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
   );
 };
 
-// ─── Sandbox Tab ──────────────────────────────────────────────────────────────
-
-const DIFF_STATUS: Record<string, { color: string; label: string }> = {
-  added:   { color: 'green',  label: 'Added' },
-  changed: { color: 'orange', label: 'Changed' },
-  deleted: { color: 'red',    label: 'Deleted' },
-};
-
-const diffColumns: ColumnsType<DiffEntry> = [
-  { title: 'Namespace', dataIndex: 'namespace', key: 'ns', width: 120, ellipsis: true },
-  {
-    title: 'Key', dataIndex: 'key', key: 'key', width: 200, ellipsis: true,
-    render: (t: string) => <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{t}</span>,
-  },
-  { title: 'Locale', dataIndex: 'locale', key: 'locale', width: 70 },
-  {
-    title: 'Status', dataIndex: 'status', key: 'status', width: 90,
-    render: (s: string) => <Tag color={DIFF_STATUS[s]?.color}>{DIFF_STATUS[s]?.label ?? s}</Tag>,
-  },
-  {
-    title: 'Production', dataIndex: 'productionValue', key: 'prod', ellipsis: true,
-    render: (v: string | null) =>
-      v != null ? <span style={{ color: '#d32f2f' }}>{v}</span>
-                : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>,
-  },
-  {
-    title: 'Sandbox', dataIndex: 'sandboxValue', key: 'sandbox', ellipsis: true,
-    render: (v: string | null) =>
-      v != null ? <span style={{ color: '#388e3c' }}>{v}</span>
-                : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>,
-  },
-];
-
-interface SandboxTabProps {
-  projectSlug: string;
-}
-
-const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
-  const qc = useQueryClient();
-
-  const { data: status, isLoading: statusLoading } = useQuery({
-    queryKey: ['sandbox-status', projectSlug],
-    queryFn: () => fetchSandboxStatus(projectSlug),
-    enabled: !!projectSlug,
-  } as any) as { data: SandboxStatus | undefined; isLoading: boolean };
-
-  const { data: diff, isLoading: diffLoading, refetch: refetchDiff } = useQuery({
-    queryKey: ['sandbox-diff', projectSlug],
-    queryFn: () => fetchSandboxDiff(projectSlug),
-    enabled: !!projectSlug && !!status?.initialized,
-  } as any) as { data: DiffResult | undefined; isLoading: boolean; refetch: () => void };
-
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
-    qc.invalidateQueries({ queryKey: ['sandbox-diff', projectSlug] });
-  };
-
-  const initMutation = useMutation({
-    mutationFn: (force: boolean) =>
-      apiClient.post(`/translations/projects/${projectSlug}/sandbox/init`, { force }).then((r) => r.data),
-    onSuccess: (data: any) => {
-      message.success(`Sandbox initialized — ${data.copiedRows} rows copied`);
-      invalidate();
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Failed to initialize'),
-  });
-
-  const promoteMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post(`/translations/projects/${projectSlug}/sandbox/promote`).then((r) => r.data),
-    onSuccess: (data: any) => {
-      message.success(`Promoted — ${data.promoted} entries now in production`);
-      invalidate();
-      qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Promote failed'),
-  });
-
-  const resetMutation = useMutation({
-    mutationFn: () =>
-      apiClient.post(`/translations/projects/${projectSlug}/sandbox/reset`).then((r) => r.data),
-    onSuccess: (data: any) => {
-      message.success(`Sandbox reset — ${data.copiedRows} rows copied from production`);
-      invalidate();
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Reset failed'),
-  });
-
-  if (!projectSlug) return <Empty description="Select a project" style={{ marginTop: 48 }} />;
-  if (statusLoading) return <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>;
-
-  // ── Not initialized
-  if (!status?.initialized) {
-    return (
-      <div style={{ maxWidth: 480, margin: '48px auto', textAlign: 'center' }}>
-        <Title level={4} style={{ fontWeight: 400, marginBottom: 8 }}>Sandbox not initialized</Title>
-        <p style={{ color: '#595959', marginBottom: 24 }}>
-          Initialize the sandbox to create a working copy of production translations.
-          Changes you make here will not affect production until you promote them.
-        </p>
-        <Button type="primary" size="large" loading={initMutation.isPending}
-          onClick={() => initMutation.mutate(false)}>
-          Initialize sandbox
-        </Button>
-      </div>
-    );
-  }
-
-  // ── Initialized
-  const hasChanges = !!status?.hasChanges;
-
-  return (
-    <>
-      {/* Action bar */}
-      <Row gutter={12} align="middle" style={{ marginBottom: 16 }}>
-        <Col flex="auto">
-          <Space>
-            <Tag color={hasChanges ? 'orange' : 'green'} style={{ fontSize: 13, padding: '2px 10px' }}>
-              {hasChanges ? 'Has unpromoted changes' : 'In sync with production'}
-            </Tag>
-          </Space>
-        </Col>
-        <Col>
-          <Space>
-            <Popconfirm
-              title="Promote sandbox to production?"
-              description="All sandbox changes will replace current production values. A snapshot is saved automatically before replacing."
-              onConfirm={() => promoteMutation.mutate()}
-              okText="Promote"
-              okButtonProps={{ type: 'primary' }}
-              disabled={!hasChanges}
-            >
-              <Button type="primary" icon={<CloudUploadOutlined />}
-                disabled={!hasChanges} loading={promoteMutation.isPending}>
-                Promote to production
-              </Button>
-            </Popconfirm>
-
-            <Popconfirm
-              title="Reset sandbox?"
-              description="All sandbox changes will be discarded. The sandbox will be re-copied from current production."
-              onConfirm={() => resetMutation.mutate()}
-              okText="Reset"
-              okButtonProps={{ danger: true }}
-            >
-              <Button icon={<SyncOutlined />} loading={resetMutation.isPending}>
-                Reset sandbox
-              </Button>
-            </Popconfirm>
-          </Space>
-        </Col>
-      </Row>
-
-      {/* Diff summary */}
-      {diffLoading ? (
-        <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>
-      ) : !hasChanges ? (
-        <Empty description="No changes — sandbox matches production" style={{ marginTop: 48 }} />
-      ) : (
-        <>
-          <Space style={{ marginBottom: 12 }}>
-            <Tag color="green">+{diff?.added ?? 0} added</Tag>
-            <Tag color="orange">{diff?.changed ?? 0} changed</Tag>
-            <Tag color="red">−{diff?.deleted ?? 0} deleted</Tag>
-          </Space>
-          <Table<DiffEntry>
-            rowKey={(r) => `${r.namespace}/${r.key}/${r.locale}`}
-            columns={diffColumns}
-            dataSource={diff?.entries ?? []}
-            size="small"
-            scroll={{ x: true }}
-            pagination={{
-              pageSize: 25,
-              showSizeChanger: false,
-              showTotal: (t) => `${t} changed entries`,
-            }}
-          />
-        </>
-      )}
-    </>
-  );
-};
-
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TranslationsPage: React.FC = () => {
   const [projectSlug, setProjectSlug] = useState('');
-  const [activeTab, setActiveTab] = useState('production');
+  const [activeTab, setActiveTab] = useState('sandbox');
 
   const { data: projects = [], isLoading: projectsLoading } = useQuery({
     queryKey: ['projects'],
@@ -751,16 +865,26 @@ const TranslationsPage: React.FC = () => {
 
   const tabItems = [
     {
+      key: 'sandbox',
+      label: (
+        <Space size={6}>
+          <span>Sandbox</span>
+          <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>source</Tag>
+        </Space>
+      ),
+      children: <SandboxTab projectSlug={projectSlug} />,
+    },
+    {
       key: 'production',
-      label: 'Production',
+      label: (
+        <Space size={6}>
+          <span>Production</span>
+          <Tag color="default" style={{ margin: 0, fontSize: 11 }}>target</Tag>
+        </Space>
+      ),
       children: projectSlug
         ? <ProductionTab projectSlug={projectSlug} />
         : <Empty description="Select a project" style={{ marginTop: 48 }} />,
-    },
-    {
-      key: 'sandbox',
-      label: 'Sandbox',
-      children: <SandboxTab projectSlug={projectSlug} />,
     },
   ];
 
