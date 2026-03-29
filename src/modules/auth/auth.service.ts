@@ -69,7 +69,9 @@ export class AuthService {
   // PHASE 1 (temporary): returns raw token in response — admin passes it to user manually.
   // PHASE 2: replace return with email send, return { message: 'Email sent' }.
   // The token table, hash logic, and reset endpoint are already final.
-  async forgotPassword(email: string): Promise<{ token: string; note: string }> {
+  async forgotPassword(
+    email: string,
+  ): Promise<{ token: string; note: string }> {
     const user = await this.usersService.findByEmail(email);
 
     // Always return success-looking response to avoid user enumeration

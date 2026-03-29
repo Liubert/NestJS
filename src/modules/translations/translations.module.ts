@@ -3,6 +3,8 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TranslationsController } from './translations.controller.js';
 import { TranslationsService } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
+import { AiConfigService } from './ai-config.service.js';
+import { AiConfigController } from './ai-config.controller.js';
 import { SandboxService } from './sandbox.service.js';
 import { SandboxController } from './sandbox.controller.js';
 import { ProjectEntity } from './entities/project.entity.js';
@@ -13,6 +15,7 @@ import { TranslationValueEntity } from './entities/translation-value.entity.js';
 import { ProjectMemberEntity } from './entities/project-member.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import { ProductionSnapshotEntity } from './entities/production-snapshot.entity.js';
+import { AiConfigEntity } from './entities/ai-config.entity.js';
 import { UserEntity } from '../users/user.entity.js';
 
 @Module({
@@ -26,11 +29,17 @@ import { UserEntity } from '../users/user.entity.js';
       ProjectMemberEntity,
       SandboxValueEntity,
       ProductionSnapshotEntity,
+      AiConfigEntity,
       UserEntity,
     ]),
   ],
-  controllers: [TranslationsController, SandboxController],
-  providers: [TranslationsService, AiTranslateService, SandboxService],
-  exports: [TranslationsService, SandboxService],
+  controllers: [TranslationsController, SandboxController, AiConfigController],
+  providers: [
+    TranslationsService,
+    AiTranslateService,
+    AiConfigService,
+    SandboxService,
+  ],
+  exports: [TranslationsService, SandboxService, AiConfigService],
 })
 export class TranslationsModule {}

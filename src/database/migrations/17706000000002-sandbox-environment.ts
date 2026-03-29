@@ -52,8 +52,12 @@ export class SandboxEnvironment17706000000002 implements MigrationInterface {
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(`ALTER TABLE translation_projects DROP COLUMN IF EXISTS sandbox_has_changes`);
-    await queryRunner.query(`ALTER TABLE translation_projects DROP COLUMN IF EXISTS sandbox_initialized_at`);
+    await queryRunner.query(
+      `ALTER TABLE translation_projects DROP COLUMN IF EXISTS sandbox_has_changes`,
+    );
+    await queryRunner.query(
+      `ALTER TABLE translation_projects DROP COLUMN IF EXISTS sandbox_initialized_at`,
+    );
     await queryRunner.query(`DROP TABLE IF EXISTS production_snapshots`);
     await queryRunner.query(`DROP TABLE IF EXISTS sandbox_values`);
   }

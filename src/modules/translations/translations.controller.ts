@@ -29,6 +29,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
+import { SandboxService } from './sandbox.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiTranslateDto } from './dto/ai-translate.dto.js';
 import { CheckQualityDto } from './dto/check-quality.dto.js';
@@ -47,6 +48,7 @@ import { PaginationDto } from '../../common/dto/pagination.dto.js';
 export class TranslationsController {
   constructor(
     private readonly translationsService: TranslationsService,
+    private readonly sandboxService: SandboxService,
     private readonly aiTranslateService: AiTranslateService,
   ) {}
 
@@ -70,15 +72,34 @@ export class TranslationsController {
 
   @Get(':projectSlug/:namespace/:locale')
   @ApiOperation({
-    summary: 'Get translations for a namespace and locale (Locize-compatible)',
+    summary:
+      'Get translations for a namespace and locale (Locize-compatible). Pass ?env=sandbox for sandbox data.',
   })
-  @ApiResponse({ status: 200, description: 'Flat key-value translation object' })
+  @ApiResponse({
+    status: 200,
+    description: 'Flat key-value translation object',
+  })
   async getNamespace(
     @Param('projectSlug') projectSlug: string,
     @Param('namespace') namespace: string,
     @Param('locale') locale: string,
+    @Query('env') env: string | undefined,
     @Res() res: Response,
   ): Promise<void> {
+    if (env === 'sandbox') {
+      // Sandbox view: returns sandbox values overlaid on production.
+      // Intended for local dev testing without promoting to production.
+      // NOT cached — sandbox data changes frequently.
+      const translations = await this.sandboxService.getSandboxNamespace(
+        projectSlug,
+        namespace,
+        locale,
+      );
+      res.setHeader('Cache-Control', 'no-store');
+      res.json(translations);
+      return;
+    }
+
     const translations = await this.translationsService.getNamespace(
       projectSlug,
       namespace,
@@ -119,7 +140,9 @@ export class TranslationsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'AI-generate translations' })
-  async aiTranslate(@Body() dto: AiTranslateDto): Promise<Record<string, string>> {
+  async aiTranslate(
+    @Body() dto: AiTranslateDto,
+  ): Promise<Record<string, string>> {
     return this.aiTranslateService.translate(dto.text);
   }
 
@@ -215,7 +238,12 @@ export class TranslationsController {
     @Body() dto: AddMemberDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.addMember(slug, dto, user.userId, user.role);
+    return this.translationsService.addMember(
+      slug,
+      dto,
+      user.userId,
+      user.role,
+    );
   }
 
   @Delete('projects/:slug/members/:userId')
@@ -295,7 +323,9 @@ export class TranslationsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete a namespace (cascades to all keys and values)' })
+  @ApiOperation({
+    summary: 'Delete a namespace (cascades to all keys and values)',
+  })
   async deleteNamespace(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
@@ -314,7 +344,9 @@ export class TranslationsController {
   @Get('projects/:slug/namespaces/:ns/entries')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'List translation entries with search and pagination' })
+  @ApiOperation({
+    summary: 'List translation entries with search and pagination',
+  })
   async listEntries(
     @Param('slug') slug: string,
     @Param('ns') ns: string,

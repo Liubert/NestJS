@@ -62,7 +62,7 @@ services:
       - internal
       - public
     ports:
-      - "3001:80"
+      - "3010:80"
     restart: unless-stopped
 
   worker:

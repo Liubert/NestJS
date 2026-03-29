@@ -12,13 +12,18 @@ import apiClient from '../../api/client';
 
 const { Title, Text } = Typography;
 
+interface LocaleEntry {
+  code: string;
+  isDefault: boolean;
+}
+
 interface ProjectDetails {
   id: string;
   slug: string;
   name: string;
   ownerId: string | null;
   createdAt: string;
-  locales: string[];
+  locales: LocaleEntry[];
   namespaces: string[];
 }
 
@@ -192,17 +197,19 @@ const ProjectSettingsPage: React.FC = () => {
           {p.locales.length === 0 && (
             <Text type="secondary">No locales yet — add at least one to start translating</Text>
           )}
-          {p.locales.map((code) => (
+          {p.locales.map(({ code, isDefault }) => (
             <Tag key={code} color="blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              {code}
-              <Popconfirm
-                title={`Remove locale "${code}"? Existing translation values will be deleted.`}
-                onConfirm={() => removeLocaleMutation.mutate(code)}
-                okText="Remove"
-                okButtonProps={{ danger: true }}
-              >
-                <DeleteOutlined style={{ cursor: 'pointer', fontSize: 10 }} />
-              </Popconfirm>
+              {code}{isDefault ? ' (default)' : ''}
+              {!isDefault && (
+                <Popconfirm
+                  title={`Remove locale "${code}"? Existing translation values will be deleted.`}
+                  onConfirm={() => removeLocaleMutation.mutate(code)}
+                  okText="Remove"
+                  okButtonProps={{ danger: true }}
+                >
+                  <DeleteOutlined style={{ cursor: 'pointer', fontSize: 10 }} />
+                </Popconfirm>
+              )}
             </Tag>
           ))}
         </Space>
@@ -263,7 +270,7 @@ const ProjectSettingsPage: React.FC = () => {
         onCancel={() => { setLocaleModalOpen(false); localeForm.resetFields(); }}
         onOk={() => localeForm.validateFields().then((v) => addLocaleMutation.mutate(v.code))}
         confirmLoading={addLocaleMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={localeForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
@@ -286,7 +293,7 @@ const ProjectSettingsPage: React.FC = () => {
         onCancel={() => { setNsModalOpen(false); nsForm.resetFields(); }}
         onOk={() => nsForm.validateFields().then((v) => addNsMutation.mutate(v.slug))}
         confirmLoading={addNsMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={nsForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
@@ -309,7 +316,7 @@ const ProjectSettingsPage: React.FC = () => {
         onCancel={() => { setMemberModalOpen(false); memberForm.resetFields(); }}
         onOk={() => memberForm.validateFields().then((v) => addMemberMutation.mutate(v.email))}
         confirmLoading={addMemberMutation.isPending}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={memberForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item

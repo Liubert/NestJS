@@ -27,7 +27,11 @@ export class ProjectEntity {
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
 
-  @Column({ name: 'sandbox_initialized_at', type: 'timestamptz', nullable: true })
+  @Column({
+    name: 'sandbox_initialized_at',
+    type: 'timestamptz',
+    nullable: true,
+  })
   sandboxInitializedAt!: Date | null;
 
   @Column({ name: 'sandbox_has_changes', type: 'boolean', default: false })

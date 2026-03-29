@@ -39,13 +39,18 @@ export interface EntryRow {
   values: Record<string, string>;
 }
 
+export interface LocaleInfo {
+  code: string;
+  isDefault: boolean;
+}
+
 export interface ProjectDetails {
   id: string;
   slug: string;
   name: string;
   ownerId: string | null;
   createdAt: Date;
-  locales: string[];
+  locales: LocaleInfo[];
   namespaces: string[];
 }
 
@@ -96,9 +101,7 @@ export class TranslationsService {
       where: { projectId: project.id, userId },
     });
     if (!member) {
-      throw new ForbiddenException(
-        `No access to project "${project.slug}"`,
-      );
+      throw new ForbiddenException(`No access to project "${project.slug}"`);
     }
   }
 
@@ -204,7 +207,7 @@ export class TranslationsService {
       name: project.name,
       ownerId: project.ownerId,
       createdAt: project.createdAt,
-      locales: locales.map((l) => l.code),
+      locales: locales.map((l) => ({ code: l.code, isDefault: l.isDefault })),
       namespaces: namespaces.map((ns) => ns.slug),
     };
   }
@@ -423,9 +426,13 @@ export class TranslationsService {
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const localeMap = new Map(locales.map((l) => [l.id, l.code]));
 
-    const qb = this.keyRepo
-      .createQueryBuilder('tk')
-      .where('tk.namespace_id = :nsId', { nsId: ns.id });
+    const qb = // Only include keys that have at least one production value.
+      // Sandbox-only keys (added in sandbox, not yet promoted) must not appear here.
+      this.keyRepo
+        .createQueryBuilder('tk')
+        .where('tk.namespace_id = :nsId', { nsId: ns.id }).andWhere(`EXISTS (
+        SELECT 1 FROM translation_values tv_exist WHERE tv_exist.key_id = tk.id
+      )`);
 
     if (search && search.length >= 2) {
       const valueCondition = searchLocale
@@ -468,7 +475,11 @@ export class TranslationsService {
         'tv.locale_id AS locale_id',
         'tv.value AS value',
       ])
-      .getRawMany<{ key_id: string; locale_id: string; value: string | null }>();
+      .getRawMany<{
+        key_id: string;
+        locale_id: string;
+        value: string | null;
+      }>();
 
     const valuesByKey = new Map<string, Record<string, string>>();
     for (const v of values) {
@@ -545,7 +556,11 @@ export class TranslationsService {
     });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
-    const values = await this.upsertValues(project.id, keyEntity.id, dto.values);
+    const values = await this.upsertValues(
+      project.id,
+      keyEntity.id,
+      dto.values,
+    );
     return { key: keyEntity.key, createdAt: keyEntity.createdAt, values };
   }
 
@@ -574,11 +589,29 @@ export class TranslationsService {
 
   // ─── Locize-compatible read (public — no access check) ────────────────────
 
+  /**
+   * BCP 47 locale aliases — maps short ISO 639-1 codes (used by legacy apps) to
+   * the full BCP 47 codes stored on the server. Tried as fallback when the exact
+   * locale code is not found.
+   *
+   * To add a new alias: append an entry here. No other changes needed.
+   */
+  private static readonly LOCALE_ALIASES: Record<string, string> = {
+    no: 'nb-NO', // Norwegian (legacy ISO 639-1 → BCP 47)
+    nb: 'nb-NO', // Norwegian Bokmål short form
+    da: 'da-DK', // Danish (legacy ISO 639-1 → BCP 47)
+    nn: 'nb-NO', // Norwegian Nynorsk — fall back to Bokmål
+  };
+
   async getNamespace(
     projectSlug: string,
     namespace: string,
     locale: string,
   ): Promise<Record<string, unknown>> {
+    // Resolve alias: if the consumer passes 'no' or 'da', map to the canonical code
+    const resolvedLocale =
+      TranslationsService.LOCALE_ALIASES[locale.toLowerCase()] ?? locale;
+
     const rows = await this.valueRepo
       .createQueryBuilder('tv')
       .innerJoin('tv.translationKey', 'tk')
@@ -587,7 +620,7 @@ export class TranslationsService {
       .innerJoin('tv.locale', 'l')
       .where('p.slug = :projectSlug', { projectSlug })
       .andWhere('ns.slug = :namespace', { namespace })
-      .andWhere('l.code = :locale', { locale })
+      .andWhere('l.code = :locale', { locale: resolvedLocale })
       .select(['tk.key AS key', 'tv.value AS value'])
       .getRawMany<{ key: string; value: string | null }>();
 
@@ -723,7 +756,9 @@ export class TranslationsService {
         }
 
         const keyEntities = await keyRepo.save(
-          [...allKeys].map((key) => keyRepo.create({ namespaceId: ns!.id, key })),
+          [...allKeys].map((key) =>
+            keyRepo.create({ namespaceId: ns.id, key }),
+          ),
         );
         const keyMap = new Map<string, TranslationKeyEntity>(
           keyEntities.map((k) => [k.key, k]),

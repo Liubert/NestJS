@@ -10,13 +10,17 @@ import { AuthService } from './auth.service.js';
 import { JwtStrategy } from './jwt-strategy.js';
 import { RolesGuard } from './roles.guard.js';
 import { PasswordResetTokenEntity } from './entities/password-reset-token.entity.js';
+import { McpTokenEntity } from './entities/mcp-token.entity.js';
+import { McpTokensService } from './mcp-tokens.service.js';
+import { McpTokenStrategy } from './mcp-token.strategy.js';
+import { McpTokensController } from './mcp-tokens.controller.js';
 
 @Module({
   imports: [
     UsersModule,
     PassportModule,
     ConfigModule,
-    TypeOrmModule.forFeature([PasswordResetTokenEntity]),
+    TypeOrmModule.forFeature([PasswordResetTokenEntity, McpTokenEntity]),
     JwtModule.registerAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
@@ -25,8 +29,14 @@ import { PasswordResetTokenEntity } from './entities/password-reset-token.entity
       }),
     }),
   ],
-  controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RolesGuard],
+  controllers: [AuthController, McpTokensController],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    McpTokenStrategy,
+    McpTokensService,
+    RolesGuard,
+  ],
   exports: [JwtModule, RolesGuard],
 })
 export class AuthModule {}

@@ -1,0 +1,68 @@
+import axios, { AxiosError } from "axios";
+
+const client = axios.create({
+  baseURL: process.env.BACKEND_URL ?? "http://localhost:8080",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${process.env.MCP_TOKEN ?? ""}`,
+  },
+  timeout: 30_000,
+});
+
+export class ApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly message: string,
+    public readonly details?: unknown,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+function handleError(error: unknown): never {
+  if (error instanceof AxiosError) {
+    const status = error.response?.status ?? 0;
+    const message =
+      (error.response?.data as { message?: string })?.message ??
+      error.message ??
+      "Unknown API error";
+    throw new ApiError(status, String(message), error.response?.data);
+  }
+  throw error;
+}
+
+export async function apiGet<T>(path: string, params?: Record<string, unknown>): Promise<T> {
+  try {
+    const response = await client.get<T>(path, { params });
+    return response.data;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+export async function apiPost<T>(path: string, data?: unknown): Promise<T> {
+  try {
+    const response = await client.post<T>(path, data);
+    return response.data;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+export async function apiPatch<T>(path: string, data?: unknown): Promise<T> {
+  try {
+    const response = await client.patch<T>(path, data);
+    return response.data;
+  } catch (error) {
+    handleError(error);
+  }
+}
+
+export async function apiDelete(path: string): Promise<void> {
+  try {
+    await client.delete(path);
+  } catch (error) {
+    handleError(error);
+  }
+}

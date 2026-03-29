@@ -8,11 +8,15 @@ import {
   LogoutOutlined,
   UserOutlined,
   TeamOutlined,
+  RobotOutlined,
+  KeyOutlined,
 } from '@ant-design/icons';
 import TranslationsPage from './pages/translations/TranslationsPage';
+import AiConfigPage from './pages/ai-config/AiConfigPage';
 import ProjectsPage from './pages/projects/ProjectsPage';
 import ProjectSettingsPage from './pages/projects/ProjectSettingsPage';
 import UsersPage from './pages/users/UsersPage';
+import ApiTokensPage from './pages/api-tokens/ApiTokensPage';
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
@@ -81,12 +85,22 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       icon: <TranslationOutlined />,
       label: <Link to="/translations">Translations</Link>,
     },
+    {
+      key: '/api-tokens',
+      icon: <KeyOutlined />,
+      label: <Link to="/api-tokens">API Tokens</Link>,
+    },
     ...(isAdmin
       ? [
           {
             key: '/users',
             icon: <TeamOutlined />,
             label: <Link to="/users">Users</Link>,
+          },
+          {
+            key: '/ai-config',
+            icon: <RobotOutlined />,
+            label: <Link to="/ai-config">AI Config</Link>,
           },
         ]
       : []),
@@ -162,6 +176,8 @@ function App() {
                       <Route path="/projects/:slug" element={<ProjectSettingsPage />} />
                       <Route path="/translations" element={<TranslationsPage />} />
                       <Route path="/users" element={<UsersPage />} />
+                      <Route path="/ai-config" element={<AiConfigPage />} />
+                      <Route path="/api-tokens" element={<ApiTokensPage />} />
                       <Route path="/locales" element={<Navigate to="/projects" replace />} />
                     </Routes>
                   </AppLayout>

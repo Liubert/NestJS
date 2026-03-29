@@ -52,7 +52,9 @@ export class UsersController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.ADMIN)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a user (admin only). Sets mustChangePassword = true.' })
+  @ApiOperation({
+    summary: 'Create a user (admin only). Sets mustChangePassword = true.',
+  })
   async adminCreate(@Body() dto: AdminCreateUserDto) {
     return this.usersService.adminCreate(dto);
   }

@@ -1,11 +1,5 @@
 import { Transform } from 'class-transformer';
-import {
-  IsEmail,
-  IsEnum,
-  IsOptional,
-  IsString,
-  Length,
-} from 'class-validator';
+import { IsEmail, IsEnum, IsOptional, IsString, Length } from 'class-validator';
 import { trimTransform } from '../../../common/transformers/trim-transformer.js';
 import { IsPassword } from '../../../common/validators/password.validator.js';
 import { UserRole } from '../types/user-role.enum.js';

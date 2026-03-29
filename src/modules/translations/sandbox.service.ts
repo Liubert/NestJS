@@ -10,7 +10,10 @@ import { DataSource, Repository } from 'typeorm';
 
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
-import { ProductionSnapshotEntity, SnapshotEntry } from './entities/production-snapshot.entity.js';
+import {
+  ProductionSnapshotEntity,
+  SnapshotEntry,
+} from './entities/production-snapshot.entity.js';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
@@ -19,7 +22,10 @@ import { UserRole } from '../users/types/user-role.enum.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
-import { paginate, PaginatedResponse } from '../../common/dto/paginated-response.dto.js';
+import {
+  paginate,
+  PaginatedResponse,
+} from '../../common/dto/paginated-response.dto.js';
 
 const MAX_SNAPSHOTS = 5;
 
@@ -68,7 +74,11 @@ export class SandboxService {
     return project;
   }
 
-  private assertAccess(project: ProjectEntity, userId: string, role: UserRole): void {
+  private assertAccess(
+    project: ProjectEntity,
+    userId: string,
+    role: UserRole,
+  ): void {
     // Admins always have access; for members, access was already verified upstream
     // (caller must check project membership before calling sandbox methods)
     if (role !== UserRole.ADMIN && project.ownerId !== userId) {
@@ -102,7 +112,8 @@ export class SandboxService {
     }
 
     // Copy all production values for this project into sandbox
-    const result = await this.dataSource.query<{ count: string }[]>(`
+    const result = await this.dataSource.query<{ count: string }[]>(
+      `
       INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
       SELECT
         ns.project_id,
@@ -117,7 +128,9 @@ export class SandboxService {
       WHERE ns.project_id = $1
       ON CONFLICT (project_id, key_id, locale_id) DO NOTHING
       RETURNING id
-    `, [project.id]);
+    `,
+      [project.id],
+    );
 
     const copiedRows = Array.isArray(result) ? result.length : 0;
 
@@ -138,7 +151,9 @@ export class SandboxService {
     snapshotCount: number;
   }> {
     const project = await this.requireProject(projectSlug);
-    const snapshotCount = await this.snapshotRepo.count({ where: { projectId: project.id } });
+    const snapshotCount = await this.snapshotRepo.count({
+      where: { projectId: project.id },
+    });
 
     return {
       initialized: !!project.sandboxInitializedAt,
@@ -152,24 +167,35 @@ export class SandboxService {
 
   async getDiff(
     projectSlug: string,
-    userId: string,
-    role: UserRole,
-  ): Promise<{ total: number; added: number; changed: number; deleted: number; entries: DiffEntry[] }> {
+    _userId: string,
+    _role: UserRole,
+  ): Promise<{
+    total: number;
+    added: number;
+    changed: number;
+    deleted: number;
+    entries: DiffEntry[];
+  }> {
     const project = await this.requireProject(projectSlug);
 
     if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized for this project');
+      throw new BadRequestException(
+        'Sandbox is not initialized for this project',
+      );
     }
 
     // Raw SQL: FULL OUTER JOIN production vs sandbox for this project
-    const rows = await this.dataSource.query<{
-      ns_slug: string;
-      key: string;
-      locale: string;
-      production_value: string | null;
-      sandbox_value: string | null;
-      is_deleted: boolean | null;
-    }[]>(`
+    const rows = await this.dataSource.query<
+      {
+        ns_slug: string;
+        key: string;
+        locale: string;
+        production_value: string | null;
+        sandbox_value: string | null;
+        is_deleted: boolean | null;
+      }[]
+    >(
+      `
       WITH production AS (
         SELECT
           ns.slug        AS ns_slug,
@@ -213,13 +239,19 @@ export class SandboxService {
         OR s.is_deleted = true                                 -- deleted in sandbox
         OR (p.value IS DISTINCT FROM s.value AND s.is_deleted IS NOT TRUE)  -- changed
       ORDER BY ns_slug, key, locale
-    `, [project.id]);
+    `,
+      [project.id],
+    );
 
     const entries: DiffEntry[] = rows.map((r) => ({
       namespace: r.ns_slug,
       key: r.key,
       locale: r.locale,
-      status: r.is_deleted ? 'deleted' : r.production_value === null ? 'added' : 'changed',
+      status: r.is_deleted
+        ? 'deleted'
+        : r.production_value === null
+          ? 'added'
+          : 'changed',
       productionValue: r.production_value,
       sandboxValue: r.is_deleted ? null : r.sandbox_value,
     }));
@@ -247,7 +279,10 @@ export class SandboxService {
   ): Promise<void> {
     await this.sandboxRepo.upsert(
       { projectId, keyId, localeId, value, isDeleted: false },
-      { conflictPaths: ['projectId', 'keyId', 'localeId'], skipUpdateIfNoValuesChanged: true },
+      {
+        conflictPaths: ['projectId', 'keyId', 'localeId'],
+        skipUpdateIfNoValuesChanged: true,
+      },
     );
     await this.projectRepo.update(projectId, { sandboxHasChanges: true });
   }
@@ -289,12 +324,15 @@ export class SandboxService {
 
     // Only project owner or admin can promote
     if (!this.isAdmin(role) && project.ownerId !== userId) {
-      throw new ForbiddenException('Only the project owner or admin can promote sandbox to production');
+      throw new ForbiddenException(
+        'Only the project owner or admin can promote sandbox to production',
+      );
     }
 
     return this.dataSource.transaction(async (manager) => {
       // 1. Snapshot current production state
-      const snapshotRows = await manager.query<SnapshotEntry[]>(`
+      const snapshotRows = await manager.query<SnapshotEntry[]>(
+        `
         SELECT
           ns.slug   AS namespace,
           tk.key    AS key,
@@ -305,17 +343,23 @@ export class SandboxService {
         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
         JOIN translation_locales l ON l.id = tv.locale_id
         WHERE ns.project_id = $1
-      `, [project.id]);
+      `,
+        [project.id],
+      );
 
       const snapshot = manager.getRepository(ProductionSnapshotEntity).create({
         projectId: project.id,
         label: `before-promote-${new Date().toISOString().slice(0, 10)}`,
         data: snapshotRows,
       });
-      const savedSnapshot = await manager.save(ProductionSnapshotEntity, snapshot);
+      const savedSnapshot = await manager.save(
+        ProductionSnapshotEntity,
+        snapshot,
+      );
 
       // Prune old snapshots — keep only MAX_SNAPSHOTS most recent
-      await manager.query(`
+      await manager.query(
+        `
         DELETE FROM production_snapshots
         WHERE project_id = $1
           AND id NOT IN (
@@ -324,32 +368,41 @@ export class SandboxService {
             ORDER BY created_at DESC
             LIMIT $2
           )
-      `, [project.id, MAX_SNAPSHOTS]);
+      `,
+        [project.id, MAX_SNAPSHOTS],
+      );
 
       // 2. Delete current production values for this project
-      await manager.query(`
+      await manager.query(
+        `
         DELETE FROM translation_values
         WHERE key_id IN (
           SELECT tk.id FROM translation_keys tk
           JOIN translation_namespaces ns ON ns.id = tk.namespace_id
           WHERE ns.project_id = $1
         )
-      `, [project.id]);
+      `,
+        [project.id],
+      );
 
       // 3. Insert sandbox values (non-deleted) as new production values
-      const insertResult = await manager.query<{ id: string }[]>(`
+      const insertResult = await manager.query<{ id: string }[]>(
+        `
         INSERT INTO translation_values (id, key_id, locale_id, value, updated_at)
         SELECT gen_random_uuid(), sv.key_id, sv.locale_id, sv.value, now()
         FROM sandbox_values sv
         WHERE sv.project_id = $1 AND sv.is_deleted = false
         RETURNING id
-      `, [project.id]);
+      `,
+        [project.id],
+      );
 
       const promotedCount = insertResult.length;
 
       // 4. Delete sandbox-only keys that were deleted in sandbox
       // (keys with no production values after the insert and no non-deleted sandbox values)
-      await manager.query(`
+      await manager.query(
+        `
         DELETE FROM translation_keys
         WHERE id IN (
           SELECT DISTINCT sv.key_id
@@ -360,19 +413,26 @@ export class SandboxService {
               SELECT 1 FROM translation_values tv2 WHERE tv2.key_id = sv.key_id
             )
         )
-      `, [project.id]);
+      `,
+        [project.id],
+      );
 
       // 5. Reset sandbox: delete all sandbox rows, re-copy from new production
-      await manager.query(`DELETE FROM sandbox_values WHERE project_id = $1`, [project.id]);
+      await manager.query(`DELETE FROM sandbox_values WHERE project_id = $1`, [
+        project.id,
+      ]);
 
-      await manager.query(`
+      await manager.query(
+        `
         INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
         SELECT ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now()
         FROM translation_values tv
         JOIN translation_keys tk ON tk.id = tv.key_id
         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
         WHERE ns.project_id = $1
-      `, [project.id]);
+      `,
+        [project.id],
+      );
 
       await manager.update(ProjectEntity, project.id, {
         sandboxInitializedAt: new Date(),
@@ -398,7 +458,9 @@ export class SandboxService {
     const project = await this.requireProject(projectSlug);
 
     if (!this.isAdmin(role) && project.ownerId !== userId) {
-      throw new ForbiddenException('Only the project owner or admin can revert production');
+      throw new ForbiddenException(
+        'Only the project owner or admin can revert production',
+      );
     }
 
     const snapshot = await this.snapshotRepo.findOne({
@@ -410,14 +472,17 @@ export class SandboxService {
 
     return this.dataSource.transaction(async (manager) => {
       // Delete current production values for this project
-      await manager.query(`
+      await manager.query(
+        `
         DELETE FROM translation_values
         WHERE key_id IN (
           SELECT tk.id FROM translation_keys tk
           JOIN translation_namespaces ns ON ns.id = tk.namespace_id
           WHERE ns.project_id = $1
         )
-      `, [project.id]);
+      `,
+        [project.id],
+      );
 
       // Restore from snapshot via temp lookup of key/locale IDs by name
       let restoredCount = 0;
@@ -453,7 +518,9 @@ export class SandboxService {
 
   async listSnapshots(
     projectSlug: string,
-  ): Promise<{ id: string; label: string | null; createdAt: Date; entryCount: number }[]> {
+  ): Promise<
+    { id: string; label: string | null; createdAt: Date; entryCount: number }[]
+  > {
     const project = await this.requireProject(projectSlug);
 
     const snapshots = await this.snapshotRepo.find({
@@ -482,11 +549,92 @@ export class SandboxService {
     const project = await this.requireProject(projectSlug);
 
     if (!this.isAdmin(role) && project.ownerId !== userId) {
-      throw new ForbiddenException('Only the project owner or admin can reset sandbox');
+      throw new ForbiddenException(
+        'Only the project owner or admin can reset sandbox',
+      );
     }
 
     const result = await this.initSandbox(projectSlug, userId, role, true);
     return { copiedRows: result.copiedRows };
+  }
+
+  // ─── Sandbox HTTP namespace (flat JSON for consumer apps) ────────────────
+
+  /**
+   * Returns a flat key→value map for a namespace in sandbox mode.
+   * Intended for the public HTTP endpoint with ?env=sandbox, allowing developer
+   * apps to test against sandbox without promoting to production.
+   *
+   * Locale alias resolution mirrors TranslationsService.LOCALE_ALIASES.
+   * Returns production values for keys not overridden in sandbox.
+   */
+  async getSandboxNamespace(
+    projectSlug: string,
+    namespace: string,
+    locale: string,
+  ): Promise<Record<string, string>> {
+    // Resolve BCP 47 aliases (no → nb-NO, da → da-DK)
+    const localeAliases: Record<string, string> = {
+      no: 'nb-NO',
+      nb: 'nb-NO',
+      da: 'da-DK',
+      nn: 'nb-NO',
+    };
+    const resolvedLocale = localeAliases[locale.toLowerCase()] ?? locale;
+
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      // Sandbox not initialized — fall back to production data
+      return {};
+    }
+
+    const rows = await this.dataSource.query<
+      {
+        key: string;
+        value: string | null;
+      }[]
+    >(
+      `
+      SELECT tk.key, COALESCE(sv.value, tv.value) AS value
+      FROM translation_values tv
+      JOIN translation_keys tk ON tk.id = tv.key_id
+      JOIN translation_namespaces ns ON ns.id = tk.namespace_id
+      JOIN translation_locales l ON l.id = tv.locale_id
+      LEFT JOIN sandbox_values sv
+        ON sv.key_id = tv.key_id
+        AND sv.locale_id = tv.locale_id
+        AND sv.project_id = $1
+        AND sv.is_deleted = false
+      WHERE ns.project_id = $1
+        AND ns.slug = $2
+        AND l.code = $3
+
+      UNION ALL
+
+      -- Sandbox-only keys (not yet in production)
+      SELECT tk.key, sv.value
+      FROM sandbox_values sv
+      JOIN translation_keys tk ON tk.id = sv.key_id
+      JOIN translation_namespaces ns ON ns.id = tk.namespace_id
+      JOIN translation_locales l ON l.id = sv.locale_id
+      WHERE sv.project_id = $1
+        AND ns.slug = $2
+        AND l.code = $3
+        AND sv.is_deleted = false
+        AND NOT EXISTS (
+          SELECT 1 FROM translation_values tv2
+          WHERE tv2.key_id = sv.key_id AND tv2.locale_id = sv.locale_id
+        )
+    `,
+      [project.id, namespace, resolvedLocale],
+    );
+
+    return Object.fromEntries(
+      rows
+        .filter((r) => r.value !== null)
+        .map((r) => [r.key, r.value as string]),
+    );
   }
 
   // ─── Sandbox entries (editable view) ──────────────────────────────────────
@@ -501,8 +649,8 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     query: ListEntriesQueryDto,
-    userId: string,
-    role: UserRole,
+    _userId: string,
+    _role: UserRole,
   ): Promise<PaginatedResponse<SandboxEntryRow>> {
     const project = await this.requireProject(projectSlug);
 
@@ -566,7 +714,9 @@ export class SandboxService {
     const limitIdx = params.length - 1;
     const offsetIdx = params.length;
 
-    const keys = await this.dataSource.query<{ id: string; key: string; created_at: Date }[]>(
+    const keys = await this.dataSource.query<
+      { id: string; key: string; created_at: Date }[]
+    >(
       `SELECT DISTINCT tk.id, tk.key, tk.created_at
        FROM translation_keys tk
        WHERE ${baseWhere}
@@ -579,7 +729,10 @@ export class SandboxService {
 
     const keyIds = keys.map((k) => k.id);
 
-    const values = await this.dataSource.query<{ key_id: string; locale: string; value: string | null }[]>(`
+    const values = await this.dataSource.query<
+      { key_id: string; locale: string; value: string | null }[]
+    >(
+      `
       -- Production values, overridden by sandbox where available
       SELECT tv.key_id, l.code AS locale, COALESCE(sv.value, tv.value) AS value
       FROM translation_values tv
@@ -600,7 +753,9 @@ export class SandboxService {
           SELECT 1 FROM translation_values tv2
           WHERE tv2.key_id = sv.key_id AND tv2.locale_id = sv.locale_id
         )
-    `, [project.id, keyIds]);
+    `,
+      [project.id, keyIds],
+    );
 
     const valuesByKey = new Map<string, Record<string, string>>();
     for (const v of values) {
@@ -625,8 +780,8 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     dto: CreateEntryDto,
-    userId: string,
-    role: UserRole,
+    _userId: string,
+    _role: UserRole,
   ): Promise<SandboxEntryRow> {
     const project = await this.requireProject(projectSlug);
 
@@ -639,9 +794,14 @@ export class SandboxService {
     });
     if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
 
-    const exists = await this.keyRepo.existsBy({ namespaceId: ns.id, key: dto.key });
+    const exists = await this.keyRepo.existsBy({
+      namespaceId: ns.id,
+      key: dto.key,
+    });
     if (exists) {
-      throw new ConflictException(`Key "${dto.key}" already exists in namespace "${nsSlug}"`);
+      throw new ConflictException(
+        `Key "${dto.key}" already exists in namespace "${nsSlug}"`,
+      );
     }
 
     const keyEntity = await this.keyRepo.save(
@@ -659,7 +819,11 @@ export class SandboxService {
       }
     }
 
-    return { key: keyEntity.key, createdAt: keyEntity.createdAt, values: resultValues };
+    return {
+      key: keyEntity.key,
+      createdAt: keyEntity.createdAt,
+      values: resultValues,
+    };
   }
 
   /**
@@ -670,8 +834,8 @@ export class SandboxService {
     nsSlug: string,
     key: string,
     dto: UpdateEntryDto,
-    userId: string,
-    role: UserRole,
+    _userId: string,
+    _role: UserRole,
   ): Promise<SandboxEntryRow> {
     const project = await this.requireProject(projectSlug);
 
@@ -684,7 +848,9 @@ export class SandboxService {
     });
     if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
 
-    const keyEntity = await this.keyRepo.findOne({ where: { namespaceId: ns.id, key } });
+    const keyEntity = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key },
+    });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
@@ -698,7 +864,11 @@ export class SandboxService {
       }
     }
 
-    return { key: keyEntity.key, createdAt: keyEntity.createdAt, values: resultValues };
+    return {
+      key: keyEntity.key,
+      createdAt: keyEntity.createdAt,
+      values: resultValues,
+    };
   }
 
   /**
@@ -709,8 +879,8 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     key: string,
-    userId: string,
-    role: UserRole,
+    _userId: string,
+    _role: UserRole,
   ): Promise<void> {
     const project = await this.requireProject(projectSlug);
 
@@ -723,7 +893,9 @@ export class SandboxService {
     });
     if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
 
-    const keyEntity = await this.keyRepo.findOne({ where: { namespaceId: ns.id, key } });
+    const keyEntity = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key },
+    });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
