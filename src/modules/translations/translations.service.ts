@@ -30,13 +30,22 @@ import {
   paginate,
   PaginatedResponse,
 } from '../../common/dto/paginated-response.dto.js';
+import { AiTranslateService } from './ai-translate.service.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface QualityInfo {
+  score: number;
+  level: 'green' | 'yellow' | 'red';
+  comment: string;
+  checkedAt: string;
+}
 
 export interface EntryRow {
   key: string;
   createdAt: Date;
   values: Record<string, string>;
+  quality: Record<string, QualityInfo | null>;
 }
 
 export interface LocaleInfo {
@@ -82,6 +91,7 @@ export class TranslationsService {
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
     private readonly dataSource: DataSource,
+    private readonly aiTranslateService: AiTranslateService,
   ) {}
 
   // ─── Access control helpers ────────────────────────────────────────────────
@@ -413,7 +423,15 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<PaginatedResponse<EntryRow>> {
-    const { page, limit, search, searchLocale, sortBy, sortOrder } = query;
+    const {
+      page,
+      limit,
+      search,
+      searchLocale,
+      sortBy,
+      sortOrder,
+      qualityLevel,
+    } = query;
 
     const project = await this.requireProject(projectSlug);
     await this.assertAccess(project, userId, userRole);
@@ -455,6 +473,23 @@ export class TranslationsService {
       });
     }
 
+    if (qualityLevel) {
+      if (qualityLevel === 'unchecked') {
+        qb.andWhere(`EXISTS (
+          SELECT 1 FROM translation_values tv3
+          WHERE tv3.key_id = tk.id AND tv3.value IS NOT NULL AND tv3.quality_level IS NULL
+        )`);
+      } else {
+        qb.andWhere(
+          `EXISTS (
+          SELECT 1 FROM translation_values tv3
+          WHERE tv3.key_id = tk.id AND tv3.quality_level = :qualityLevel
+        )`,
+          { qualityLevel },
+        );
+      }
+    }
+
     const sortColumn = sortBy === 'createdAt' ? 'tk.created_at' : 'tk.key';
     qb.orderBy(sortColumn, sortOrder.toUpperCase() as 'ASC' | 'DESC');
 
@@ -474,24 +509,46 @@ export class TranslationsService {
         'tv.key_id AS key_id',
         'tv.locale_id AS locale_id',
         'tv.value AS value',
+        'tv.quality_score AS quality_score',
+        'tv.quality_level AS quality_level',
+        'tv.quality_comment AS quality_comment',
+        'tv.quality_checked_at AS quality_checked_at',
       ])
       .getRawMany<{
         key_id: string;
         locale_id: string;
         value: string | null;
+        quality_score: number | null;
+        quality_level: string | null;
+        quality_comment: string | null;
+        quality_checked_at: string | null;
       }>();
 
     const valuesByKey = new Map<string, Record<string, string>>();
+    const qualityByKey = new Map<string, Record<string, QualityInfo | null>>();
     for (const v of values) {
       if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
+      if (!qualityByKey.has(v.key_id)) qualityByKey.set(v.key_id, {});
       const locale = localeMap.get(v.locale_id);
-      if (locale) valuesByKey.get(v.key_id)![locale] = v.value ?? '';
+      if (locale) {
+        valuesByKey.get(v.key_id)![locale] = v.value ?? '';
+        qualityByKey.get(v.key_id)![locale] =
+          v.quality_level && v.quality_checked_at
+            ? {
+                score: v.quality_score ?? 0,
+                level: v.quality_level as 'green' | 'yellow' | 'red',
+                comment: v.quality_comment ?? '',
+                checkedAt: v.quality_checked_at,
+              }
+            : null;
+      }
     }
 
     const data: EntryRow[] = keys.map((k) => ({
       key: k.key,
       createdAt: k.createdAt,
       values: valuesByKey.get(k.id) ?? {},
+      quality: qualityByKey.get(k.id) ?? {},
     }));
 
     return paginate(data, total, page, limit);
@@ -532,7 +589,18 @@ export class TranslationsService {
       dto.values ?? {},
     );
 
-    return { key: keyEntity.key, createdAt: keyEntity.createdAt, values };
+    this.triggerQualityCheckAsync(
+      project.id,
+      keyEntity.id,
+      Object.keys(dto.values ?? {}),
+    );
+
+    return {
+      key: keyEntity.key,
+      createdAt: keyEntity.createdAt,
+      values,
+      quality: {},
+    };
   }
 
   async updateEntry(
@@ -561,7 +629,19 @@ export class TranslationsService {
       keyEntity.id,
       dto.values,
     );
-    return { key: keyEntity.key, createdAt: keyEntity.createdAt, values };
+
+    this.triggerQualityCheckAsync(
+      project.id,
+      keyEntity.id,
+      Object.keys(dto.values),
+    );
+
+    return {
+      key: keyEntity.key,
+      createdAt: keyEntity.createdAt,
+      values,
+      quality: {},
+    };
   }
 
   async deleteEntry(
@@ -802,7 +882,15 @@ export class TranslationsService {
     for (const [code, value] of Object.entries(values)) {
       const localeId = localeMap.get(code);
       if (!localeId) continue;
-      entities.push({ keyId, localeId, value });
+      entities.push({
+        keyId,
+        localeId,
+        value,
+        qualityScore: null,
+        qualityLevel: null,
+        qualityComment: null,
+        qualityCheckedAt: null,
+      });
     }
 
     if (entities.length) {
@@ -819,6 +907,139 @@ export class TranslationsService {
       if (locale) result[locale.code] = v.value ?? '';
     }
     return result;
+  }
+
+  // ─── Quality check ────────────────────────────────────────────────────────
+
+  private async persistQualityResult(
+    keyId: string,
+    localeId: string,
+    result: {
+      score: number;
+      level: 'green' | 'yellow' | 'red';
+      comment: string;
+    },
+  ): Promise<void> {
+    await this.valueRepo.update(
+      { keyId, localeId },
+      {
+        qualityScore: result.score,
+        qualityLevel: result.level,
+        qualityComment: result.comment,
+        qualityCheckedAt: new Date(),
+      },
+    );
+  }
+
+  private triggerQualityCheckAsync(
+    projectId: string,
+    keyId: string,
+    updatedLocaleCodes: string[],
+  ): void {
+    void (async () => {
+      try {
+        const locales = await this.localeRepo.findBy({ projectId });
+        const defaultLocale = locales.find((l) => l.isDefault);
+        if (!defaultLocale) return;
+
+        const sourceValue = await this.valueRepo.findOne({
+          where: { keyId, localeId: defaultLocale.id },
+        });
+        const source = sourceValue?.value ?? undefined;
+
+        const targets = locales.filter(
+          (l) => !l.isDefault && updatedLocaleCodes.includes(l.code),
+        );
+
+        await Promise.allSettled(
+          targets.map(async (locale) => {
+            const valueEntity = await this.valueRepo.findOne({
+              where: { keyId, localeId: locale.id },
+            });
+            const translation = valueEntity?.value;
+            if (!translation) return;
+
+            const mode = source ? 'translation_quality' : 'language_quality';
+            const result = await this.aiTranslateService.checkQuality(
+              source ?? translation,
+              translation,
+              locale.code,
+              mode,
+            );
+            await this.persistQualityResult(keyId, locale.id, result);
+          }),
+        );
+      } catch {
+        // best-effort — never throw
+      }
+    })();
+  }
+
+  async runQualityCheck(
+    projectSlug: string,
+    nsSlug: string,
+    key: string,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<Record<string, QualityInfo | null>> {
+    const project = await this.requireProject(projectSlug);
+    await this.assertAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const keyEntity = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key },
+    });
+    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    const locales = await this.localeRepo.findBy({ projectId: project.id });
+    const defaultLocale = locales.find((l) => l.isDefault);
+
+    let source: string | undefined;
+    if (defaultLocale) {
+      const sourceValue = await this.valueRepo.findOne({
+        where: { keyId: keyEntity.id, localeId: defaultLocale.id },
+      });
+      source = sourceValue?.value ?? undefined;
+    }
+
+    const results: Record<string, QualityInfo | null> = {};
+
+    await Promise.allSettled(
+      locales
+        .filter((l) => !l.isDefault)
+        .map(async (locale) => {
+          const valueEntity = await this.valueRepo.findOne({
+            where: { keyId: keyEntity.id, localeId: locale.id },
+          });
+          const translation = valueEntity?.value;
+          if (!translation) {
+            results[locale.code] = null;
+            return;
+          }
+          try {
+            const mode = source ? 'translation_quality' : 'language_quality';
+            const result = await this.aiTranslateService.checkQuality(
+              source ?? translation,
+              translation,
+              locale.code,
+              mode,
+            );
+            await this.persistQualityResult(keyEntity.id, locale.id, result);
+            results[locale.code] = {
+              ...result,
+              checkedAt: new Date().toISOString(),
+            };
+          } catch {
+            results[locale.code] = null;
+          }
+        }),
+    );
+
+    return results;
   }
 
   private parseZip(

@@ -31,10 +31,18 @@ interface ProjectDetails {
   namespaces: string[];
 }
 
+interface QualityInfo {
+  score: number;
+  level: 'green' | 'yellow' | 'red';
+  comment: string;
+  checkedAt: string;
+}
+
 interface Entry {
   key: string;
   createdAt: string;
   values: Record<string, string>;
+  quality: Record<string, QualityInfo | null>;
 }
 
 interface PaginatedEntries {
@@ -111,11 +119,22 @@ const fetchProjectDetails = async (slug: string): Promise<ProjectDetails> => {
 const fetchEntries = async (
   slug: string, ns: string, page: number, limit: number,
   search: string, sortBy: string, sortOrder: string,
+  qualityLevel?: string,
 ): Promise<PaginatedEntries> => {
   const params: Record<string, string | number> = { page, limit, sortBy, sortOrder };
   if (search.length >= 2) params.search = search;
+  if (qualityLevel) params.qualityLevel = qualityLevel;
   const res = await apiClient.get(
     `/translations/projects/${slug}/namespaces/${ns}/entries`, { params },
+  );
+  return res.data;
+};
+
+const checkEntryQuality = async (
+  slug: string, ns: string, key: string,
+): Promise<Record<string, QualityInfo | null>> => {
+  const res = await apiClient.post(
+    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}/check-quality`,
   );
   return res.data;
 };
@@ -216,6 +235,28 @@ const QUALITY_CONFIG = {
   yellow: { color: 'warning', label: 'Review' },
   red:    { color: 'error',   label: 'Poor' },
 } as const;
+
+const QUALITY_COLOR: Record<string, string> = {
+  green:  '#52c41a',
+  yellow: '#faad14',
+  red:    '#ff4d4f',
+};
+
+const QualityBadge: React.FC<{ info: QualityInfo | null | undefined }> = ({ info }) => {
+  if (!info) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
+  return (
+    <Tooltip title={`Score: ${info.score}/10${info.comment ? ` — ${info.comment}` : ''}`}>
+      <span style={{
+        display: 'inline-block',
+        width: 10, height: 10,
+        borderRadius: '50%',
+        backgroundColor: QUALITY_COLOR[info.level] ?? '#bbb',
+        cursor: 'help',
+        flexShrink: 0,
+      }} />
+    </Tooltip>
+  );
+};
 
 interface EditModalProps {
   open: boolean;
@@ -891,6 +932,7 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
   const [pageSize, setPageSize] = useState(50);
   const [sortBy, setSortBy] = useState<'key' | 'createdAt'>('key');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [qualityLevel, setQualityLevel] = useState('');
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [isNewEntry, setIsNewEntry] = useState(false);
@@ -914,8 +956,8 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
   const locales: string[] = projectDetails?.locales?.map((l) => l.code) ?? [];
 
   const { data: entriesData, isLoading: entriesLoading } = useQuery({
-    queryKey: ['entries', projectSlug, namespace, page, pageSize, search, sortBy, sortOrder],
-    queryFn: () => fetchEntries(projectSlug, namespace, page, pageSize, search, sortBy, sortOrder),
+    queryKey: ['entries', projectSlug, namespace, page, pageSize, search, sortBy, sortOrder, qualityLevel],
+    queryFn: () => fetchEntries(projectSlug, namespace, page, pageSize, search, sortBy, sortOrder, qualityLevel || undefined),
     enabled: !!projectSlug && !!namespace,
   } as any) as { data: PaginatedEntries | undefined; isLoading: boolean };
 
@@ -968,6 +1010,16 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Revert failed'),
   });
 
+  const qualityCheckMutation = useMutation({
+    mutationFn: ({ slug, ns, key }: { slug: string; ns: string; key: string }) =>
+      checkEntryQuality(slug, ns, key),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
+      message.success('Quality check complete');
+    },
+    onError: () => message.error('Quality check failed'),
+  });
+
   const handleSearch = useCallback(() => { setSearch(searchInput); setPage(1); }, [searchInput]);
 
   const handleTableChange = (
@@ -999,17 +1051,31 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
       width: 180,
       render: (_: unknown, record: Entry) => {
         const val = record.values[locale];
-        return val
-          ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
-          : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>;
+        return (
+          <Space size={4} align="start">
+            <QualityBadge info={record.quality?.[locale]} />
+            {val
+              ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
+              : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>}
+          </Space>
+        );
       },
     })),
     {
-      title: '', key: 'actions', width: 80, fixed: 'right',
+      title: '', key: 'actions', width: 110, fixed: 'right',
       render: (_: unknown, record: Entry) => (
         <Space size={4}>
           <Button type="text" size="small" icon={<EditOutlined />}
             onClick={() => { setEditEntry(record); setIsNewEntry(false); setEditModalOpen(true); }} />
+          <Tooltip title="Run AI quality check for all locales">
+            <Button
+              size="small"
+              type="text"
+              icon={<SafetyCertificateOutlined />}
+              loading={qualityCheckMutation.isPending && qualityCheckMutation.variables?.key === record.key}
+              onClick={() => qualityCheckMutation.mutate({ slug: projectSlug, ns: namespace, key: record.key })}
+            />
+          </Tooltip>
           <Popconfirm title="Delete this key?" onConfirm={() => deleteMutation.mutate(record.key)}
             okText="Delete" okButtonProps={{ danger: true }}>
             <Button type="text" size="small" danger icon={<DeleteOutlined />} />
@@ -1043,6 +1109,20 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
             allowClear
             onClear={() => { setSearchInput(''); setSearch(''); setPage(1); }}
             style={{ maxWidth: 360 }}
+          />
+        </Col>
+        <Col>
+          <Select
+            value={qualityLevel || ''}
+            onChange={(val) => { setQualityLevel(val); setPage(1); }}
+            style={{ width: 150 }}
+            options={[
+              { value: '', label: 'All qualities' },
+              { value: 'green', label: 'Green' },
+              { value: 'yellow', label: 'Yellow' },
+              { value: 'red', label: 'Red' },
+              { value: 'unchecked', label: 'Not checked' },
+            ]}
           />
         </Col>
         <Col>

@@ -402,6 +402,28 @@ export class TranslationsController {
     );
   }
 
+  @Post('projects/:slug/namespaces/:ns/entries/:key/check-quality')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Run AI quality check for all locales of a key and persist results',
+  })
+  async checkEntryQuality(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.runQualityCheck(
+      slug,
+      ns,
+      key,
+      user.userId,
+      user.role,
+    );
+  }
+
   @Delete('projects/:slug/namespaces/:ns/entries/:key')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)

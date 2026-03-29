@@ -20,6 +20,14 @@ export class ListEntriesQueryDto extends PaginationDto {
   @IsString()
   searchLocale?: string;
 
+  @ApiPropertyOptional({
+    description: 'Filter by quality level',
+    enum: ['green', 'yellow', 'red', 'unchecked'],
+  })
+  @IsOptional()
+  @IsIn(['green', 'yellow', 'red', 'unchecked'])
+  qualityLevel?: string;
+
   @ApiPropertyOptional({ enum: ['key', 'createdAt'], default: 'key' })
   @IsOptional()
   @IsIn(['key', 'createdAt'])
