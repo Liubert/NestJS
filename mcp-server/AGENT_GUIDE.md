@@ -16,6 +16,53 @@ This MCP server wraps the Localization backend API. It lets agents manage transl
 
 ---
 
+## Integration Assessment — Start Here
+
+Before doing any translation work, assess the current integration state of the local project. This is not a one-time setup — run it dynamically whenever the integration status is unclear.
+
+### How to run an assessment
+
+```
+/assess                          — full guided assessment with instructions
+assess_integration_state()       — fetch remote state + URL patterns + classification guide
+assess_integration_state({ projectSlug: "my-app" })  — include full details for a specific project
+```
+
+### The 6 integration states
+
+| State | Description | What to do |
+|-------|-------------|------------|
+| **S1 — Correctly integrated** | Local config uses our backend URL AND `?env=sandbox` for non-production | Nothing — proceed with translation work |
+| **S2 — Outdated integration** | Local config uses our backend URL but **missing** `?env=sandbox` for non-production | Repair: add `?env=sandbox` to non-production env config |
+| **S3 — Not integrated, remote project available** | Local app uses different URL/system, but a remote project exists for this token | Connect: update local config to use correct URL patterns |
+| **S4 — Not integrated, no remote project** | Local app uses different system, no remote project for this token | Create project, then integrate locally |
+| **S5 — Project empty or incomplete** | Local config is correct (or project was just created), but remote project has no namespaces/locales/translations | Bootstrap: create namespace, locale, init sandbox, import content |
+| **S6 — No localization at all** | No i18n system found in the local project | Full setup: install library, create config, then S4 path |
+
+### Client URL pattern rule (mandatory)
+
+This is the required pattern for consumer apps that fetch translations from this backend:
+
+| Environment | URL |
+|-------------|-----|
+| **Production** | `{BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}` |
+| **Non-production (dev/staging)** | `{BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}?env=sandbox` |
+
+The `?env=sandbox` flag makes the server return sandbox (working copy) values instead of promoted production values. **Non-production environments MUST use this flag.** Without it, developers test against production data, which is always wrong.
+
+If the local project is missing `?env=sandbox` for non-production environments, classify as **S2 — outdated integration** and repair it.
+
+### What to look for locally
+
+When inspecting the local project:
+1. Search for the backend URL (from `assess_integration_state` output) in config/env files
+2. Check for `?env=sandbox` in non-production translation fetch URLs
+3. Check `.env`, `.env.local`, `.env.development`, `.env.production` for localization URL variables
+4. Look for i18n initialization files (i18next, vue-i18n, react-intl, custom fetch)
+5. Check for references to Locize or other external localization services (migration scenario)
+
+---
+
 ## Environment rules
 
 | Operation | Sandbox | Production |
@@ -119,6 +166,37 @@ Invalid: `button/save`, `button save`, `button:save`
 ---
 
 ## Tool reference
+
+### `assess_integration_state`
+Fetches remote project state and returns URL patterns + classification guide for integration assessment. **Use this as the first call when running `/assess` or checking integration status.**
+
+**Params:** `projectSlug` (optional) — if provided, also returns full details for that project
+
+```
+assess_integration_state()
+assess_integration_state({ projectSlug: "travis" })
+```
+
+**Returns:** server config (BACKEND_URL, Admin UI URL), client URL patterns (production vs `?env=sandbox`), what to look for in local files, S1–S6 classification rules, remote project list, and optionally full project details.
+
+---
+
+### `create_project`
+Creates a new translation project. **Only call after explicit user confirmation.** The slug must be unique.
+
+After creating a project you must also call `create_namespace`, `create_locale`, and `init_sandbox` before the project can be used.
+
+**Params:**
+- `slug` (required) — lowercase, hyphens allowed, e.g. `my-app`, `travis-v2`
+- `name` (optional) — human-readable display name shown in Admin UI
+
+```
+create_project({ slug: "my-app", name: "My Application" })
+```
+
+**Returns:** project ID, slug, name, and required next steps.
+
+---
 
 ### `list_projects`
 Lists all accessible projects with sandbox state.
@@ -518,8 +596,10 @@ Translation keys are **decoupled from code deployments**. They are fetched at ru
 
 | Tool | Status | Notes |
 |------|--------|-------|
+| `assess_integration_state` | ✅ | Returns URL patterns, classification guide, remote state |
+| `create_project` | ✅ | Requires user confirmation first |
 | `list_projects` | ✅ | |
-| `get_project_details` | ✅ | Returns locale codes as string array, not objects |
+| `get_project_details` | ✅ | Returns locale objects `{ code, isDefault }` |
 | `get_environment_status` | ✅ | |
 | `init_sandbox` | ✅ | |
 | `list_translations` (sandbox) | ✅ | Default env |

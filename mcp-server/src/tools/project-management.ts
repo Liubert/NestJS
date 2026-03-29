@@ -27,6 +27,78 @@ interface EntriesPage {
 }
 
 export function registerProjectManagementTools(server: McpServer): void {
+  // ─── create_project ────────────────────────────────────────────────────────
+  server.tool(
+    "create_project",
+    [
+      "Create a new translation project on the localization backend.",
+      "Only call this after the user has explicitly confirmed they want to create a project.",
+      "The slug must be unique — if a project with this slug already exists, the call will fail.",
+      "After creating a project, you must also: create at least one namespace (create_namespace),",
+      "create at least one locale (create_locale), and initialize the sandbox (init_sandbox)",
+      "before the project can be used for translation work.",
+    ].join(" "),
+    {
+      slug: z
+        .string()
+        .regex(/^[a-z0-9][a-z0-9-]*$/, "Slug must start with a letter or digit and contain only lowercase letters, digits, and hyphens")
+        .describe("Project slug — short, lowercase, hyphen-separated identifier (e.g. 'my-app', 'travis-v2'). Must be unique."),
+      name: z
+        .string()
+        .optional()
+        .describe("Optional human-readable project name (e.g. 'My Application'). Shown in Admin UI."),
+    },
+    async ({ slug, name }) => {
+      try {
+        interface ProjectCreated {
+          id: string;
+          slug: string;
+          name: string | null;
+          ownerId: string;
+          createdAt: string;
+        }
+
+        const project = await apiPost<ProjectCreated>("/translations/projects", {
+          slug,
+          ...(name ? { name } : {}),
+        });
+
+        logWrite("create_project", { slug, name }, project);
+
+        const lines = [
+          `✅ Project created successfully.`,
+          ``,
+          `Slug: ${project.slug}`,
+          ...(project.name ? [`Name: ${project.name}`] : []),
+          `ID: ${project.id}`,
+          ``,
+          `Next steps (required before using this project):`,
+          `1. create_namespace — add at least one namespace (e.g. "common")`,
+          `2. create_locale — add at least one locale (e.g. "en-US")`,
+          `3. init_sandbox — initialize the sandbox before any writes`,
+        ];
+
+        return {
+          content: [{ type: "text" as const, text: lines.join("\n") }],
+        };
+      } catch (error) {
+        if (error instanceof ApiError) {
+          if (error.status === 409) {
+            return {
+              content: [{ type: "text" as const, text: `Error: A project with slug "${slug}" already exists. Use a different slug or call list_projects to see existing projects.` }],
+            };
+          }
+          return {
+            content: [{ type: "text" as const, text: `Error ${error.status}: ${error.message}` }],
+          };
+        }
+        return {
+          content: [{ type: "text" as const, text: `Unexpected error: ${String(error)}` }],
+        };
+      }
+    },
+  );
+
   // ─── create_namespace ──────────────────────────────────────────────────────
   server.tool(
     "create_namespace",

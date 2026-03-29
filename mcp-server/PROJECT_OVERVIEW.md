@@ -83,6 +83,32 @@ list_translations({ projectSlug: "travis", namespace: "mobile", env: "production
 
 ---
 
+## Required client integration pattern
+
+Consumer applications that fetch translations from this backend must use environment-specific URLs:
+
+| App environment | URL to use | Why |
+|-----------------|------------|-----|
+| **Production** | `{BACKEND_URL}/translations/{slug}/{namespace}/{locale}` | Serves promoted production data |
+| **Non-production** (dev, staging, test) | `{BACKEND_URL}/translations/{slug}/{namespace}/{locale}?env=sandbox` | Serves sandbox (working copy) data |
+
+The `?env=sandbox` flag is **mandatory** for all non-production environments. Without it, developers test against production data — which means they never see unpromoted changes and risk polluting the production baseline.
+
+### Example (i18next with HTTP backend)
+
+```js
+// i18n config
+backend: {
+  loadPath: process.env.NODE_ENV === 'production'
+    ? `${process.env.NEXT_PUBLIC_I18N_URL}/translations/my-app/{{ns}}/{{lng}}`
+    : `${process.env.NEXT_PUBLIC_I18N_URL}/translations/my-app/{{ns}}/{{lng}}?env=sandbox`
+}
+```
+
+If the local project is missing this separation, it is classified as **S2 — outdated integration** and must be repaired before normal translation work begins.
+
+---
+
 ## ⚠️ If you detect production is being used for dev work
 
 **Production should never be the target for development changes.** If you observe that:
