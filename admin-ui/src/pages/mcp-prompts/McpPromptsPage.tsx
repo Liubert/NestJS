@@ -23,10 +23,11 @@ const { Text } = Typography;
 interface PromptItem {
   key: string;
   description: string;
+  defaultContent: string;
   hasOverride: boolean;
   content: string | null;
   version: number | null;
-  updatedAt: string | null;
+  createdAt: string | null;
 }
 
 interface HistoryItem {
@@ -38,8 +39,8 @@ interface HistoryItem {
 }
 
 const fetchPrompts = async (): Promise<PromptItem[]> => {
-  const res = await apiClient.get<{ prompts: PromptItem[] }>('/mcp-prompts');
-  return res.data.prompts;
+  const res = await apiClient.get<PromptItem[]>('/mcp-prompts');
+  return res.data;
 };
 
 const savePrompt = async ({ key, content }: { key: string; content: string }): Promise<PromptItem> => {
@@ -52,8 +53,8 @@ const resetPrompt = async (key: string): Promise<void> => {
 };
 
 const fetchHistory = async (key: string): Promise<HistoryItem[]> => {
-  const res = await apiClient.get<{ history: HistoryItem[] }>(`/mcp-prompts/${key}/history`);
-  return res.data.history;
+  const res = await apiClient.get<HistoryItem[]>(`/mcp-prompts/${key}/history`);
+  return res.data;
 };
 
 const restoreVersion = async ({ key, version }: { key: string; version: number }): Promise<PromptItem> => {
@@ -82,10 +83,8 @@ const McpPromptsPage: React.FC = () => {
 
   const saveMutation = useMutation({
     mutationFn: savePrompt,
-    onSuccess: (updated) => {
-      queryClient.setQueryData<PromptItem[]>(['mcp-prompts'], (old) =>
-        old?.map((p) => (p.key === updated.key ? updated : p)) ?? [],
-      );
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['mcp-prompts'] });
       message.success('Prompt saved');
     },
     onError: () => message.error('Failed to save prompt'),
@@ -93,14 +92,8 @@ const McpPromptsPage: React.FC = () => {
 
   const resetMutation = useMutation({
     mutationFn: resetPrompt,
-    onSuccess: (_, key) => {
-      queryClient.setQueryData<PromptItem[]>(['mcp-prompts'], (old) =>
-        old?.map((p) =>
-          p.key === key
-            ? { ...p, hasOverride: false, content: null, version: null, updatedAt: null }
-            : p,
-        ) ?? [],
-      );
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['mcp-prompts'] });
       message.success('Reset to code default');
     },
     onError: () => message.error('Failed to reset prompt'),
@@ -109,9 +102,8 @@ const McpPromptsPage: React.FC = () => {
   const restoreMutation = useMutation({
     mutationFn: restoreVersion,
     onSuccess: (updated) => {
-      queryClient.setQueryData<PromptItem[]>(['mcp-prompts'], (old) =>
-        old?.map((p) => (p.key === updated.key ? updated : p)) ?? [],
-      );
+      void queryClient.invalidateQueries({ queryKey: ['mcp-prompts'] });
+      void queryClient.invalidateQueries({ queryKey: ['mcp-prompts-history', historyDrawer.key] });
       setHistoryDrawer({ open: false, key: null });
       message.success(`Restored to version ${updated.version}`);
     },
@@ -120,7 +112,7 @@ const McpPromptsPage: React.FC = () => {
 
   const getTextAreaValue = (prompt: PromptItem): string => {
     if (editContent[prompt.key] !== undefined) return editContent[prompt.key];
-    return prompt.content ?? '';
+    return prompt.content ?? prompt.defaultContent;
   };
 
   const historyColumns = [
@@ -188,9 +180,9 @@ const McpPromptsPage: React.FC = () => {
           ) : (
             <Tag color="default">Code default</Tag>
           )}
-          {prompt.updatedAt && (
+          {prompt.createdAt && (
             <Text type="secondary" style={{ fontSize: 12 }}>
-              Updated: {new Date(prompt.updatedAt).toLocaleString()}
+              Updated: {new Date(prompt.createdAt).toLocaleString()}
             </Text>
           )}
         </Space>
