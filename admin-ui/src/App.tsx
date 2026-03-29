@@ -10,9 +10,11 @@ import {
   TeamOutlined,
   RobotOutlined,
   KeyOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import TranslationsPage from './pages/translations/TranslationsPage';
 import AiConfigPage from './pages/ai-config/AiConfigPage';
+import { McpPromptsPage } from './pages/mcp-prompts/McpPromptsPage';
 import ProjectsPage from './pages/projects/ProjectsPage';
 import ProjectSettingsPage from './pages/projects/ProjectSettingsPage';
 import UsersPage from './pages/users/UsersPage';
@@ -102,6 +104,11 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             icon: <RobotOutlined />,
             label: <Link to="/ai-config">AI Config</Link>,
           },
+          {
+            key: '/mcp-prompts',
+            icon: <MessageOutlined />,
+            label: <Link to="/mcp-prompts">MCP Prompts</Link>,
+          },
         ]
       : []),
   ];
@@ -177,6 +184,7 @@ function App() {
                       <Route path="/translations" element={<TranslationsPage />} />
                       <Route path="/users" element={<UsersPage />} />
                       <Route path="/ai-config" element={<AiConfigPage />} />
+                      <Route path="/mcp-prompts" element={<McpPromptsPage />} />
                       <Route path="/api-tokens" element={<ApiTokensPage />} />
                       <Route path="/locales" element={<Navigate to="/projects" replace />} />
                     </Routes>

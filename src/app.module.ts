@@ -20,6 +20,7 @@ import { FilesModule } from './modules/files/files.module';
 import { ReqWithUser } from './modules/auth/types/auth.types';
 import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { TranslationsModule } from './modules/translations/translations.module';
+import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module.js';
 
 @Module({
   imports: [
@@ -62,6 +63,7 @@ import { TranslationsModule } from './modules/translations/translations.module';
     FilesModule,
     RabbitMQModule,
     TranslationsModule,
+    McpPromptsModule,
   ],
   controllers: [AppController],
   providers: [AppService, AppResolver],
