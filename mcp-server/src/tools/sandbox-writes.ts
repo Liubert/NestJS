@@ -1,7 +1,6 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "../api-client.js";
-import { assertSandboxWrite } from "../permissions.js";
 import { logWrite } from "../logger.js";
 
 interface EntryRow {
@@ -13,6 +12,42 @@ interface EntryRow {
 interface ProjectDetails {
   locales: { code: string; isDefault: boolean }[];
   namespaces: string[];
+}
+
+interface SandboxStatus {
+  initialized: boolean;
+  hasChanges: boolean;
+  snapshotCount: number;
+}
+
+/**
+ * Returns a warning string if the sandbox has pre-existing pending changes,
+ * or if it is not initialized. Returns null on clean state or fetch failure.
+ *
+ * Non-blocking: caller should prepend the warning to output but never abort the write.
+ */
+async function getSandboxWarning(projectSlug: string): Promise<string | null> {
+  try {
+    const status = await apiGet<SandboxStatus>(
+      `/translations/projects/${projectSlug}/sandbox/status`,
+    );
+    if (!status.initialized) {
+      return [
+        `⚠️  Sandbox is not initialized for "${projectSlug}".`,
+        `   Call init_sandbox({ projectSlug: "${projectSlug}" }) before writing.`,
+      ].join("\n");
+    }
+    if (status.hasChanges) {
+      const snapshots = status.snapshotCount;
+      return [
+        `⚠️  Sandbox already has pending changes (${snapshots} snapshot${snapshots !== 1 ? "s" : ""} available).`,
+        `   Review with get_translation_diff before adding more, or call init_sandbox with force: true to discard existing changes.`,
+      ].join("\n");
+    }
+    return null;
+  } catch {
+    return null; // Never block writes because of a status check failure
+  }
 }
 
 /**
@@ -65,10 +100,12 @@ export function registerSandboxWriteTools(server: McpServer): void {
         ),
     },
     async ({ projectSlug, namespace, key, values }) => {
-      assertSandboxWrite("sandbox");
+      // Validate locale codes and check sandbox state in parallel.
+      const [{ unknown: unknownLocales }, sandboxWarning] = await Promise.all([
+        validateLocales(projectSlug, Object.keys(values)),
+        getSandboxWarning(projectSlug),
+      ]);
 
-      // Validate locale codes against project — unknown codes are rejected.
-      const { unknown: unknownLocales } = await validateLocales(projectSlug, Object.keys(values));
       if (unknownLocales.length > 0) {
         return {
           content: [
@@ -88,10 +125,17 @@ export function registerSandboxWriteTools(server: McpServer): void {
 
       const basePath = `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries`;
 
+      const withWarning = (result: { content: { type: "text"; text: string }[] }) => {
+        if (sandboxWarning) {
+          result.content[0].text = sandboxWarning + "\n\n" + result.content[0].text;
+        }
+        return result;
+      };
+
       try {
         const updated = await apiPatch<EntryRow>(`${basePath}/${encodeURIComponent(key)}`, { values });
         logWrite("set_translation", { projectSlug, namespace, key, action: "updated" }, updated);
-        return successContent("Updated", projectSlug, namespace, key, updated.values);
+        return withWarning(successContent("Updated", projectSlug, namespace, key, updated.values));
       } catch (updateError) {
         if (!(updateError instanceof ApiError) || updateError.status !== 404) {
           return errorContent(updateError);
@@ -100,13 +144,13 @@ export function registerSandboxWriteTools(server: McpServer): void {
         try {
           const created = await apiPost<EntryRow>(basePath, { key, values });
           logWrite("set_translation", { projectSlug, namespace, key, action: "created" }, created);
-          return successContent("Created", projectSlug, namespace, key, created.values);
+          return withWarning(successContent("Created", projectSlug, namespace, key, created.values));
         } catch (createError) {
           if (createError instanceof ApiError && createError.status === 409) {
             try {
               const retried = await apiPatch<EntryRow>(`${basePath}/${encodeURIComponent(key)}`, { values });
               logWrite("set_translation", { projectSlug, namespace, key, action: "updated" }, retried);
-              return successContent("Updated", projectSlug, namespace, key, retried.values);
+              return withWarning(successContent("Updated", projectSlug, namespace, key, retried.values));
             } catch (retryError) {
               return errorContent(retryError);
             }
@@ -150,10 +194,11 @@ export function registerSandboxWriteTools(server: McpServer): void {
         .describe("If true, preview what would be written without actually writing"),
     },
     async ({ projectSlug, namespace, locale, entries, dryRun }) => {
-      assertSandboxWrite("sandbox");
-
-      // Validate locale code against project.
-      const { unknown: unknownLocales } = await validateLocales(projectSlug, [locale]);
+      // Validate locale code and check sandbox state in parallel.
+      const [{ unknown: unknownLocales }, sandboxWarning] = await Promise.all([
+        validateLocales(projectSlug, [locale]),
+        dryRun ? Promise.resolve(null) : getSandboxWarning(projectSlug),
+      ]);
       if (unknownLocales.length > 0) {
         return {
           content: [
@@ -236,8 +281,12 @@ export function registerSandboxWriteTools(server: McpServer): void {
         `Use list_translations with missingLocale="${locale}" to check remaining gaps.`,
       );
 
+      const text = sandboxWarning
+        ? sandboxWarning + "\n\n" + lines.join("\n")
+        : lines.join("\n");
+
       return {
-        content: [{ type: "text" as const, text: lines.join("\n") }],
+        content: [{ type: "text" as const, text }],
       };
     },
   );
@@ -252,8 +301,6 @@ export function registerSandboxWriteTools(server: McpServer): void {
       key: z.string().describe("Translation key to delete"),
     },
     async ({ projectSlug, namespace, key }) => {
-      assertSandboxWrite("sandbox");
-
       try {
         await apiDelete(
           `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/${encodeURIComponent(key)}`,

@@ -42,10 +42,10 @@ export interface ToolMeta {
  * Add every new tool here.
  */
 export const TOOL_REGISTRY = {
-  // ── Read — available for both environments ──────────────────────────
+  // ── Read — environment / project discovery ───────────────────────────
   list_projects: { env: "both", access: "read" },
   get_project_details: { env: "both", access: "read" },
-  get_environment_status: { env: "both", access: "read" },
+  assess_integration_state: { env: "both", access: "read" },
   list_translations: { env: "both", access: "read" },
   get_translation_diff: { env: "both", access: "read" },
   validate_translations: { env: "both", access: "read" },
@@ -59,6 +59,7 @@ export const TOOL_REGISTRY = {
   bulk_import: { env: "sandbox", access: "write" },
   bulk_set_locale: { env: "sandbox", access: "write" },
   // ── Project structure management ──────────────────────────────────────────
+  create_project: { env: "both", access: "write" },
   create_namespace: { env: "both", access: "write" },
   create_locale: { env: "both", access: "write" },
   // ── Read-only export / analysis ───────────────────────────────────────────

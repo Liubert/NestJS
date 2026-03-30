@@ -372,10 +372,36 @@ export function registerProjectManagementTools(server: McpServer): void {
           };
         }
 
-        // Validate locale codes against the project
-        const project = await apiGet<{ locales: { code: string; isDefault: boolean }[] }>(
-          `/translations/projects/${projectSlug}`,
-        );
+        // Validate locale codes and check sandbox state in parallel.
+        const [project, sandboxStatus] = await Promise.all([
+          apiGet<{ locales: { code: string; isDefault: boolean }[] }>(
+            `/translations/projects/${projectSlug}`,
+          ),
+          dryRun
+            ? Promise.resolve(null)
+            : apiGet<{ initialized: boolean; hasChanges: boolean; snapshotCount: number }>(
+                `/translations/projects/${projectSlug}/sandbox/status`,
+              ).catch(() => null),
+        ]);
+
+        const sandboxWarning: string | null = (() => {
+          if (!sandboxStatus) return null;
+          if (!sandboxStatus.initialized) {
+            return [
+              `⚠️  Sandbox is not initialized for "${projectSlug}".`,
+              `   Call init_sandbox({ projectSlug: "${projectSlug}" }) before writing.`,
+            ].join("\n");
+          }
+          if (sandboxStatus.hasChanges) {
+            const n = sandboxStatus.snapshotCount;
+            return [
+              `⚠️  Sandbox already has pending changes (${n} snapshot${n !== 1 ? "s" : ""} available).`,
+              `   Review with get_translation_diff before importing more, or call init_sandbox with force: true to discard existing changes.`,
+            ].join("\n");
+          }
+          return null;
+        })();
+
         const validLocales = new Set(project.locales.map((l) => l.code));
         const requestedLocales = Object.keys(resolvedTranslations);
         const unknownLocales = requestedLocales.filter((l) => !validLocales.has(l));
@@ -482,8 +508,12 @@ export function registerProjectManagementTools(server: McpServer): void {
 
         lines.push(``, `Use get_translation_diff to review all pending changes before promoting.`);
 
+        const text = sandboxWarning
+          ? sandboxWarning + "\n\n" + lines.join("\n")
+          : lines.join("\n");
+
         return {
-          content: [{ type: "text" as const, text: lines.join("\n") }],
+          content: [{ type: "text" as const, text }],
         };
       } catch (error) {
         return errorContent(error);

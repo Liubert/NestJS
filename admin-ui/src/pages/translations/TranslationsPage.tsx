@@ -277,7 +277,7 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
   React.useEffect(() => {
     if (open) {
       setQualityResults({});
-      entry ? form.setFieldsValue({ key: entry.key, ...entry.values }) : form.resetFields();
+      if (entry) { form.setFieldsValue({ key: entry.key, ...entry.values }); } else { form.resetFields(); }
     }
   }, [open, entry, form]);
 
@@ -478,7 +478,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     enabled: !!projectSlug,
   } as any) as { data: SandboxStatus | undefined; isLoading: boolean };
 
-  const { data: diff, isLoading: diffLoading } = useQuery({
+  const { data: diff } = useQuery({
     queryKey: ['sandbox-diff', projectSlug],
     queryFn: () => fetchSandboxDiff(projectSlug),
     enabled: !!projectSlug && !!status?.initialized,

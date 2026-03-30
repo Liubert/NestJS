@@ -16,6 +16,28 @@ This MCP server wraps the Localization backend API. It lets agents manage transl
 
 ---
 
+## ⚠️ MANDATORY PRE-FLIGHT — Do This Before Every Write Session
+
+**Do not skip this.** Agents have written on top of pre-existing sandbox changes from other sessions, producing mixed, unreviewed diffs.
+
+Before calling `set_translation`, `bulk_set_locale`, `bulk_import`, or `delete_translation`:
+
+```
+get_project_details({ projectSlug: "travis" })
+```
+
+This single call returns locale codes (required for every write) **and** full sandbox state including `hasChanges` and snapshot count.
+
+### Decision table
+
+| `get_project_details` sandbox line | What to do |
+|------------------------------------|------------|
+| `NOT initialized` | Call `init_sandbox({ projectSlug })` before any write |
+| `initialized — no pending changes` | Safe to write |
+| `initialized — HAS PENDING CHANGES` | Call `get_translation_diff` first to understand existing changes. Do not discard without explicit user instruction. |
+
+---
+
 ## Integration Assessment — Start Here
 
 Before doing any translation work, assess the current integration state of the local project. This is not a one-time setup — run it dynamically whenever the integration status is unclear.
@@ -224,13 +246,6 @@ Project: travis — "TRAVIS"
 Locales (5): en, da-DK (default), nb-NO, sv, uk
 Namespaces (2): backoffice-translations, mobile
 ```
-
----
-
-### `get_environment_status`
-Shows sandbox state: initialized, has pending changes, snapshot count.
-
-**Params:** `projectSlug` (required)
 
 ---
 
@@ -485,13 +500,12 @@ get_project_details({ projectSlug: "travis" })
 
 Note the exact locale codes. You will use them in every `set_translation` call.
 
-### Step 2 — Ensure sandbox is initialized
+### Step 2 — Check sandbox state
 
-```
-get_environment_status({ projectSlug: "travis" })
-```
+`get_project_details` already includes sandbox state — no separate call needed.
 
-If `initialized: false`, call `init_sandbox({ projectSlug: "travis" })`.
+- `NOT initialized` → call `init_sandbox({ projectSlug: "travis" })` before writing
+- `HAS PENDING CHANGES` → call `get_translation_diff` to review existing changes before adding more
 
 ### Step 3 — Add or edit keys
 
@@ -599,8 +613,7 @@ Translation keys are **decoupled from code deployments**. They are fetched at ru
 | `assess_integration_state` | ✅ | Returns URL patterns, classification guide, remote state |
 | `create_project` | ✅ | Requires user confirmation first |
 | `list_projects` | ✅ | |
-| `get_project_details` | ✅ | Returns locale objects `{ code, isDefault }` |
-| `get_environment_status` | ✅ | |
+| `get_project_details` | ✅ | Returns locale objects `{ code, isDefault }` + full sandbox state |
 | `init_sandbox` | ✅ | |
 | `list_translations` (sandbox) | ✅ | Default env |
 | `list_translations` (production) | ✅ | Pass `env: "production"` |
