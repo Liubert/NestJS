@@ -1,8 +1,8 @@
 import {
   Injectable,
   Logger,
+  OnApplicationBootstrap,
   OnModuleDestroy,
-  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -14,7 +14,9 @@ const BATCH_SIZE = 5;
 const MAX_KEYS_PER_CYCLE = 50;
 
 @Injectable()
-export class QualityBackfillService implements OnModuleInit, OnModuleDestroy {
+export class QualityBackfillService
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(QualityBackfillService.name);
   private timer: NodeJS.Timeout | null = null;
 
@@ -25,7 +27,7 @@ export class QualityBackfillService implements OnModuleInit, OnModuleDestroy {
     private readonly qualityQueue: QualityQueueService,
   ) {}
 
-  onModuleInit(): void {
+  onApplicationBootstrap(): void {
     this.timer = setInterval(() => {
       void this.backfill();
     }, BACKFILL_INTERVAL_MS);

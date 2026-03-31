@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { createHash } from 'crypto';
@@ -12,7 +12,7 @@ import {
 } from './quality-queue.service.js';
 
 @Injectable()
-export class QualityWorkerService implements OnModuleInit {
+export class QualityWorkerService implements OnApplicationBootstrap {
   private readonly logger = new Logger(QualityWorkerService.name);
 
   constructor(
@@ -26,7 +26,7 @@ export class QualityWorkerService implements OnModuleInit {
     private readonly qualityQueue: QualityQueueService,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  async onApplicationBootstrap(): Promise<void> {
     await this.qualityQueue.consumeBatches((msg) => this.handleBatch(msg));
     this.logger.log('Quality worker consuming batches');
   }
