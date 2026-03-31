@@ -2,7 +2,7 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 import {
   DEFAULT_QUALITY_TRANSLATE_PROMPT,
   DEFAULT_QUALITY_LANGUAGE_PROMPT,
-} from '../../../modules/translations/ai-config.service.js';
+} from '../../modules/translations/ai-config.service.js';
 
 /**
  * Migrates quality scoring from 0–10 to 0–100 scale.

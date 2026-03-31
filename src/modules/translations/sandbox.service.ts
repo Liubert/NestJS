@@ -26,6 +26,7 @@ import {
   paginate,
   PaginatedResponse,
 } from '../../common/dto/paginated-response.dto.js';
+import type { QualityInfo } from './translations.service.js';
 
 const MAX_SNAPSHOTS = 5;
 
@@ -33,6 +34,7 @@ export interface SandboxEntryRow {
   key: string;
   createdAt: Date;
   values: Record<string, string>;
+  quality: Record<string, QualityInfo | null>;
 }
 
 export type DiffStatus = 'added' | 'changed' | 'deleted' | 'unchanged';
@@ -763,10 +765,45 @@ export class SandboxService {
       if (v.value != null) valuesByKey.get(v.key_id)![v.locale] = v.value;
     }
 
+    // Quality is stored on production translation_values rows
+    const qualityRows = await this.dataSource.query<
+      {
+        key_id: string;
+        locale: string;
+        quality_score: number | null;
+        quality_level: string | null;
+        quality_comment: string | null;
+        quality_checked_at: string | null;
+        quality_review_state: string | null;
+      }[]
+    >(
+      `SELECT tv.key_id, l.code AS locale,
+              tv.quality_score, tv.quality_level, tv.quality_comment,
+              tv.quality_checked_at, tv.quality_review_state
+       FROM translation_values tv
+       JOIN translation_locales l ON l.id = tv.locale_id
+       WHERE tv.key_id = ANY($1)`,
+      [keyIds],
+    );
+
+    const qualityByKey = new Map<string, Record<string, QualityInfo | null>>();
+    for (const q of qualityRows) {
+      if (!qualityByKey.has(q.key_id)) qualityByKey.set(q.key_id, {});
+      qualityByKey.get(q.key_id)![q.locale] = {
+        reviewState: (q.quality_review_state ??
+          'not_checked') as QualityInfo['reviewState'],
+        score: q.quality_score,
+        level: q.quality_level as 'green' | 'yellow' | 'red' | null,
+        comment: q.quality_comment,
+        checkedAt: q.quality_checked_at,
+      };
+    }
+
     const data: SandboxEntryRow[] = keys.map((k) => ({
       key: k.key,
       createdAt: k.created_at,
       values: valuesByKey.get(k.id) ?? {},
+      quality: qualityByKey.get(k.id) ?? {},
     }));
 
     return paginate(data, Number(count), page, limit);
@@ -823,6 +860,7 @@ export class SandboxService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       values: resultValues,
+      quality: {},
     };
   }
 
@@ -868,6 +906,7 @@ export class SandboxService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       values: resultValues,
+      quality: {},
     };
   }
 
