@@ -88,6 +88,12 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       source: string | null;
       translations: Record<string, string>;
     }> = [];
+    // Default locale items — language_quality only (no source comparison)
+    const defaultItems: Array<{
+      key: string;
+      source: string | null;
+      translations: Record<string, string>;
+    }> = [];
 
     for (const keyId of keyIds) {
       const keyEntity = keyById.get(keyId);
@@ -98,9 +104,13 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         ? (valMap.get(defaultLocale.id) ?? null)
         : null;
       const translations: Record<string, string> = {};
+      let defaultValue: string | undefined;
       for (const [localeId, value] of valMap.entries()) {
         const locale = localeById.get(localeId);
-        if (locale && !locale.isDefault) {
+        if (!locale) continue;
+        if (locale.isDefault) {
+          defaultValue = value;
+        } else {
           translations[locale.code] = value;
         }
       }
@@ -108,9 +118,16 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       if (Object.keys(translations).length) {
         items.push({ key: keyEntity.key, source, translations });
       }
+      if (defaultLocale && defaultValue) {
+        defaultItems.push({
+          key: keyEntity.key,
+          source: null,
+          translations: { [defaultLocale.code]: defaultValue },
+        });
+      }
     }
 
-    if (!items.length) {
+    if (!items.length && !defaultItems.length) {
       await this.setStateForKeys(keyIds, 'checked');
       return;
     }
@@ -124,7 +141,18 @@ export class QualityWorkerService implements OnApplicationBootstrap {
     >;
 
     try {
-      results = await this.aiTranslateService.bulkCheckQuality(items);
+      const [mainResults, defaultResults] = await Promise.all([
+        items.length
+          ? this.aiTranslateService.bulkCheckQuality(items)
+          : Promise.resolve({}),
+        defaultItems.length
+          ? this.aiTranslateService.bulkCheckQuality(defaultItems)
+          : Promise.resolve({}),
+      ]);
+      results = { ...mainResults };
+      for (const [key, localeMap] of Object.entries(defaultResults)) {
+        results[key] = Object.assign({}, results[key] ?? {}, localeMap);
+      }
     } catch (e: unknown) {
       this.logger.error(
         `Gemini failed for batch: ${e instanceof Error ? e.message : String(e)}`,
@@ -144,13 +172,10 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         // This key's chunk timed out — mark as failed
         if (valMap) {
           for (const [localeId] of valMap.entries()) {
-            const locale = localeById.get(localeId);
-            if (locale && !locale.isDefault) {
-              await this.valueRepo.update(
-                { keyId, localeId },
-                { qualityReviewState: 'failed' },
-              );
-            }
+            await this.valueRepo.update(
+              { keyId, localeId },
+              { qualityReviewState: 'failed' },
+            );
           }
         }
         continue;

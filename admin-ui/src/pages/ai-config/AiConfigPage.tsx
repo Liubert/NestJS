@@ -135,7 +135,7 @@ const AiConfigPage: React.FC = () => {
 
           <Card
             size="small"
-            title="Translation Prompt"
+            title="AI Translation Generation Prompt"
             style={{ marginBottom: 16 }}
             extra={<VarHints vars={PROMPT_VARS.translatePrompt} />}
           >
@@ -146,10 +146,13 @@ const AiConfigPage: React.FC = () => {
 
           <Card
             size="small"
-            title="Quality Check — Translation Quality Prompt"
+            title="Translation Accuracy Check Prompt"
             style={{ marginBottom: 16 }}
             extra={<VarHints vars={PROMPT_VARS.qualityTranslatePrompt} />}
           >
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+              Used when a source text exists — checks whether the translation correctly conveys the original meaning.
+            </Text>
             <Form.Item name="qualityTranslatePrompt" rules={[{ required: true }]} noStyle>
               <TextArea rows={14} style={{ fontFamily: 'monospace', fontSize: 12 }} />
             </Form.Item>
@@ -157,10 +160,13 @@ const AiConfigPage: React.FC = () => {
 
           <Card
             size="small"
-            title="Quality Check — Language Quality Prompt"
+            title="Writing Quality Check Prompt"
             style={{ marginBottom: 16 }}
             extra={<VarHints vars={PROMPT_VARS.qualityLanguagePrompt} />}
           >
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+              Used when there is no source to compare against — checks spelling, grammar, and naturalness of the text (including the default/English locale).
+            </Text>
             <Form.Item name="qualityLanguagePrompt" rules={[{ required: true }]} noStyle>
               <TextArea rows={14} style={{ fontFamily: 'monospace', fontSize: 12 }} />
             </Form.Item>

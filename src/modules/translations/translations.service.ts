@@ -988,37 +988,40 @@ export class TranslationsService {
     const results: Record<string, QualityInfo | null> = {};
 
     await Promise.allSettled(
-      locales
-        .filter((l) => !l.isDefault)
-        .map(async (locale) => {
-          const valueEntity = await this.valueRepo.findOne({
-            where: { keyId: keyEntity.id, localeId: locale.id },
-          });
-          const translation = valueEntity?.value;
-          if (!translation) {
-            results[locale.code] = null;
-            return;
-          }
-          try {
-            const mode = source ? 'translation_quality' : 'language_quality';
-            const result = await this.aiTranslateService.checkQuality(
-              source ?? translation,
-              translation,
-              locale.code,
-              mode,
-            );
-            await this.persistQualityResult(keyEntity.id, locale.id, result);
-            results[locale.code] = {
-              reviewState: 'checked',
-              score: result.score,
-              level: result.level,
-              comment: result.comment,
-              checkedAt: new Date().toISOString(),
-            };
-          } catch {
-            results[locale.code] = null;
-          }
-        }),
+      locales.map(async (locale) => {
+        const valueEntity = await this.valueRepo.findOne({
+          where: { keyId: keyEntity.id, localeId: locale.id },
+        });
+        const translation = valueEntity?.value;
+        if (!translation) {
+          results[locale.code] = null;
+          return;
+        }
+        try {
+          // Default locale has no source to compare against — check language quality only
+          const mode = locale.isDefault
+            ? 'language_quality'
+            : source
+              ? 'translation_quality'
+              : 'language_quality';
+          const result = await this.aiTranslateService.checkQuality(
+            locale.isDefault ? translation : (source ?? translation),
+            translation,
+            locale.code,
+            mode,
+          );
+          await this.persistQualityResult(keyEntity.id, locale.id, result);
+          results[locale.code] = {
+            reviewState: 'checked',
+            score: result.score,
+            level: result.level,
+            comment: result.comment,
+            checkedAt: new Date().toISOString(),
+          };
+        } catch {
+          results[locale.code] = null;
+        }
+      }),
     );
 
     return results;

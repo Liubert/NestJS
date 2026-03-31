@@ -159,9 +159,14 @@ const aiTranslate = async (text: string): Promise<Record<string, string>> => {
   return res.data;
 };
 
-const checkQuality = async (source: string, translation: string, locale: string): Promise<QualityResult> => {
+const checkQuality = async (
+  source: string,
+  translation: string,
+  locale: string,
+  mode: 'translation_quality' | 'language_quality' = 'translation_quality',
+): Promise<QualityResult> => {
   const res = await apiClient.post('/translations/ai-quality-check', {
-    source, translation, locale, mode: 'translation_quality',
+    source, translation, locale, mode,
   });
   return res.data;
 };
@@ -345,15 +350,21 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
     const vals = form.getFieldsValue();
     const enText: string = vals['en'] ?? '';
     if (!enText.trim()) { message.warning('English (source) text is required'); return; }
-    const targetLocales = locales.filter((l) => l !== 'en' && vals[l]?.trim());
-    if (!targetLocales.length) { message.warning('No translated values to check'); return; }
+    const allQualityLocales = locales.filter((l) => vals[l]?.trim());
+    if (!allQualityLocales.length) { message.warning('No values to check'); return; }
     setQualityLoading(true);
     setQualityResults({});
     try {
       const results = await Promise.all(
-        targetLocales.map((locale) =>
-          checkQuality(enText, vals[locale], locale).then((r) => [locale, r] as const),
-        ),
+        allQualityLocales.map((locale) => {
+          const isDefault = locale === 'en';
+          return checkQuality(
+            isDefault ? enText : enText,
+            vals[locale],
+            locale,
+            isDefault ? 'language_quality' : 'translation_quality',
+          ).then((r) => [locale, r] as const);
+        }),
       );
       setQualityResults(Object.fromEntries(results));
     } catch {

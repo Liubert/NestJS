@@ -16,9 +16,7 @@ export class QualityReviewState17710000000001 implements MigrationInterface {
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
-    await queryRunner.query(
-      `DROP INDEX IF EXISTS idx_tv_quality_review_state`,
-    );
+    await queryRunner.query(`DROP INDEX IF EXISTS idx_tv_quality_review_state`);
     await queryRunner.query(`
       ALTER TABLE translation_values
         DROP COLUMN IF EXISTS quality_review_state,
