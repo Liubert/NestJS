@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import appConfig, { AppConfig } from './config/app.config';
 import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { OrdersWorkerModule } from './modules/orders/orders.worker.module';
+import { QualityWorkerModule } from './modules/translations/quality-worker.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { OrdersWorkerModule } from './modules/orders/orders.worker.module';
     }),
     RabbitMQModule,
     OrdersWorkerModule,
+    QualityWorkerModule,
   ],
 })
 export class WorkerAppModule {}

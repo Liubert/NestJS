@@ -32,10 +32,11 @@ interface ProjectDetails {
 }
 
 interface QualityInfo {
-  score: number;
-  level: 'green' | 'yellow' | 'red';
-  comment: string;
-  checkedAt: string;
+  reviewState: 'not_checked' | 'queued' | 'processing' | 'checked' | 'failed';
+  score: number | null;
+  level: 'green' | 'yellow' | 'red' | null;
+  comment: string | null;
+  checkedAt: string | null;
 }
 
 interface Entry {
@@ -226,6 +227,12 @@ const deleteSandboxEntry = async (slug: string, ns: string, key: string) => {
   );
 };
 
+const revertSandboxKey = async (slug: string, ns: string, key: string) => {
+  await apiClient.post(
+    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}/revert`,
+  );
+};
+
 // ─── Edit Modal ───────────────────────────────────────────────────────────────
 
 const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
@@ -244,13 +251,45 @@ const QUALITY_COLOR: Record<string, string> = {
 
 const QualityBadge: React.FC<{ info: QualityInfo | null | undefined }> = ({ info }) => {
   if (!info) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
+
+  if (info.reviewState === 'queued' || info.reviewState === 'processing') {
+    return (
+      <Tooltip title={info.reviewState === 'processing' ? 'Reviewing…' : 'Queued for review'}>
+        <SyncOutlined spin style={{ color: '#8c8c8c', fontSize: 10 }} />
+      </Tooltip>
+    );
+  }
+
+  if (info.reviewState === 'failed') {
+    return (
+      <Tooltip title="Quality review failed — will retry">
+        <span style={{ color: '#ff4d4f', fontSize: 11, fontWeight: 'bold', cursor: 'help' }}>!</span>
+      </Tooltip>
+    );
+  }
+
+  if (info.reviewState === 'not_checked') {
+    return (
+      <Tooltip title="Not yet reviewed">
+        <span style={{
+          display: 'inline-block',
+          width: 10, height: 10,
+          borderRadius: '50%',
+          backgroundColor: '#d9d9d9',
+          flexShrink: 0,
+        }} />
+      </Tooltip>
+    );
+  }
+
+  // checked
   return (
-    <Tooltip title={`Score: ${info.score}/10${info.comment ? ` — ${info.comment}` : ''}`}>
+    <Tooltip title={`Score: ${info.score ?? '?'}/10${info.comment ? ` — ${info.comment}` : ''}`}>
       <span style={{
         display: 'inline-block',
         width: 10, height: 10,
         borderRadius: '50%',
-        backgroundColor: QUALITY_COLOR[info.level] ?? '#bbb',
+        backgroundColor: QUALITY_COLOR[info.level ?? ''] ?? '#bbb',
         cursor: 'help',
         flexShrink: 0,
       }} />
@@ -587,6 +626,23 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Reset failed'),
   });
 
+  const revertKeyMutation = useMutation({
+    mutationFn: ({ ns, key }: { ns: string; key: string }) =>
+      revertSandboxKey(projectSlug, ns, key),
+    onSuccess: () => {
+      message.success('Change reverted');
+      invalidateSandbox();
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Revert failed'),
+  });
+
+  // Auto-close review modal when all changes have been reverted
+  React.useEffect(() => {
+    if (pushModalOpen && diff && diff.total === 0) {
+      setPushModalOpen(false);
+    }
+  }, [pushModalOpen, diff]);
+
   const handleSearch = useCallback(() => { setSearch(searchInput); setPage(1); }, [searchInput]);
 
   const handleTableChange = (
@@ -714,6 +770,25 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         </Space>
       ),
     },
+    {
+      title: '', key: 'revert', width: 80,
+      render: (_: unknown, record: KeyDiffRow) => (
+        <Popconfirm
+          title="Revert this change?"
+          description="This key will be restored to its production value."
+          onConfirm={() => revertKeyMutation.mutate({ ns: record.namespace, key: record.key })}
+          okText="Revert" okButtonProps={{ danger: true }}
+        >
+          <Button
+            size="small"
+            icon={<RollbackOutlined />}
+            loading={revertKeyMutation.isPending && revertKeyMutation.variables?.key === record.key}
+          >
+            Revert
+          </Button>
+        </Popconfirm>
+      ),
+    },
   ];
 
   return (
@@ -753,22 +828,22 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
             </Space>
           </Col>
           <Col>
-            <Space>
-              <Popconfirm
-                title="Reset sandbox?"
-                description="All changes will be discarded. The sandbox will be re-copied from current production."
-                onConfirm={() => resetMutation.mutate()}
-                okText="Reset" okButtonProps={{ danger: true }}
-              >
-                <Button icon={<SyncOutlined />} loading={resetMutation.isPending}>Reset</Button>
-              </Popconfirm>
-              {hasChanges && (
+            {hasChanges && (
+              <Space>
+                <Popconfirm
+                  title="Reset sandbox?"
+                  description="All changes will be discarded. The sandbox will be re-copied from current production."
+                  onConfirm={() => resetMutation.mutate()}
+                  okText="Reset" okButtonProps={{ danger: true }}
+                >
+                  <Button icon={<SyncOutlined />} loading={resetMutation.isPending}>Reset</Button>
+                </Popconfirm>
                 <Button type="primary" icon={<ArrowRightOutlined />}
                   onClick={() => setPushModalOpen(true)}>
                   Review Changes
                 </Button>
-              )}
-            </Space>
+              </Space>
+            )}
           </Col>
         </Row>
       </div>
@@ -1228,22 +1303,12 @@ const TranslationsPage: React.FC = () => {
   const tabItems = [
     {
       key: 'sandbox',
-      label: (
-        <Space size={6}>
-          <span>Sandbox</span>
-          <Tag color="blue" style={{ margin: 0, fontSize: 11 }}>source</Tag>
-        </Space>
-      ),
+      label: 'Sandbox',
       children: <SandboxTab projectSlug={projectSlug} />,
     },
     {
       key: 'production',
-      label: (
-        <Space size={6}>
-          <span>Production</span>
-          <Tag color="default" style={{ margin: 0, fontSize: 11 }}>target</Tag>
-        </Space>
-      ),
+      label: 'Production',
       children: projectSlug
         ? <ProductionTab projectSlug={projectSlug} />
         : <Empty description="Select a project" style={{ marginTop: 48 }} />,

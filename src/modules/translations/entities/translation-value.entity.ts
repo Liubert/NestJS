@@ -50,6 +50,27 @@ export class TranslationValueEntity {
   @Column({ name: 'quality_checked_at', type: 'timestamptz', nullable: true })
   qualityCheckedAt!: Date | null;
 
+  @Column({
+    name: 'quality_review_state',
+    type: 'varchar',
+    length: 20,
+    default: 'not_checked',
+  })
+  qualityReviewState!:
+    | 'not_checked'
+    | 'queued'
+    | 'processing'
+    | 'checked'
+    | 'failed';
+
+  @Column({
+    name: 'quality_content_hash',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  qualityContentHash!: string | null;
+
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 }

@@ -26,6 +26,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
@@ -363,7 +364,7 @@ export class TranslationsController {
   }
 
   @Post('projects/:slug/namespaces/:ns/entries')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, BlockMcpGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Create a new translation key' })
   async createEntry(
@@ -382,7 +383,7 @@ export class TranslationsController {
   }
 
   @Patch('projects/:slug/namespaces/:ns/entries/:key')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, BlockMcpGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Update translation values for a key' })
   async updateEntry(
@@ -426,7 +427,7 @@ export class TranslationsController {
 
   @Delete('projects/:slug/namespaces/:ns/entries/:key')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, BlockMcpGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Delete a translation key and all its values' })
   async deleteEntry(

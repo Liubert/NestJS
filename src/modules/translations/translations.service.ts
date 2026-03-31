@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { createHash } from 'crypto';
 import AdmZip from 'adm-zip';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
@@ -35,10 +36,11 @@ import { AiTranslateService } from './ai-translate.service.js';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface QualityInfo {
-  score: number;
-  level: 'green' | 'yellow' | 'red';
-  comment: string;
-  checkedAt: string;
+  reviewState: 'not_checked' | 'queued' | 'processing' | 'checked' | 'failed';
+  score: number | null;
+  level: 'green' | 'yellow' | 'red' | null;
+  comment: string | null;
+  checkedAt: string | null;
 }
 
 export interface EntryRow {
@@ -513,6 +515,7 @@ export class TranslationsService {
         'tv.quality_level AS quality_level',
         'tv.quality_comment AS quality_comment',
         'tv.quality_checked_at AS quality_checked_at',
+        'tv.quality_review_state AS quality_review_state',
       ])
       .getRawMany<{
         key_id: string;
@@ -522,6 +525,7 @@ export class TranslationsService {
         quality_level: string | null;
         quality_comment: string | null;
         quality_checked_at: string | null;
+        quality_review_state: string | null;
       }>();
 
     const valuesByKey = new Map<string, Record<string, string>>();
@@ -532,15 +536,14 @@ export class TranslationsService {
       const locale = localeMap.get(v.locale_id);
       if (locale) {
         valuesByKey.get(v.key_id)![locale] = v.value ?? '';
-        qualityByKey.get(v.key_id)![locale] =
-          v.quality_level && v.quality_checked_at
-            ? {
-                score: v.quality_score ?? 0,
-                level: v.quality_level as 'green' | 'yellow' | 'red',
-                comment: v.quality_comment ?? '',
-                checkedAt: v.quality_checked_at,
-              }
-            : null;
+        qualityByKey.get(v.key_id)![locale] = {
+          reviewState: (v.quality_review_state ??
+            'not_checked') as QualityInfo['reviewState'],
+          score: v.quality_score,
+          level: v.quality_level as 'green' | 'yellow' | 'red' | null,
+          comment: v.quality_comment,
+          checkedAt: v.quality_checked_at,
+        };
       }
     }
 
@@ -589,12 +592,6 @@ export class TranslationsService {
       dto.values ?? {},
     );
 
-    this.triggerQualityCheckAsync(
-      project.id,
-      keyEntity.id,
-      Object.keys(dto.values ?? {}),
-    );
-
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
@@ -628,12 +625,6 @@ export class TranslationsService {
       project.id,
       keyEntity.id,
       dto.values,
-    );
-
-    this.triggerQualityCheckAsync(
-      project.id,
-      keyEntity.id,
-      Object.keys(dto.values),
     );
 
     return {
@@ -882,15 +873,7 @@ export class TranslationsService {
     for (const [code, value] of Object.entries(values)) {
       const localeId = localeMap.get(code);
       if (!localeId) continue;
-      entities.push({
-        keyId,
-        localeId,
-        value,
-        qualityScore: null,
-        qualityLevel: null,
-        qualityComment: null,
-        qualityCheckedAt: null,
-      });
+      entities.push({ keyId, localeId, value });
     }
 
     if (entities.length) {
@@ -898,6 +881,13 @@ export class TranslationsService {
         conflictPaths: ['keyId', 'localeId'],
         skipUpdateIfNoValuesChanged: true,
       });
+
+      // Reset quality state for any locale whose content has changed
+      for (const [code, value] of Object.entries(values)) {
+        const localeId = localeMap.get(code);
+        if (!localeId) continue;
+        await this.resetQualityStateIfChanged(keyId, localeId, value);
+      }
     }
 
     const saved = await this.valueRepo.find({ where: { keyId } });
@@ -907,6 +897,30 @@ export class TranslationsService {
       if (locale) result[locale.code] = v.value ?? '';
     }
     return result;
+  }
+
+  private async resetQualityStateIfChanged(
+    keyId: string,
+    localeId: string,
+    value: string,
+  ): Promise<void> {
+    const hash = createHash('sha256').update(value).digest('hex');
+    await this.valueRepo
+      .createQueryBuilder()
+      .update()
+      .set({
+        qualityReviewState: 'not_checked',
+        qualityContentHash: hash,
+        qualityScore: null,
+        qualityLevel: null,
+        qualityComment: null,
+        qualityCheckedAt: null,
+      })
+      .where(
+        'key_id = :keyId AND locale_id = :localeId AND (quality_content_hash IS NULL OR quality_content_hash != :hash)',
+        { keyId, localeId, hash },
+      )
+      .execute();
   }
 
   // ─── Quality check ────────────────────────────────────────────────────────
@@ -927,52 +941,9 @@ export class TranslationsService {
         qualityLevel: result.level,
         qualityComment: result.comment,
         qualityCheckedAt: new Date(),
+        qualityReviewState: 'checked',
       },
     );
-  }
-
-  private triggerQualityCheckAsync(
-    projectId: string,
-    keyId: string,
-    updatedLocaleCodes: string[],
-  ): void {
-    void (async () => {
-      try {
-        const locales = await this.localeRepo.findBy({ projectId });
-        const defaultLocale = locales.find((l) => l.isDefault);
-        if (!defaultLocale) return;
-
-        const sourceValue = await this.valueRepo.findOne({
-          where: { keyId, localeId: defaultLocale.id },
-        });
-        const source = sourceValue?.value ?? undefined;
-
-        const targets = locales.filter(
-          (l) => !l.isDefault && updatedLocaleCodes.includes(l.code),
-        );
-
-        await Promise.allSettled(
-          targets.map(async (locale) => {
-            const valueEntity = await this.valueRepo.findOne({
-              where: { keyId, localeId: locale.id },
-            });
-            const translation = valueEntity?.value;
-            if (!translation) return;
-
-            const mode = source ? 'translation_quality' : 'language_quality';
-            const result = await this.aiTranslateService.checkQuality(
-              source ?? translation,
-              translation,
-              locale.code,
-              mode,
-            );
-            await this.persistQualityResult(keyId, locale.id, result);
-          }),
-        );
-      } catch {
-        // best-effort — never throw
-      }
-    })();
   }
 
   async runQualityCheck(
@@ -1030,7 +1001,10 @@ export class TranslationsService {
             );
             await this.persistQualityResult(keyEntity.id, locale.id, result);
             results[locale.code] = {
-              ...result,
+              reviewState: 'checked',
+              score: result.score,
+              level: result.level,
+              comment: result.comment,
               checkedAt: new Date().toISOString(),
             };
           } catch {
