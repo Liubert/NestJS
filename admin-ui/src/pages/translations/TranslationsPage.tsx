@@ -407,6 +407,13 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
                       Check Quality
                     </Button>
                   )}
+                  {qr && (
+                    <Tooltip title={qr.comment ?? undefined}>
+                      <Tag color={QUALITY_CONFIG[qr.level].color}>
+                        {QUALITY_CONFIG[qr.level].label} · {qr.score}/100
+                      </Tag>
+                    </Tooltip>
+                  )}
                 </Space>
               ) : (
                 <Space>
