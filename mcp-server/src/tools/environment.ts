@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { apiGet, ApiError } from "../api-client.js";
+import { fetchPromptContent } from "../prompt-loader.js";
 
 interface ProjectListItem {
   id: string;
@@ -140,9 +141,9 @@ export function registerEnvironmentTools(server: McpServer): void {
         const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8080";
         const adminUiUrl = process.env.ADMIN_UI_URL ?? "http://localhost:3010";
 
-        // Fetch projects and optional project details in parallel.
+        // Fetch projects, optional project details, and agent guide in parallel.
         // The project list already includes sandboxHasChanges + sandboxInitializedAt — no extra status calls needed.
-        const [projectsData, projectDetails] = await Promise.all([
+        const [projectsData, projectDetails, agentGuide] = await Promise.all([
           apiGet<{ data: ProjectListItem[]; meta: { total: number } }>(
             "/translations/projects",
             { page: 1, limit: 100 },
@@ -150,6 +151,7 @@ export function registerEnvironmentTools(server: McpServer): void {
           projectSlug
             ? apiGet<ProjectDetails>(`/translations/projects/${projectSlug}`).catch(() => null)
             : Promise.resolve(null),
+          fetchPromptContent("agent-guide", AGENT_GUIDE_FALLBACK),
         ]);
 
         const projectRows = projectsData.data.map((p) => {
@@ -181,7 +183,7 @@ export function registerEnvironmentTools(server: McpServer): void {
           `4. .env, .env.local, .env.development, .env.production`,
           `5. References to Locize or other external i18n services (migration scenario)`,
           ``,
-          `Use the S1–S6 classification guide in AGENT_GUIDE.md to determine integration state.`,
+          agentGuide,
           ``,
           `### Remote Projects (${projectsData.meta.total} found)`,
           ...projectRows,
@@ -221,6 +223,89 @@ export function registerEnvironmentTools(server: McpServer): void {
     },
   );
 }
+
+const AGENT_GUIDE_FALLBACK = `# Localization MCP Server — Agent Guide
+
+## 🚫 NEVER DO WITHOUT EXPLICIT USER INSTRUCTION
+
+The following actions are **irreversible or high-impact**. Never call them unless the user has explicitly asked for that specific action in the current message:
+
+| Action | Why it's dangerous |
+|---|---|
+| \`reset_sandbox\` | Wipes all pending sandbox changes — irreversible |
+| \`push_changes_to_production\` | Overwrites production data |
+| \`delete_translation\` | Permanently removes a key and all its values |
+| \`bulk_import\` with overwrite | Can silently overwrite existing translations |
+
+**Investigating a problem ≠ permission to fix it.** If the user asks "why does X show Y", that is a diagnostic question — answer it, do not take action. Only act when the user says to.
+
+## ⚠️ MANDATORY PRE-FLIGHT — Do This Before Every Write Session
+
+Before calling \`set_translation\`, \`bulk_set_locale\`, \`bulk_import\`, or \`delete_translation\`:
+
+\`\`\`
+get_project_details({ projectSlug: "travis" })
+\`\`\`
+
+| \`get_project_details\` sandbox line | What to do |
+|------------------------------------|------------|
+| \`NOT initialized\` | Call \`init_sandbox({ projectSlug })\` before any write |
+| \`initialized — no pending changes\` | Safe to write |
+| \`initialized — HAS PENDING CHANGES\` | Call \`get_translation_diff\` first. Do not discard without explicit user instruction. |
+
+## The 6 integration states
+
+| State | Description | What to do |
+|-------|-------------|------------|
+| **S1 — Correctly integrated** | Local config uses our backend URL AND \`?env=sandbox\` for non-production | Nothing — proceed with translation work |
+| **S2 — Outdated integration** | Uses our backend URL but missing \`?env=sandbox\` for non-production | Repair: add \`?env=sandbox\` to non-production env config |
+| **S3 — Not integrated, remote project available** | Local app uses different URL/system, but a remote project exists | Connect: update local config to use correct URL patterns |
+| **S4 — Not integrated, no remote project** | Local app uses different system, no remote project | Create project, then integrate locally |
+| **S5 — Project empty or incomplete** | Local config correct but remote project has no namespaces/locales/translations | Bootstrap: create namespace, locale, init sandbox, import content |
+| **S6 — No localization at all** | No i18n system found in the local project | Full setup: install library, create config, then S4 path |
+
+## Client URL pattern (mandatory)
+
+| Environment | URL |
+|-------------|-----|
+| **Production** | \`{BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}\` |
+| **Non-production (dev/staging)** | \`{BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}?env=sandbox\` |
+
+Non-production environments MUST use \`?env=sandbox\`. Without it, dev/staging tests run against live production data.
+
+## BACKEND_URL is the only source of truth for client config
+
+The \`Backend URL\` returned by \`assess_integration_state\` is the only correct value for \`I18N_BACKEND_URL\` (or equivalent) in the local project's \`.env\` files.
+
+**Never use \`http://localhost:8080\` unless \`assess_integration_state\` explicitly returns that URL.** The MCP server is configured with the correct backend URL — always use what it returns, not assumptions.
+
+## Namespace selection rules
+
+**Default: reuse, do not create.**
+
+1. Explicit namespace in the request → use it directly
+2. Clear namespace from context → use the obvious match
+3. Multiple namespaces, target is ambiguous → ask the user
+4. No matching namespace exists → ask the user, do not create silently
+
+## Key naming rules
+
+Keys must match: \`/^[a-zA-Z0-9._-]+$/\`
+
+Valid: \`button.save\`, \`error-message\`, \`form_field\`
+Invalid: \`button/save\`, \`button save\`, \`button:save\`
+
+## Environment rules
+
+| Operation | Sandbox | Production |
+|-----------|---------|------------|
+| Read keys | ✅ | ✅ |
+| Create key | ✅ | ❌ not possible |
+| Update key | ✅ | ❌ not possible |
+| Delete key | ✅ (soft delete) | ❌ not possible |
+| Promote changes | ❌ manual only | via Admin UI |
+
+**There is no MCP tool that writes to production.** Production push is manual via Admin UI only.`;
 
 function errorContent(error: unknown): { content: { type: "text"; text: string }[] } {
   if (error instanceof ApiError) {

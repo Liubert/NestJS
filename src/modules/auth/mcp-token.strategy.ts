@@ -32,6 +32,7 @@ export class McpTokenStrategy extends PassportStrategy(Strategy, 'mcp-token') {
       role: token.user.role,
       email: token.user.email,
       scopes: [],
+      isMcpToken: true,
     };
   }
 }

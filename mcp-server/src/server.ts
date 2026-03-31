@@ -11,7 +11,7 @@ import { registerPrompts } from "./prompts.js";
 export function createServer(): McpServer {
   const server = new McpServer({
     name: "localization-mcp-server",
-    version: "1.0.0",
+    version: "1.0.3",
   });
 
   registerEnvironmentTools(server);

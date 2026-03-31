@@ -15,6 +15,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { SandboxService } from './sandbox.service.js';
@@ -72,6 +73,7 @@ export class SandboxController {
 
   @Post('promote')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(BlockMcpGuard)
   @ApiOperation({
     summary: 'Promote sandbox to production (takes snapshot before replacing)',
   })
@@ -81,6 +83,7 @@ export class SandboxController {
 
   @Post('revert')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(BlockMcpGuard)
   @ApiOperation({ summary: 'Revert production to a previous snapshot' })
   revert(
     @Param('slug') slug: string,
@@ -166,6 +169,26 @@ export class SandboxController {
       ns,
       decodeURIComponent(key),
       dto,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Post('namespaces/:ns/entries/:key/revert')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Revert a specific key in sandbox to its production value',
+  })
+  revertKey(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.revertSandboxKey(
+      slug,
+      ns,
+      decodeURIComponent(key),
       user.userId,
       user.role,
     );

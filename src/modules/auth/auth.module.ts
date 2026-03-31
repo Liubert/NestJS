@@ -25,7 +25,7 @@ import { McpTokensController } from './mcp-tokens.controller.js';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.get<string>('app.auth.JWT_SECRET'),
-        signOptions: { expiresIn: '1h' },
+        signOptions: { expiresIn: '8h' },
       }),
     }),
   ],

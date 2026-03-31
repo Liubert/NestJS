@@ -6,6 +6,21 @@
 
 ---
 
+## 🚫 NEVER DO WITHOUT EXPLICIT USER INSTRUCTION
+
+The following actions are **irreversible or high-impact**. Never call them unless the user has explicitly asked for that specific action in the current message:
+
+| Action | Why it's dangerous |
+|---|---|
+| `reset_sandbox` | Wipes all pending sandbox changes — irreversible |
+| `push_changes_to_production` | Overwrites production data |
+| `delete_translation` | Permanently removes a key and all its values |
+| `bulk_import` with overwrite | Can silently overwrite existing translations |
+
+**Investigating a problem ≠ permission to fix it.** If the user asks "why does X show Y", that is a diagnostic question — answer it, do not take action. Only act when the user says to.
+
+---
+
 ## System overview
 
 This MCP server wraps the Localization backend API. It lets agents manage translation keys through a **sandbox/production** workflow. All writes go to sandbox. Production is read-only. Nothing reaches production until a human promotes the sandbox via the Admin UI.
@@ -49,6 +64,12 @@ Before doing any translation work, assess the current integration state of the l
 assess_integration_state()       — fetch remote state + URL patterns + classification guide
 assess_integration_state({ projectSlug: "my-app" })  — include full details for a specific project
 ```
+
+### ⚠️ BACKEND_URL is the only source of truth for client config
+
+The `Backend URL` returned by `assess_integration_state` is the only correct value for `I18N_BACKEND_URL` (or equivalent) in the local project's `.env` files.
+
+**Never use `http://localhost:8080` unless `assess_integration_state` explicitly returns that URL.** The MCP server is configured with the correct backend URL — always use what it returns, not assumptions.
 
 ### The 6 integration states
 

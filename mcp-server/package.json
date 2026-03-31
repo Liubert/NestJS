@@ -1,12 +1,28 @@
 {
   "name": "localization-mcp-server",
-  "version": "1.0.2",
+  "version": "1.0.5",
   "description": "MCP server for the localization system — controlled AI access to translations",
   "type": "module",
   "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "bin": {
     "localization-mcp-server": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "flows",
+    ".env.example",
+    "README.md"
+  ],
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "localization",
+    "translations"
+  ],
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",

@@ -872,6 +872,70 @@ export class SandboxService {
   }
 
   /**
+   * Reverts a specific key in sandbox to its production state.
+   * - Added-only keys (no production values): key entity is deleted entirely.
+   * - Changed/deleted keys: sandbox rows are replaced with current production values.
+   * Recalculates sandboxHasChanges after the revert.
+   */
+  async revertSandboxKey(
+    projectSlug: string,
+    nsSlug: string,
+    key: string,
+    userId: string,
+    role: UserRole,
+  ): Promise<void> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const keyEntity = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key },
+    });
+    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    const productionValues = await this.valueRepo.find({
+      where: { keyId: keyEntity.id },
+    });
+
+    // Remove all sandbox entries for this key
+    await this.sandboxRepo.delete({
+      projectId: project.id,
+      keyId: keyEntity.id,
+    });
+
+    if (productionValues.length === 0) {
+      // Added-only in sandbox — remove the key entity entirely
+      await this.keyRepo.delete(keyEntity.id);
+    } else {
+      // Re-copy production values into sandbox so this key is no longer changed/deleted
+      for (const pv of productionValues) {
+        await this.sandboxRepo.save(
+          this.sandboxRepo.create({
+            projectId: project.id,
+            keyId: keyEntity.id,
+            localeId: pv.localeId,
+            value: pv.value,
+            isDeleted: false,
+          }),
+        );
+      }
+    }
+
+    // Recalculate sandboxHasChanges
+    const diff = await this.getDiff(projectSlug, userId, role);
+    await this.projectRepo.update(project.id, {
+      sandboxHasChanges: diff.total > 0,
+    });
+  }
+
+  /**
    * Soft-deletes a key in sandbox across all locales (marks is_deleted=true).
    * The key is removed from production only after promote().
    */

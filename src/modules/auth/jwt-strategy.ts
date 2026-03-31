@@ -25,6 +25,7 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       role: payload.role,
       email: payload.email,
       scopes: payload.scopes,
+      isMcpToken: false,
     };
   }
 }

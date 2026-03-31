@@ -98,6 +98,7 @@ services:
       RABBITMQ_PREFETCH: ${RABBITMQ_PREFETCH:-10}
     networks:
       - internal
+      - public
     restart: unless-stopped
     command: node dist/main.worker.js
 
