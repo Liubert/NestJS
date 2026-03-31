@@ -131,15 +131,6 @@ const fetchEntries = async (
   return res.data;
 };
 
-const checkEntryQuality = async (
-  slug: string, ns: string, key: string,
-): Promise<Record<string, QualityInfo | null>> => {
-  const res = await apiClient.post(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}/check-quality`,
-  );
-  return res.data;
-};
-
 const createEntry = async (
   slug: string, ns: string, payload: { key: string; values: Record<string, string> },
 ) => {
@@ -374,7 +365,7 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
 
   const hasEnLocale = locales.includes('en');
   const hasAiLocales = AI_LOCALES.some((l) => locales.includes(l));
-  const hasTranslations = !isNew && locales.some((l) => l !== 'en');
+  const hasTranslations = locales.some((l) => l !== 'en');
 
   return (
     <Modal open={open} title={isNew ? 'Add translation key' : `Edit: ${entry?.key}`}
@@ -716,9 +707,14 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       width: 180,
       render: (_: unknown, record: Entry) => {
         const val = record.values[locale];
-        return val
-          ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
-          : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>;
+        return (
+          <Space size={4} align="start">
+            <QualityBadge info={record.quality?.[locale]} />
+            {val
+              ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
+              : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>}
+          </Space>
+        );
       },
     })),
     {
@@ -1085,16 +1081,6 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Revert failed'),
   });
 
-  const qualityCheckMutation = useMutation({
-    mutationFn: ({ slug, ns, key }: { slug: string; ns: string; key: string }) =>
-      checkEntryQuality(slug, ns, key),
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
-      message.success('Quality check complete');
-    },
-    onError: () => message.error('Quality check failed'),
-  });
-
   const handleSearch = useCallback(() => { setSearch(searchInput); setPage(1); }, [searchInput]);
 
   const handleTableChange = (
@@ -1159,20 +1145,11 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
       },
     },
     {
-      title: '', key: 'actions', width: 110, fixed: 'right',
+      title: '', key: 'actions', width: 80, fixed: 'right',
       render: (_: unknown, record: Entry) => (
         <Space size={4}>
           <Button type="text" size="small" icon={<EditOutlined />}
             onClick={() => { setEditEntry(record); setIsNewEntry(false); setEditModalOpen(true); }} />
-          <Tooltip title="Run AI quality check for all locales">
-            <Button
-              size="small"
-              type="text"
-              icon={<SafetyCertificateOutlined />}
-              loading={qualityCheckMutation.isPending && qualityCheckMutation.variables?.key === record.key}
-              onClick={() => qualityCheckMutation.mutate({ slug: projectSlug, ns: namespace, key: record.key })}
-            />
-          </Tooltip>
           <Popconfirm title="Delete this key?" onConfirm={() => deleteMutation.mutate(record.key)}
             okText="Delete" okButtonProps={{ danger: true }}>
             <Button type="text" size="small" danger icon={<DeleteOutlined />} />
