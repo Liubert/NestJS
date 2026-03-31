@@ -22,10 +22,10 @@ export class AiConfigEntity {
   @Column({ name: 'quality_language_prompt', type: 'text' })
   qualityLanguagePrompt!: string;
 
-  @Column({ name: 'green_min_score', type: 'int', default: 9 })
+  @Column({ name: 'green_min_score', type: 'int', default: 90 })
   greenMinScore!: number;
 
-  @Column({ name: 'yellow_min_score', type: 'int', default: 8 })
+  @Column({ name: 'yellow_min_score', type: 'int', default: 80 })
   yellowMinScore!: number;
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })

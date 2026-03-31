@@ -284,7 +284,7 @@ const QualityBadge: React.FC<{ info: QualityInfo | null | undefined }> = ({ info
 
   // checked
   return (
-    <Tooltip title={`Score: ${info.score ?? '?'}/10${info.comment ? ` — ${info.comment}` : ''}`}>
+    <Tooltip title={`Score: ${info.score ?? '?'}/100${info.comment ? ` — ${info.comment}` : ''}`}>
       <span style={{
         display: 'inline-block',
         width: 10, height: 10,
@@ -412,7 +412,7 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
                   {qr && (
                     <Tooltip title={qr.comment ?? undefined}>
                       <Tag color={QUALITY_CONFIG[qr.level].color}>
-                        {QUALITY_CONFIG[qr.level].label} · {qr.score}/10
+                        {QUALITY_CONFIG[qr.level].label} · {qr.score}/100
                       </Tag>
                     </Tooltip>
                   )}
@@ -1005,7 +1005,7 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [sortBy, setSortBy] = useState<'key' | 'createdAt'>('key');
+  const [sortBy, setSortBy] = useState<'key' | 'createdAt' | 'qualityScore'>('key');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [qualityLevel, setQualityLevel] = useState('');
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -1106,7 +1106,8 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
     setPageSize(pagination.pageSize ?? 50);
     const s = Array.isArray(sorter) ? sorter[0] : sorter;
     if (s?.field) {
-      setSortBy(s.field === 'createdAt' ? 'createdAt' : 'key');
+      const field = s.field as string;
+      setSortBy(field === 'createdAt' ? 'createdAt' : field === 'qualityScore' ? 'qualityScore' : 'key');
       setSortOrder(s.order === 'descend' ? 'desc' : 'asc');
     }
   };
@@ -1136,6 +1137,27 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
         );
       },
     })),
+    {
+      title: <Tooltip title="Minimum quality score across all locales (sort to find worst translations)">Quality</Tooltip>,
+      key: 'qualityScore',
+      dataIndex: 'qualityScore',
+      sorter: true,
+      width: 90,
+      render: (_: unknown, record: Entry) => {
+        const scores = locales
+          .map((l) => record.quality?.[l]?.score)
+          .filter((s): s is number => s != null);
+        if (!scores.length) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
+        const minScore = Math.min(...scores);
+        const levels = locales.map((l) => record.quality?.[l]?.level).filter(Boolean);
+        const level = levels.includes('red') ? 'red' : levels.includes('yellow') ? 'yellow' : 'green';
+        return (
+          <span style={{ color: QUALITY_COLOR[level] ?? '#bbb', fontWeight: 600, fontSize: 12 }}>
+            {minScore}
+          </span>
+        );
+      },
+    },
     {
       title: '', key: 'actions', width: 110, fixed: 'right',
       render: (_: unknown, record: Entry) => (

@@ -48,25 +48,25 @@ Checks to apply (all modes):
 - Natural wording for software/product UI
 - Placeholders, variables, interpolation tokens ({{name}}, %s, {count}, {0}) and markup must be preserved exactly
 
-Scoring rules — be strict. Do NOT round up. Do NOT give benefit of the doubt:
-- 10: excellent, production-ready, no meaningful issues
-- 9: very strong, but still has small improvement opportunities
-- 8: understandable, but clearly imperfect
-- below 8: noticeable quality problems
+Scoring rules — be strict. Do NOT round up. Do NOT give benefit of the doubt. Score on a 1–100 scale:
+- 95–100: excellent, production-ready, no meaningful issues
+- 80–94: very strong, minor improvement opportunities
+- 60–79: understandable, but clearly imperfect
+- below 60: noticeable quality problems
 
 Comment rules:
-- score 10: comment should be empty string
-- score 9: comment must explain what could still be improved
-- score 8 or below: comment must explain the main issue
+- score 95–100: comment should be empty string
+- score 80–94: comment must explain what could still be improved
+- score below 80: comment must explain the main issue
 - keep comment practical and concise, up to 30 words
 
 Level mapping (strict):
-- green: score 9 or 10
-- yellow: score 8
-- red: score below 8
+- green: score 90 or above
+- yellow: score 80–89
+- red: score below 80
 
 Return ONLY valid JSON, no markdown, no extra text:
-{"score": <1-10>, "level": "<green|yellow|red>", "comment": "<string>"}`;
+{"score": <1-100>, "level": "<green|yellow|red>", "comment": "<string>"}`;
 
 export const DEFAULT_QUALITY_LANGUAGE_PROMPT = `\
 You are a strict software localization and language quality reviewer.
@@ -88,25 +88,25 @@ Checks to apply:
 - Natural wording for software/product UI
 - Placeholders, variables, interpolation tokens ({{name}}, %s, {count}, {0}) and markup must be preserved exactly
 
-Scoring rules — be strict. Do NOT round up. Do NOT give benefit of the doubt:
-- 10: excellent, production-ready, no meaningful issues
-- 9: very strong, but still has small improvement opportunities
-- 8: understandable, but clearly imperfect
-- below 8: noticeable quality problems
+Scoring rules — be strict. Do NOT round up. Do NOT give benefit of the doubt. Score on a 1–100 scale:
+- 95–100: excellent, production-ready, no meaningful issues
+- 80–94: very strong, minor improvement opportunities
+- 60–79: understandable, but clearly imperfect
+- below 60: noticeable quality problems
 
 Comment rules:
-- score 10: comment should be empty string
-- score 9: comment must explain what could still be improved
-- score 8 or below: comment must explain the main issue
+- score 95–100: comment should be empty string
+- score 80–94: comment must explain what could still be improved
+- score below 80: comment must explain the main issue
 - keep comment practical and concise, up to 30 words
 
 Level mapping (strict):
-- green: score 9 or 10
-- yellow: score 8
-- red: score below 8
+- green: score 90 or above
+- yellow: score 80–89
+- red: score below 80
 
 Return ONLY valid JSON, no markdown, no extra text:
-{"score": <1-10>, "level": "<green|yellow|red>", "comment": "<string>"}`;
+{"score": <1-100>, "level": "<green|yellow|red>", "comment": "<string>"}`;
 
 // ─── Interpolation helper ─────────────────────────────────────────────────────
 
@@ -149,8 +149,8 @@ export class AiConfigService {
         translatePrompt: DEFAULT_TRANSLATE_PROMPT,
         qualityTranslatePrompt: DEFAULT_QUALITY_TRANSLATE_PROMPT,
         qualityLanguagePrompt: DEFAULT_QUALITY_LANGUAGE_PROMPT,
-        greenMinScore: 9,
-        yellowMinScore: 8,
+        greenMinScore: 90,
+        yellowMinScore: 80,
       }),
     );
   }
@@ -167,8 +167,8 @@ export class AiConfigService {
       translatePrompt: DEFAULT_TRANSLATE_PROMPT,
       qualityTranslatePrompt: DEFAULT_QUALITY_TRANSLATE_PROMPT,
       qualityLanguagePrompt: DEFAULT_QUALITY_LANGUAGE_PROMPT,
-      greenMinScore: 9,
-      yellowMinScore: 8,
+      greenMinScore: 90,
+      yellowMinScore: 80,
     });
   }
 }

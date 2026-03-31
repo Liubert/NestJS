@@ -118,7 +118,7 @@ const AiConfigPage: React.FC = () => {
                   label="Green min score (≥ N → green)"
                   rules={[{ required: true }]}
                 >
-                  <InputNumber min={1} max={10} style={{ width: '100%' }} />
+                  <InputNumber min={1} max={100} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
               <Col span={7}>
@@ -127,7 +127,7 @@ const AiConfigPage: React.FC = () => {
                   label="Yellow min score (≥ N → yellow)"
                   rules={[{ required: true }]}
                 >
-                  <InputNumber min={1} max={10} style={{ width: '100%' }} />
+                  <InputNumber min={1} max={100} style={{ width: '100%' }} />
                 </Form.Item>
               </Col>
             </Row>

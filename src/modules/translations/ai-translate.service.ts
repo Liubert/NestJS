@@ -147,7 +147,7 @@ export class AiTranslateService {
       for (const [key, localeMap] of Object.entries(parsed)) {
         results[key] = {};
         for (const [locale, r] of Object.entries(localeMap)) {
-          const score = Math.min(10, Math.max(1, Math.round(r.score)));
+          const score = Math.min(100, Math.max(1, Math.round(r.score)));
           const level: 'green' | 'yellow' | 'red' =
             score >= aiCfg.greenMinScore
               ? 'green'
@@ -173,8 +173,8 @@ export class AiTranslateService {
   ): string {
     return `You are a professional translation quality reviewer. Evaluate each translation below.
 
-Score each translation 1–10:
-- ${greenMinScore}–10: Excellent — accurate, natural, production-ready
+Score each translation on a 1–100 scale:
+- ${greenMinScore}–100: Excellent — accurate, natural, production-ready
 - ${yellowMinScore}–${greenMinScore - 1}: Acceptable — understandable but has issues
 - 1–${yellowMinScore - 1}: Poor — significant errors, needs rework
 
@@ -182,7 +182,7 @@ If "source" is present, compare translation accuracy to it. If "source" is null,
 
 Return ONLY valid JSON with no markdown, no explanation, no extra keys:
 {
-  "<key>": { "<locale>": { "score": <number 1-10>, "comment": "<brief note or 'Looks good'>" } }
+  "<key>": { "<locale>": { "score": <number 1-100>, "comment": "<brief note or 'Looks good'>" } }
 }
 
 Translations to review:
@@ -233,7 +233,7 @@ ${JSON.stringify(items, null, 2)}`;
 
     try {
       const parsed = JSON.parse(cleaned) as { score: number; comment: string };
-      const score = Math.min(10, Math.max(1, Math.round(parsed.score)));
+      const score = Math.min(100, Math.max(1, Math.round(parsed.score)));
       const level: 'green' | 'yellow' | 'red' =
         score >= aiCfg.greenMinScore
           ? 'green'

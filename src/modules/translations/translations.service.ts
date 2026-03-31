@@ -492,8 +492,16 @@ export class TranslationsService {
       }
     }
 
-    const sortColumn = sortBy === 'createdAt' ? 'tk.created_at' : 'tk.key';
-    qb.orderBy(sortColumn, sortOrder.toUpperCase() as 'ASC' | 'DESC');
+    if (sortBy === 'qualityScore') {
+      qb.orderBy(
+        `(SELECT MIN(tv_qs.quality_score) FROM translation_values tv_qs WHERE tv_qs.key_id = tk.id AND tv_qs.quality_score IS NOT NULL)`,
+        sortOrder.toUpperCase() as 'ASC' | 'DESC',
+        'NULLS LAST',
+      );
+    } else {
+      const sortColumn = sortBy === 'createdAt' ? 'tk.created_at' : 'tk.key';
+      qb.orderBy(sortColumn, sortOrder.toUpperCase() as 'ASC' | 'DESC');
+    }
 
     const total = await qb.getCount();
     qb.skip((page - 1) * limit).take(limit);

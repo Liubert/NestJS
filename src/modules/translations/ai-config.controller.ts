@@ -8,7 +8,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { AiConfigService } from './ai-config.service.js';
 
@@ -32,11 +32,13 @@ class UpdateAiConfigDto {
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(100)
   greenMinScore?: number;
 
   @IsOptional()
   @IsInt()
   @Min(1)
+  @Max(100)
   yellowMinScore?: number;
 }
 

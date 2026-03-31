@@ -28,10 +28,13 @@ export class ListEntriesQueryDto extends PaginationDto {
   @IsIn(['green', 'yellow', 'red', 'unchecked'])
   qualityLevel?: string;
 
-  @ApiPropertyOptional({ enum: ['key', 'createdAt'], default: 'key' })
+  @ApiPropertyOptional({
+    enum: ['key', 'createdAt', 'qualityScore'],
+    default: 'key',
+  })
   @IsOptional()
-  @IsIn(['key', 'createdAt'])
-  sortBy: 'key' | 'createdAt' = 'key';
+  @IsIn(['key', 'createdAt', 'qualityScore'])
+  sortBy: 'key' | 'createdAt' | 'qualityScore' = 'key';
 
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc' })
   @IsOptional()
