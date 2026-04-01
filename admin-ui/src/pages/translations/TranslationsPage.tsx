@@ -189,9 +189,11 @@ const fetchSnapshots = async (slug: string): Promise<Snapshot[]> => {
 const fetchSandboxEntries = async (
   slug: string, ns: string, page: number, limit: number,
   search: string, sortBy: string, sortOrder: string,
+  qualityLevel?: string,
 ): Promise<PaginatedEntries> => {
   const params: Record<string, string | number> = { page, limit, sortBy, sortOrder };
   if (search.length >= 2) params.search = search;
+  if (qualityLevel) params.qualityLevel = qualityLevel;
   const res = await apiClient.get(
     `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries`, { params },
   );
@@ -229,7 +231,7 @@ const revertSandboxKey = async (slug: string, ns: string, key: string) => {
   );
 };
 
-// ─── Edit Modal ───────────────────────────────────────────────────────────────
+// ─── Constants ───────────────────────────────────────────────────────────────
 
 const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
 
@@ -244,6 +246,14 @@ const QUALITY_COLOR: Record<string, string> = {
   yellow: '#faad14',
   red:    '#ff4d4f',
 };
+
+const ROW_BG: Record<string, string> = {
+  added:   '#f6ffed',
+  changed: '#fffbe6',
+  deleted: '#fff1f0',
+};
+
+// ─── Quality Badge ───────────────────────────────────────────────────────────
 
 const QualityBadge: React.FC<{ info: QualityInfo | null | undefined }> = ({ info }) => {
   if (!info) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
@@ -293,6 +303,8 @@ const QualityBadge: React.FC<{ info: QualityInfo | null | undefined }> = ({ info
   );
 };
 
+// ─── Edit Modal ──────────────────────────────────────────────────────────────
+
 interface EditModalProps {
   open: boolean;
   entry: Entry | null;
@@ -305,13 +317,15 @@ interface EditModalProps {
 
 const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onClose, onSave, saving }) => {
   const [form] = Form.useForm();
-  const [aiLoading, setAiLoading] = useState(false);
-  const [qualityLoading, setQualityLoading] = useState(false);
+  const [aiLoadingLocale, setAiLoadingLocale] = useState<string | null>(null); // null | 'all' | locale
+  const [qualityLoadingLocale, setQualityLoadingLocale] = useState<string | null>(null); // null | 'all' | locale
   const [qualityResults, setQualityResults] = useState<Record<string, QualityResult>>({});
 
   React.useEffect(() => {
     if (open) {
       setQualityResults({});
+      setAiLoadingLocale(null);
+      setQualityLoadingLocale(null);
       if (entry) { form.setFieldsValue({ key: entry.key, ...entry.values }); } else { form.resetFields(); }
     }
   }, [open, entry, form]);
@@ -326,10 +340,11 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
     });
   };
 
-  const handleAiGenerate = async () => {
+  // ── AI Translate (all locales) ──
+  const handleAiGenerateAll = async () => {
     const enText: string = form.getFieldValue('en') ?? '';
     if (!enText.trim()) { message.warning('Enter English text first'); return; }
-    setAiLoading(true);
+    setAiLoadingLocale('all');
     try {
       const result = await aiTranslate(enText);
       const patch: Record<string, string> = {};
@@ -342,24 +357,48 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
     } catch {
       message.error('AI translation failed. Check that GEMINI_API_KEY is set.');
     } finally {
-      setAiLoading(false);
+      setAiLoadingLocale(null);
     }
   };
 
-  const handleCheckQuality = async () => {
+  // ── AI Translate (single locale) ──
+  const handleAiGenerateOne = async (locale: string) => {
+    const enText: string = form.getFieldValue('en') ?? '';
+    if (!enText.trim()) { message.warning('Enter English text first'); return; }
+    setAiLoadingLocale(locale);
+    try {
+      const result = await aiTranslate(enText);
+      if (result[locale] !== undefined) {
+        form.setFieldsValue({ [locale]: result[locale] });
+        setQualityResults((prev) => {
+          const next = { ...prev };
+          delete next[locale];
+          return next;
+        });
+        message.success(`${locale} translated`);
+      }
+    } catch {
+      message.error('AI translation failed.');
+    } finally {
+      setAiLoadingLocale(null);
+    }
+  };
+
+  // ── Quality Check (all locales) ──
+  const handleCheckQualityAll = async () => {
     const vals = form.getFieldsValue();
     const enText: string = vals['en'] ?? '';
     if (!enText.trim()) { message.warning('English (source) text is required'); return; }
     const allQualityLocales = locales.filter((l) => vals[l]?.trim());
     if (!allQualityLocales.length) { message.warning('No values to check'); return; }
-    setQualityLoading(true);
+    setQualityLoadingLocale('all');
     setQualityResults({});
     try {
       const results = await Promise.all(
         allQualityLocales.map((locale) => {
           const isDefault = locale === 'en';
           return checkQuality(
-            isDefault ? enText : enText,
+            enText,
             vals[locale],
             locale,
             isDefault ? 'language_quality' : 'translation_quality',
@@ -370,13 +409,38 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
     } catch {
       message.error('Quality check failed. Check that GEMINI_API_KEY is set.');
     } finally {
-      setQualityLoading(false);
+      setQualityLoadingLocale(null);
+    }
+  };
+
+  // ── Quality Check (single locale) ──
+  const handleCheckQualityOne = async (locale: string) => {
+    const vals = form.getFieldsValue();
+    const enText: string = vals['en'] ?? '';
+    if (!enText.trim()) { message.warning('English (source) text is required'); return; }
+    const text = vals[locale]?.trim();
+    if (!text) { message.warning(`No value for ${locale}`); return; }
+    setQualityLoadingLocale(locale);
+    try {
+      const isDefault = locale === 'en';
+      const result = await checkQuality(
+        enText,
+        vals[locale],
+        locale,
+        isDefault ? 'language_quality' : 'translation_quality',
+      );
+      setQualityResults((prev) => ({ ...prev, [locale]: result }));
+    } catch {
+      message.error(`Quality check failed for ${locale}.`);
+    } finally {
+      setQualityLoadingLocale(null);
     }
   };
 
   const hasEnLocale = locales.includes('en');
   const hasAiLocales = AI_LOCALES.some((l) => locales.includes(l));
-  const hasTranslations = locales.some((l) => l !== 'en');
+  const isAiLoading = aiLoadingLocale !== null;
+  const isQualityLoading = qualityLoadingLocale !== null;
 
   return (
     <Modal open={open} title={isNew ? 'Add translation key' : `Edit: ${entry?.key}`}
@@ -392,42 +456,62 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
         )}
         {locales.map((locale) => {
           const qr = qualityResults[locale];
+          const isEnRow = locale === 'en';
+          const isAiLocale = AI_LOCALES.includes(locale);
+
+          const labelContent = (
+            <Space size={4} wrap>
+              <span>{locale}</span>
+              {/* English row: global buttons */}
+              {isEnRow && hasAiLocales && (
+                <Button size="small" icon={<ThunderboltOutlined />}
+                  loading={aiLoadingLocale === 'all'}
+                  disabled={isAiLoading || !hasEnLocale}
+                  onClick={handleAiGenerateAll} type="dashed">
+                  Translate All
+                </Button>
+              )}
+              {isEnRow && (
+                <Button size="small" icon={<SafetyCertificateOutlined />}
+                  loading={qualityLoadingLocale === 'all'}
+                  disabled={isQualityLoading}
+                  onClick={handleCheckQualityAll} type="dashed">
+                  Check All
+                </Button>
+              )}
+              {/* Per-locale translate button for AI locales */}
+              {!isEnRow && isAiLocale && (
+                <Tooltip title={`Translate ${locale}`}>
+                  <Button size="small" icon={<ThunderboltOutlined />}
+                    loading={aiLoadingLocale === locale}
+                    disabled={isAiLoading || !hasEnLocale}
+                    onClick={() => handleAiGenerateOne(locale)} type="text"
+                    style={{ color: '#1677ff', padding: '0 4px' }} />
+                </Tooltip>
+              )}
+              {/* Per-locale quality check button for all locales */}
+              {!isEnRow && (
+                <Tooltip title={`Check quality for ${locale}`}>
+                  <Button size="small" icon={<SafetyCertificateOutlined />}
+                    loading={qualityLoadingLocale === locale}
+                    disabled={isQualityLoading}
+                    onClick={() => handleCheckQualityOne(locale)} type="text"
+                    style={{ color: '#8c8c8c', padding: '0 4px' }} />
+                </Tooltip>
+              )}
+              {/* Quality result badge */}
+              {qr && (
+                <Tooltip title={qr.comment ?? undefined}>
+                  <Tag color={QUALITY_CONFIG[qr.level].color}>
+                    {QUALITY_CONFIG[qr.level].label} · {qr.score}/100
+                  </Tag>
+                </Tooltip>
+              )}
+            </Space>
+          );
+
           return (
-            <Form.Item key={locale} name={locale} label={
-              locale === 'en' && hasAiLocales ? (
-                <Space>
-                  <span>en</span>
-                  <Button size="small" icon={<ThunderboltOutlined />} loading={aiLoading}
-                    onClick={handleAiGenerate} type="dashed" disabled={!hasEnLocale}>
-                    Generate with AI
-                  </Button>
-                  {hasTranslations && (
-                    <Button size="small" icon={<SafetyCertificateOutlined />} loading={qualityLoading}
-                      onClick={handleCheckQuality} type="dashed">
-                      Check Quality
-                    </Button>
-                  )}
-                  {qr && (
-                    <Tooltip title={qr.comment ?? undefined}>
-                      <Tag color={QUALITY_CONFIG[qr.level].color}>
-                        {QUALITY_CONFIG[qr.level].label} · {qr.score}/100
-                      </Tag>
-                    </Tooltip>
-                  )}
-                </Space>
-              ) : (
-                <Space>
-                  <span>{locale}</span>
-                  {qr && (
-                    <Tooltip title={qr.comment ?? undefined}>
-                      <Tag color={QUALITY_CONFIG[qr.level].color}>
-                        {QUALITY_CONFIG[qr.level].label} · {qr.score}/100
-                      </Tag>
-                    </Tooltip>
-                  )}
-                </Space>
-              )
-            }>
+            <Form.Item key={locale} name={locale} label={labelContent}>
               <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} />
             </Form.Item>
           );
@@ -447,16 +531,8 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
   );
 };
 
-// ─── Diff helpers ─────────────────────────────────────────────────────────────
+// ─── Diff helpers ────────────────────────────────────────────────────────────
 
-// Row background colours for sandbox view
-const ROW_BG: Record<string, string> = {
-  added:   '#f6ffed',
-  changed: '#fffbe6',
-  deleted: '#fff1f0',
-};
-
-// Group locale-level diff entries into key-level diffs
 function buildKeyDiffs(entries: DiffEntry[]): KeyDiff[] {
   const map = new Map<string, KeyDiff>();
   for (const e of entries) {
@@ -469,7 +545,6 @@ function buildKeyDiffs(entries: DiffEntry[]): KeyDiff[] {
   return Array.from(map.values());
 }
 
-// Group locale-level diff entries into key-level rows for the review modal
 function buildKeyDiffRows(entries: DiffEntry[]): KeyDiffRow[] {
   const map = new Map<string, KeyDiffRow>();
   for (const e of entries) {
@@ -479,7 +554,6 @@ function buildKeyDiffRows(entries: DiffEntry[]): KeyDiffRow[] {
     }
     const row = map.get(id)!;
     row.localeEntries.push(e);
-    // Dominant status: added > deleted > changed
     if (e.status === 'added' || (e.status === 'deleted' && row.status === 'changed')) {
       row.status = e.status;
     }
@@ -487,7 +561,6 @@ function buildKeyDiffRows(entries: DiffEntry[]): KeyDiffRow[] {
   return Array.from(map.values());
 }
 
-// Build lookup: "namespace/key" → dominant status (added > deleted > changed)
 function buildKeyStatusLookup(entries: DiffEntry[]): Map<string, DiffEntry['status']> {
   const m = new Map<string, DiffEntry['status']>();
   for (const e of entries) {
@@ -500,50 +573,58 @@ function buildKeyStatusLookup(entries: DiffEntry[]): Map<string, DiffEntry['stat
   return m;
 }
 
-// ─── Sandbox Tab ──────────────────────────────────────────────────────────────
+// ─── Shared Entries Table ────────────────────────────────────────────────────
 
-interface SandboxTabProps {
+interface EntriesTableProps {
   projectSlug: string;
+  queryKeyPrefix: string;
+  fetchFn: (slug: string, ns: string, page: number, limit: number, search: string, sortBy: string, sortOrder: string, qualityLevel?: string) => Promise<PaginatedEntries>;
+  createFn: (slug: string, ns: string, payload: { key: string; values: Record<string, string> }) => Promise<unknown>;
+  updateFn: (slug: string, ns: string, key: string, values: Record<string, string>) => Promise<unknown>;
+  deleteFn: (slug: string, ns: string, key: string) => Promise<void>;
+  enabled?: boolean;
+  onMutationSuccess?: () => void;
+  // Sandbox customization
+  getRowProps?: (record: Entry, namespace: string) => React.HTMLAttributes<HTMLElement>;
+  renderKeyExtra?: (key: string, namespace: string) => React.ReactNode;
+  deleteConfirmTitle?: string;
+  deleteConfirmDescription?: string;
+  extraControls?: React.ReactNode;
 }
 
-const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
+const EntriesTable: React.FC<EntriesTableProps> = ({
+  projectSlug,
+  queryKeyPrefix,
+  fetchFn,
+  createFn,
+  updateFn,
+  deleteFn,
+  enabled = true,
+  onMutationSuccess,
+  getRowProps,
+  renderKeyExtra,
+  deleteConfirmTitle = 'Delete this key?',
+  deleteConfirmDescription,
+  extraControls,
+}) => {
   const qc = useQueryClient();
-  const [pushModalOpen, setPushModalOpen] = useState(false);
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editEntry, setEditEntry] = useState<Entry | null>(null);
-  const [isNewEntry, setIsNewEntry] = useState(false);
   const [namespace, setNamespace] = useState('');
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(50);
-  const [sortBy, setSortBy] = useState<'key' | 'createdAt'>('key');
+  const [sortBy, setSortBy] = useState<'key' | 'createdAt' | 'qualityScore'>('key');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [qualityLevel, setQualityLevel] = useState('');
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editEntry, setEditEntry] = useState<Entry | null>(null);
+  const [isNewEntry, setIsNewEntry] = useState(false);
 
-  const { data: status, isLoading: statusLoading } = useQuery({
-    queryKey: ['sandbox-status', projectSlug],
-    queryFn: () => fetchSandboxStatus(projectSlug),
-    enabled: !!projectSlug,
-  } as any) as { data: SandboxStatus | undefined; isLoading: boolean };
-
-  const { data: diff } = useQuery({
-    queryKey: ['sandbox-diff', projectSlug],
-    queryFn: () => fetchSandboxDiff(projectSlug),
-    enabled: !!projectSlug && !!status?.initialized,
-  } as any) as { data: DiffResult | undefined; isLoading: boolean };
-
-  const { data: projectDetails } = useQuery({
+  const { data: projectDetails } = useQuery<ProjectDetails>({
     queryKey: ['project', projectSlug],
     queryFn: () => fetchProjectDetails(projectSlug),
     enabled: !!projectSlug,
-  } as any) as { data: ProjectDetails | undefined };
-
-  // Sandbox-specific entries (true sandbox view, not production overlay)
-  const { data: sandboxEntries, isLoading: entriesLoading } = useQuery({
-    queryKey: ['sandbox-entries', projectSlug, namespace, page, pageSize, search, sortBy, sortOrder],
-    queryFn: () => fetchSandboxEntries(projectSlug, namespace, page, pageSize, search, sortBy, sortOrder),
-    enabled: !!projectSlug && !!namespace && !!status?.initialized,
-  } as any) as { data: PaginatedEntries | undefined; isLoading: boolean };
+  });
 
   React.useEffect(() => { setNamespace(''); setPage(1); }, [projectSlug]);
 
@@ -555,10 +636,236 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
 
   const locales: string[] = projectDetails?.locales?.map((l) => l.code) ?? [];
 
-  // Diff key-status lookup for row highlighting (ns/key → status)
-  const keyStatusMap = useMemo(() => buildKeyStatusLookup(diff?.entries ?? []), [diff]);
+  const { data: entriesData, isLoading: entriesLoading } = useQuery<PaginatedEntries>({
+    queryKey: [queryKeyPrefix, projectSlug, namespace, page, pageSize, search, sortBy, sortOrder, qualityLevel],
+    queryFn: () => fetchFn(projectSlug, namespace, page, pageSize, search, sortBy, sortOrder, qualityLevel || undefined),
+    enabled: !!projectSlug && !!namespace && enabled,
+  });
 
-  // Key-level change counts (must stay above early returns — Rules of Hooks)
+  const invalidate = useCallback(() => {
+    qc.invalidateQueries({ queryKey: [queryKeyPrefix, projectSlug] });
+    onMutationSuccess?.();
+  }, [qc, queryKeyPrefix, projectSlug, onMutationSuccess]);
+
+  const createMutation = useMutation({
+    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
+      createFn(projectSlug, namespace, { key, values }),
+    onSuccess: () => {
+      message.success('Key created');
+      invalidate();
+      setEditModalOpen(false);
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error creating key'),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
+      updateFn(projectSlug, namespace, key, values),
+    onSuccess: () => {
+      message.success('Saved');
+      invalidate();
+      setEditModalOpen(false);
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error saving'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (key: string) => deleteFn(projectSlug, namespace, key),
+    onSuccess: () => {
+      message.success('Deleted');
+      invalidate();
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error deleting'),
+  });
+
+  const handleSearch = useCallback(() => { setSearch(searchInput); setPage(1); }, [searchInput]);
+
+  const handleTableChange = (
+    pagination: TablePaginationConfig,
+    _filters: Record<string, FilterValue | null>,
+    sorter: SorterResult<Entry> | SorterResult<Entry>[],
+  ) => {
+    setPage(pagination.current ?? 1);
+    setPageSize(pagination.pageSize ?? 50);
+    const s = Array.isArray(sorter) ? sorter[0] : sorter;
+    if (s?.field) {
+      const field = s.field as string;
+      setSortBy(field === 'createdAt' ? 'createdAt' : field === 'qualityScore' ? 'qualityScore' : 'key');
+      setSortOrder(s.order === 'descend' ? 'desc' : 'asc');
+    }
+  };
+
+  const columns: ColumnsType<Entry> = [
+    {
+      title: 'Key', dataIndex: 'key', key: 'key', sorter: true, width: 220, fixed: 'left',
+      render: (text: string) => (
+        <Space size={6}>
+          <Tooltip title={text}>
+            <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{text}</span>
+          </Tooltip>
+          {renderKeyExtra?.(text, namespace)}
+        </Space>
+      ),
+    },
+    ...locales.map((locale) => ({
+      title: <Tag color="blue">{locale}</Tag>,
+      key: locale,
+      width: 180,
+      render: (_: unknown, record: Entry) => {
+        const val = record.values[locale];
+        return (
+          <Space size={4} align="start">
+            <QualityBadge info={record.quality?.[locale]} />
+            {val
+              ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
+              : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>}
+          </Space>
+        );
+      },
+    })),
+    {
+      title: <Tooltip title="Minimum quality score across all locales (sort to find worst translations)">Quality</Tooltip>,
+      key: 'qualityScore',
+      dataIndex: 'qualityScore',
+      sorter: true,
+      width: 90,
+      render: (_: unknown, record: Entry) => {
+        const scores = locales
+          .map((l) => record.quality?.[l]?.score)
+          .filter((s): s is number => s != null);
+        if (!scores.length) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
+        const minScore = Math.min(...scores);
+        const levels = locales.map((l) => record.quality?.[l]?.level).filter(Boolean);
+        const level = levels.includes('red') ? 'red' : levels.includes('yellow') ? 'yellow' : 'green';
+        return (
+          <span style={{ color: QUALITY_COLOR[level] ?? '#bbb', fontWeight: 600, fontSize: 12 }}>
+            {minScore}
+          </span>
+        );
+      },
+    },
+    {
+      title: '', key: 'actions', width: 80, fixed: 'right',
+      render: (_: unknown, record: Entry) => (
+        <Space size={4}>
+          <Button type="text" size="small" icon={<EditOutlined />}
+            onClick={() => { setEditEntry(record); setIsNewEntry(false); setEditModalOpen(true); }} />
+          <Popconfirm title={deleteConfirmTitle} description={deleteConfirmDescription}
+            onConfirm={() => deleteMutation.mutate(record.key)}
+            okText="Delete" okButtonProps={{ danger: true }}>
+            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <Row gutter={12} style={{ marginBottom: 14 }}>
+        <Col>
+          <Select
+            placeholder="Namespace"
+            value={namespace || undefined}
+            onChange={(val) => { setNamespace(val); setPage(1); setSearchInput(''); setSearch(''); }}
+            style={{ width: 220 }}
+            disabled={!projectDetails}
+            options={(projectDetails?.namespaces ?? []).map((ns: string) => ({ value: ns, label: ns }))}
+          />
+        </Col>
+        <Col flex="auto">
+          <Input
+            placeholder="Search by key or value..."
+            prefix={<SearchOutlined />}
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onPressEnter={handleSearch}
+            onBlur={handleSearch}
+            allowClear
+            onClear={() => { setSearchInput(''); setSearch(''); setPage(1); }}
+            style={{ maxWidth: 360 }}
+          />
+        </Col>
+        <Col>
+          <Select
+            value={qualityLevel || ''}
+            onChange={(val) => { setQualityLevel(val); setPage(1); }}
+            style={{ width: 150 }}
+            options={[
+              { value: '', label: 'All qualities' },
+              { value: 'green', label: 'Green' },
+              { value: 'yellow', label: 'Yellow' },
+              { value: 'red', label: 'Red' },
+              { value: 'unchecked', label: 'Not checked' },
+            ]}
+          />
+        </Col>
+        <Col>
+          <Button type="primary" icon={<PlusOutlined />} disabled={!namespace}
+            onClick={() => { setEditEntry(null); setIsNewEntry(true); setEditModalOpen(true); }}>
+            Add key
+          </Button>
+        </Col>
+        {extraControls}
+      </Row>
+
+      <Table<Entry>
+        rowKey="key"
+        columns={columns}
+        dataSource={entriesData?.data ?? []}
+        loading={entriesLoading}
+        scroll={{ x: true }}
+        onChange={handleTableChange}
+        pagination={{
+          current: page, pageSize,
+          total: entriesData?.meta.total ?? 0,
+          showSizeChanger: true,
+          pageSizeOptions: ['25', '50', '100'],
+          showTotal: (total) => `${total} keys`,
+        }}
+        size="small"
+        onRow={getRowProps ? (record) => getRowProps(record, namespace) : undefined}
+      />
+
+      <EditModal
+        open={editModalOpen}
+        entry={editEntry}
+        locales={locales}
+        isNew={isNewEntry}
+        onClose={() => setEditModalOpen(false)}
+        onSave={(key, values) => {
+          if (isNewEntry) createMutation.mutate({ key, values });
+          else updateMutation.mutate({ key, values });
+        }}
+        saving={createMutation.isPending || updateMutation.isPending}
+      />
+    </>
+  );
+};
+
+// ─── Sandbox Tab ─────────────────────────────────────────────────────────────
+
+interface SandboxTabProps {
+  projectSlug: string;
+}
+
+const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
+  const qc = useQueryClient();
+  const [pushModalOpen, setPushModalOpen] = useState(false);
+
+  const { data: status, isLoading: statusLoading } = useQuery<SandboxStatus>({
+    queryKey: ['sandbox-status', projectSlug],
+    queryFn: () => fetchSandboxStatus(projectSlug),
+    enabled: !!projectSlug,
+  });
+
+  const { data: diff } = useQuery<DiffResult>({
+    queryKey: ['sandbox-diff', projectSlug],
+    queryFn: () => fetchSandboxDiff(projectSlug),
+    enabled: !!projectSlug && !!status?.initialized,
+  });
+
+  const keyStatusMap = useMemo(() => buildKeyStatusLookup(diff?.entries ?? []), [diff]);
   const keyDiffs    = useMemo(() => buildKeyDiffs(diff?.entries ?? []), [diff]);
   const keyDiffRows = useMemo(() => buildKeyDiffRows(diff?.entries ?? []), [diff]);
   const keyAdded   = keyDiffs.filter((k) => k.status === 'added').length;
@@ -566,11 +873,11 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const keyDeleted = keyDiffs.filter((k) => k.status === 'deleted').length;
   const total      = keyAdded + keyChanged + keyDeleted;
 
-  const invalidateSandbox = () => {
+  const invalidateSandbox = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
     qc.invalidateQueries({ queryKey: ['sandbox-diff', projectSlug] });
     qc.invalidateQueries({ queryKey: ['sandbox-entries', projectSlug] });
-  };
+  }, [qc, projectSlug]);
 
   const initMutation = useMutation({
     mutationFn: () =>
@@ -580,37 +887,6 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       invalidateSandbox();
     },
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Failed to initialize'),
-  });
-
-  const createMutation = useMutation({
-    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
-      createSandboxEntry(projectSlug, namespace, { key, values }),
-    onSuccess: () => {
-      message.success('Key created in sandbox');
-      invalidateSandbox();
-      setEditModalOpen(false);
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error creating key'),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
-      updateSandboxEntry(projectSlug, namespace, key, values),
-    onSuccess: () => {
-      message.success('Saved to sandbox');
-      invalidateSandbox();
-      setEditModalOpen(false);
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error saving'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (key: string) => deleteSandboxEntry(projectSlug, namespace, key),
-    onSuccess: () => {
-      message.success('Key removed from sandbox');
-      invalidateSandbox();
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error deleting'),
   });
 
   const promoteMutation = useMutation({
@@ -652,22 +928,6 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     }
   }, [pushModalOpen, diff]);
 
-  const handleSearch = useCallback(() => { setSearch(searchInput); setPage(1); }, [searchInput]);
-
-  const handleTableChange = (
-    pagination: TablePaginationConfig,
-    _filters: Record<string, FilterValue | null>,
-    sorter: SorterResult<Entry> | SorterResult<Entry>[],
-  ) => {
-    setPage(pagination.current ?? 1);
-    setPageSize(pagination.pageSize ?? 50);
-    const s = Array.isArray(sorter) ? sorter[0] : sorter;
-    if (s?.field) {
-      setSortBy(s.field === 'createdAt' ? 'createdAt' : 'key');
-      setSortOrder(s.order === 'descend' ? 'desc' : 'asc');
-    }
-  };
-
   if (!projectSlug) return <Empty description="Select a project" style={{ marginTop: 48 }} />;
   if (statusLoading) return <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>;
 
@@ -689,70 +949,11 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   }
 
   const hasChanges = !!status?.hasChanges;
-
   const statusBg     = hasChanges ? '#fffbe6' : '#f6ffed';
   const statusBorder = hasChanges ? '#ffe58f' : '#b7eb8f';
   const statusIcon   = hasChanges
     ? <span style={{ fontSize: 18 }}>⚡</span>
     : <CheckCircleOutlined style={{ fontSize: 18, color: '#52c41a' }} />;
-
-  // Sandbox entries table columns — shows true sandbox values, highlights changed rows
-  const sandboxColumns: ColumnsType<Entry> = [
-    {
-      title: 'Key', dataIndex: 'key', key: 'key', sorter: true, width: 220, fixed: 'left',
-      render: (text: string) => {
-        const rowStatus = keyStatusMap.get(`${namespace}/${text}`);
-        return (
-          <Space size={6}>
-            <Tooltip title={text}>
-              <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{text}</span>
-            </Tooltip>
-            {rowStatus && (
-              <Tag
-                color={rowStatus === 'added' ? 'green' : rowStatus === 'deleted' ? 'red' : 'orange'}
-                style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px' }}
-              >
-                {rowStatus}
-              </Tag>
-            )}
-          </Space>
-        );
-      },
-    },
-    ...locales.map((locale) => ({
-      title: <Tag color="blue">{locale}</Tag>,
-      key: locale,
-      width: 180,
-      render: (_: unknown, record: Entry) => {
-        const val = record.values[locale];
-        return (
-          <Space size={4} align="start">
-            <QualityBadge info={record.quality?.[locale]} />
-            {val
-              ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
-              : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>}
-          </Space>
-        );
-      },
-    })),
-    {
-      title: '', key: 'actions', width: 80, fixed: 'right',
-      render: (_: unknown, record: Entry) => (
-        <Space size={4}>
-          <Button type="text" size="small" icon={<EditOutlined />}
-            onClick={() => { setEditEntry(record); setIsNewEntry(false); setEditModalOpen(true); }} />
-          <Popconfirm
-            title="Remove this key from sandbox?"
-            description="The key will be marked for deletion and removed from production when you push."
-            onConfirm={() => deleteMutation.mutate(record.key)}
-            okText="Remove" okButtonProps={{ danger: true }}
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
 
   const pushDiffColumns: ColumnsType<KeyDiffRow> = [
     { title: 'Namespace', dataIndex: 'namespace', key: 'ns', width: 130, ellipsis: true },
@@ -862,73 +1063,33 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         </Row>
       </div>
 
-      {/* ── Sandbox entries controls ── */}
-      <Row gutter={12} style={{ marginBottom: 14 }}>
-        <Col>
-          <Select
-            placeholder="Namespace"
-            value={namespace || undefined}
-            onChange={(val) => { setNamespace(val); setPage(1); setSearchInput(''); setSearch(''); }}
-            style={{ width: 220 }}
-            disabled={!projectDetails}
-            options={(projectDetails?.namespaces ?? []).map((ns: string) => ({ value: ns, label: ns }))}
-          />
-        </Col>
-        <Col flex="auto">
-          <Input
-            placeholder="Search by key or value..."
-            prefix={<SearchOutlined />}
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onPressEnter={handleSearch}
-            onBlur={handleSearch}
-            allowClear
-            onClear={() => { setSearchInput(''); setSearch(''); setPage(1); }}
-            style={{ maxWidth: 360 }}
-          />
-        </Col>
-        <Col>
-          <Button type="primary" icon={<PlusOutlined />} disabled={!namespace}
-            onClick={() => { setEditEntry(null); setIsNewEntry(true); setEditModalOpen(true); }}>
-            Add key
-          </Button>
-        </Col>
-      </Row>
-
-      {/* ── Sandbox entries table ── */}
-      <Table<Entry>
-        rowKey="key"
-        columns={sandboxColumns}
-        dataSource={sandboxEntries?.data ?? []}
-        loading={entriesLoading}
-        scroll={{ x: true }}
-        onChange={handleTableChange}
-        pagination={{
-          current: page, pageSize,
-          total: sandboxEntries?.meta.total ?? 0,
-          showSizeChanger: true,
-          pageSizeOptions: ['25', '50', '100'],
-          showTotal: (t) => `${t} keys`,
+      {/* ── Shared entries table ── */}
+      <EntriesTable
+        projectSlug={projectSlug}
+        queryKeyPrefix="sandbox-entries"
+        fetchFn={fetchSandboxEntries}
+        createFn={createSandboxEntry}
+        updateFn={updateSandboxEntry}
+        deleteFn={deleteSandboxEntry}
+        enabled={!!status?.initialized}
+        onMutationSuccess={invalidateSandbox}
+        deleteConfirmTitle="Remove this key from sandbox?"
+        deleteConfirmDescription="The key will be marked for deletion and removed from production when you push."
+        renderKeyExtra={(key, namespace) => {
+          const rowStatus = keyStatusMap.get(`${namespace}/${key}`);
+          return rowStatus ? (
+            <Tag
+              color={rowStatus === 'added' ? 'green' : rowStatus === 'deleted' ? 'red' : 'orange'}
+              style={{ fontSize: 11, padding: '0 4px', lineHeight: '16px' }}
+            >
+              {rowStatus}
+            </Tag>
+          ) : null;
         }}
-        size="small"
-        onRow={(record) => {
+        getRowProps={(record, namespace) => {
           const rowStatus = keyStatusMap.get(`${namespace}/${record.key}`);
           return rowStatus ? { style: { background: ROW_BG[rowStatus] } } : {};
         }}
-      />
-
-      {/* ── Edit / Add modal (saves to sandbox) ── */}
-      <EditModal
-        open={editModalOpen}
-        entry={editEntry}
-        locales={locales}
-        isNew={isNewEntry}
-        onClose={() => setEditModalOpen(false)}
-        onSave={(key, values) => {
-          if (isNewEntry) createMutation.mutate({ key, values });
-          else updateMutation.mutate({ key, values });
-        }}
-        saving={createMutation.isPending || updateMutation.isPending}
       />
 
       {/* ── Push to Production modal ── */}
@@ -1006,7 +1167,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   );
 };
 
-// ─── Production Tab ───────────────────────────────────────────────────────────
+// ─── Production Tab ──────────────────────────────────────────────────────────
 
 interface ProductionTabProps {
   projectSlug: string;
@@ -1014,77 +1175,13 @@ interface ProductionTabProps {
 
 const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
   const qc = useQueryClient();
-  const [namespace, setNamespace] = useState('');
-  const [search, setSearch] = useState('');
-  const [searchInput, setSearchInput] = useState('');
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
-  const [sortBy, setSortBy] = useState<'key' | 'createdAt' | 'qualityScore'>('key');
-  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [qualityLevel, setQualityLevel] = useState('');
-  const [editModalOpen, setEditModalOpen] = useState(false);
-  const [editEntry, setEditEntry] = useState<Entry | null>(null);
-  const [isNewEntry, setIsNewEntry] = useState(false);
   const [revertModalOpen, setRevertModalOpen] = useState(false);
   const [selectedSnapshotId, setSelectedSnapshotId] = useState('');
 
-  const { data: projectDetails } = useQuery({
-    queryKey: ['project', projectSlug],
-    queryFn: () => fetchProjectDetails(projectSlug),
-    enabled: !!projectSlug,
-  } as any) as { data: ProjectDetails | undefined };
-
-  React.useEffect(() => { setNamespace(''); }, [projectSlug]);
-
-  React.useEffect(() => {
-    if (projectDetails && projectDetails.namespaces.length > 0 && !namespace) {
-      setNamespace(projectDetails.namespaces[0]);
-    }
-  }, [projectDetails, namespace]);
-
-  const locales: string[] = projectDetails?.locales?.map((l) => l.code) ?? [];
-
-  const { data: entriesData, isLoading: entriesLoading } = useQuery({
-    queryKey: ['entries', projectSlug, namespace, page, pageSize, search, sortBy, sortOrder, qualityLevel],
-    queryFn: () => fetchEntries(projectSlug, namespace, page, pageSize, search, sortBy, sortOrder, qualityLevel || undefined),
-    enabled: !!projectSlug && !!namespace,
-  } as any) as { data: PaginatedEntries | undefined; isLoading: boolean };
-
-  const { data: snapshots = [] } = useQuery({
+  const { data: snapshots = [] } = useQuery<Snapshot[]>({
     queryKey: ['sandbox-snapshots', projectSlug],
     queryFn: () => fetchSnapshots(projectSlug),
     enabled: !!projectSlug && revertModalOpen,
-  } as any) as { data: Snapshot[] };
-
-  const createMutation = useMutation({
-    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
-      createEntry(projectSlug, namespace, { key, values }),
-    onSuccess: () => {
-      message.success('Key created');
-      qc.invalidateQueries({ queryKey: ['entries', projectSlug, namespace] });
-      setEditModalOpen(false);
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error creating key'),
-  });
-
-  const updateMutation = useMutation({
-    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
-      updateEntry(projectSlug, namespace, key, values),
-    onSuccess: () => {
-      message.success('Saved');
-      qc.invalidateQueries({ queryKey: ['entries', projectSlug, namespace] });
-      setEditModalOpen(false);
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error saving'),
-  });
-
-  const deleteMutation = useMutation({
-    mutationFn: (key: string) => deleteEntry(projectSlug, namespace, key),
-    onSuccess: () => {
-      message.success('Deleted');
-      qc.invalidateQueries({ queryKey: ['entries', projectSlug, namespace] });
-    },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error deleting'),
   });
 
   const revertMutation = useMutation({
@@ -1099,166 +1196,25 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Revert failed'),
   });
 
-  const handleSearch = useCallback(() => { setSearch(searchInput); setPage(1); }, [searchInput]);
-
-  const handleTableChange = (
-    pagination: TablePaginationConfig,
-    _filters: Record<string, FilterValue | null>,
-    sorter: SorterResult<Entry> | SorterResult<Entry>[],
-  ) => {
-    setPage(pagination.current ?? 1);
-    setPageSize(pagination.pageSize ?? 50);
-    const s = Array.isArray(sorter) ? sorter[0] : sorter;
-    if (s?.field) {
-      const field = s.field as string;
-      setSortBy(field === 'createdAt' ? 'createdAt' : field === 'qualityScore' ? 'qualityScore' : 'key');
-      setSortOrder(s.order === 'descend' ? 'desc' : 'asc');
-    }
-  };
-
-  const columns: ColumnsType<Entry> = [
-    {
-      title: 'Key', dataIndex: 'key', key: 'key', sorter: true, width: 220, fixed: 'left',
-      render: (text: string) => (
-        <Tooltip title={text}>
-          <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{text}</span>
-        </Tooltip>
-      ),
-    },
-    ...locales.map((locale) => ({
-      title: <Tag color="blue">{locale}</Tag>,
-      key: locale,
-      width: 180,
-      render: (_: unknown, record: Entry) => {
-        const val = record.values[locale];
-        return (
-          <Space size={4} align="start">
-            <QualityBadge info={record.quality?.[locale]} />
-            {val
-              ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
-              : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>}
-          </Space>
-        );
-      },
-    })),
-    {
-      title: <Tooltip title="Minimum quality score across all locales (sort to find worst translations)">Quality</Tooltip>,
-      key: 'qualityScore',
-      dataIndex: 'qualityScore',
-      sorter: true,
-      width: 90,
-      render: (_: unknown, record: Entry) => {
-        const scores = locales
-          .map((l) => record.quality?.[l]?.score)
-          .filter((s): s is number => s != null);
-        if (!scores.length) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
-        const minScore = Math.min(...scores);
-        const levels = locales.map((l) => record.quality?.[l]?.level).filter(Boolean);
-        const level = levels.includes('red') ? 'red' : levels.includes('yellow') ? 'yellow' : 'green';
-        return (
-          <span style={{ color: QUALITY_COLOR[level] ?? '#bbb', fontWeight: 600, fontSize: 12 }}>
-            {minScore}
-          </span>
-        );
-      },
-    },
-    {
-      title: '', key: 'actions', width: 80, fixed: 'right',
-      render: (_: unknown, record: Entry) => (
-        <Space size={4}>
-          <Button type="text" size="small" icon={<EditOutlined />}
-            onClick={() => { setEditEntry(record); setIsNewEntry(false); setEditModalOpen(true); }} />
-          <Popconfirm title="Delete this key?" onConfirm={() => deleteMutation.mutate(record.key)}
-            okText="Delete" okButtonProps={{ danger: true }}>
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
+  if (!projectSlug) return <Empty description="Select a project" style={{ marginTop: 48 }} />;
 
   return (
     <>
-      <Row gutter={12} style={{ marginBottom: 16 }}>
-        <Col>
-          <Select
-            placeholder="Namespace"
-            value={namespace || undefined}
-            onChange={(val) => { setNamespace(val); setPage(1); }}
-            style={{ width: 220 }}
-            disabled={!projectDetails}
-            options={(projectDetails?.namespaces ?? []).map((ns: string) => ({ value: ns, label: ns }))}
-          />
-        </Col>
-        <Col flex="auto">
-          <Input
-            placeholder="Search by key or value..."
-            prefix={<SearchOutlined />}
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onPressEnter={handleSearch}
-            onBlur={handleSearch}
-            allowClear
-            onClear={() => { setSearchInput(''); setSearch(''); setPage(1); }}
-            style={{ maxWidth: 360 }}
-          />
-        </Col>
-        <Col>
-          <Select
-            value={qualityLevel || ''}
-            onChange={(val) => { setQualityLevel(val); setPage(1); }}
-            style={{ width: 150 }}
-            options={[
-              { value: '', label: 'All qualities' },
-              { value: 'green', label: 'Green' },
-              { value: 'yellow', label: 'Yellow' },
-              { value: 'red', label: 'Red' },
-              { value: 'unchecked', label: 'Not checked' },
-            ]}
-          />
-        </Col>
-        <Col>
-          <Button type="primary" icon={<PlusOutlined />} disabled={!namespace}
-            onClick={() => { setEditEntry(null); setIsNewEntry(true); setEditModalOpen(true); }}>
-            Add key
-          </Button>
-        </Col>
-        <Col>
-          <Button icon={<RollbackOutlined />}
-            onClick={() => { setSelectedSnapshotId(''); setRevertModalOpen(true); }}>
-            Revert to snapshot
-          </Button>
-        </Col>
-      </Row>
-
-      <Table<Entry>
-        rowKey="key"
-        columns={columns}
-        dataSource={entriesData?.data ?? []}
-        loading={entriesLoading}
-        scroll={{ x: true }}
-        onChange={handleTableChange}
-        pagination={{
-          current: page, pageSize,
-          total: entriesData?.meta.total ?? 0,
-          showSizeChanger: true,
-          pageSizeOptions: ['25', '50', '100'],
-          showTotal: (total) => `${total} keys`,
-        }}
-        size="small"
-      />
-
-      <EditModal
-        open={editModalOpen}
-        entry={editEntry}
-        locales={locales}
-        isNew={isNewEntry}
-        onClose={() => setEditModalOpen(false)}
-        onSave={(key, values) => {
-          if (isNewEntry) createMutation.mutate({ key, values });
-          else updateMutation.mutate({ key, values });
-        }}
-        saving={createMutation.isPending || updateMutation.isPending}
+      <EntriesTable
+        projectSlug={projectSlug}
+        queryKeyPrefix="entries"
+        fetchFn={fetchEntries}
+        createFn={createEntry}
+        updateFn={updateEntry}
+        deleteFn={deleteEntry}
+        extraControls={
+          <Col>
+            <Button icon={<RollbackOutlined />}
+              onClick={() => { setSelectedSnapshotId(''); setRevertModalOpen(true); }}>
+              Revert to snapshot
+            </Button>
+          </Col>
+        }
       />
 
       <Modal
@@ -1302,16 +1258,16 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
   );
 };
 
-// ─── Main Page ────────────────────────────────────────────────────────────────
+// ─── Main Page ───────────────────────────────────────────────────────────────
 
 const TranslationsPage: React.FC = () => {
   const [projectSlug, setProjectSlug] = useState('');
   const [activeTab, setActiveTab] = useState('sandbox');
 
-  const { data: projects = [], isLoading: projectsLoading } = useQuery({
+  const { data: projects = [], isLoading: projectsLoading } = useQuery<Project[]>({
     queryKey: ['projects'],
     queryFn: fetchProjects,
-  } as any) as { data: Project[]; isLoading: boolean };
+  });
 
   React.useEffect(() => {
     if (projects.length > 0 && !projectSlug) setProjectSlug(projects[0].slug);

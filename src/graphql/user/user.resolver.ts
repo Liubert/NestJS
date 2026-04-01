@@ -17,7 +17,7 @@ import { UserEntity } from '../../modules/users/user.entity';
 import { UsersPayload } from './users.payload';
 import { Roles } from '../../modules/auth/role.decorator';
 import { UserRole } from '../../modules/users/types/user-role.enum';
-import { GqlAuthGuard } from '../../modules/auth/qgl-jwt-auth.guard';
+import { GqlAuthGuard } from '../../modules/auth/gql-jwt-auth.guard';
 import { RolesGuard } from '../../modules/auth/roles.guard';
 import { FileRecordLoader } from './file-record.loader';
 import { FileStatus } from '../../modules/files/file-record.entity';

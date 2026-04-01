@@ -62,6 +62,26 @@ CLAUDE.md
 homework_ci_cd_plan.md
 tsconfig.build.tsbuildinfo
 
+# Auto-generated GraphQL schema
+schema.gql
+src/schema.gql
+
+# Audit logs
+mcp-audit.log
+
+# Assignment artifacts
+hw17-evidence/
+homework*.md
+TRAVIS-json.zip
+
+# Generated docs
+*.pdf
+FINAL_REVIEW_SUMMARY.md
+LOCALIZATION_PLATFORM_OVERVIEW.md
+
+# Local MCP config
+.mcp.json
+
 # Local SSH keys used for cloud access
 /test/*.key
 /test/*.pem

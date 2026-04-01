@@ -76,18 +76,6 @@ export class SandboxService {
     return project;
   }
 
-  private assertAccess(
-    project: ProjectEntity,
-    userId: string,
-    role: UserRole,
-  ): void {
-    // Admins always have access; for members, access was already verified upstream
-    // (caller must check project membership before calling sandbox methods)
-    if (role !== UserRole.ADMIN && project.ownerId !== userId) {
-      // Non-owner members can read sandbox but not promote/revert — enforced per method
-    }
-  }
-
   private isAdmin(role: UserRole): boolean {
     return role === UserRole.ADMIN;
   }
@@ -665,7 +653,7 @@ export class SandboxService {
     });
     if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
 
-    const { page, limit, search, sortBy, sortOrder } = query;
+    const { page, limit, search, sortBy, sortOrder, qualityLevel } = query;
     const params: unknown[] = [project.id, ns.id];
 
     let searchCondition = '';
@@ -688,6 +676,27 @@ export class SandboxService {
       `;
     }
 
+    let qualityCondition = '';
+    if (qualityLevel) {
+      if (qualityLevel === 'unchecked') {
+        qualityCondition = `
+          AND EXISTS (
+            SELECT 1 FROM translation_values tv3
+            WHERE tv3.key_id = tk.id AND tv3.value IS NOT NULL AND tv3.quality_level IS NULL
+          )
+        `;
+      } else {
+        params.push(qualityLevel);
+        const qi = params.length;
+        qualityCondition = `
+          AND EXISTS (
+            SELECT 1 FROM translation_values tv3
+            WHERE tv3.key_id = tk.id AND tv3.quality_level = $${qi}
+          )
+        `;
+      }
+    }
+
     // A key is visible in sandbox if:
     // (a) it has production values OR sandbox-active values, AND
     // (b) it is NOT fully deleted in sandbox (all sandbox entries are is_deleted=true)
@@ -702,15 +711,21 @@ export class SandboxService {
       )
     `;
 
-    const baseWhere = `tk.namespace_id = $2 ${visibilityWhere} ${searchCondition}`;
+    const baseWhere = `tk.namespace_id = $2 ${visibilityWhere} ${searchCondition} ${qualityCondition}`;
 
     const [{ count }] = await this.dataSource.query<{ count: string }[]>(
       `SELECT COUNT(DISTINCT tk.id) AS count FROM translation_keys tk WHERE ${baseWhere}`,
       params,
     );
 
-    const sortCol = sortBy === 'createdAt' ? 'tk.created_at' : 'tk.key';
+    const sortCol =
+      sortBy === 'qualityScore'
+        ? '(SELECT MIN(tv_qs.quality_score) FROM translation_values tv_qs WHERE tv_qs.key_id = tk.id AND tv_qs.quality_score IS NOT NULL)'
+        : sortBy === 'createdAt'
+          ? 'tk.created_at'
+          : 'tk.key';
     const sortDir = sortOrder.toUpperCase() as 'ASC' | 'DESC';
+    const nullsLast = sortBy === 'qualityScore' ? ' NULLS LAST' : '';
 
     params.push(limit, (page - 1) * limit);
     const limitIdx = params.length - 1;
@@ -722,7 +737,7 @@ export class SandboxService {
       `SELECT DISTINCT tk.id, tk.key, tk.created_at
        FROM translation_keys tk
        WHERE ${baseWhere}
-       ORDER BY ${sortCol} ${sortDir}
+       ORDER BY ${sortCol} ${sortDir}${nullsLast}
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       params,
     );

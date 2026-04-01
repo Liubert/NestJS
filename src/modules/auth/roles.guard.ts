@@ -8,8 +8,6 @@ import { Reflector } from '@nestjs/core';
 import { GqlExecutionContext } from '@nestjs/graphql';
 import { GqlContextWithReq, ReqWithUser } from './types/auth.types';
 
-// type GqlContextWithReq = { req: ReqWithUser };
-
 @Injectable()
 export class RolesGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}

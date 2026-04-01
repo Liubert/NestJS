@@ -181,9 +181,11 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         continue;
       }
 
+      const checkedLocaleIds = new Set<string>();
       for (const [localeCode, r] of Object.entries(keyResult)) {
         const locale = projectLocales.find((l) => l.code === localeCode);
         if (!locale || !valMap) continue;
+        checkedLocaleIds.add(locale.id);
         const value = valMap.get(locale.id);
         const hash = value
           ? createHash('sha256').update(value).digest('hex')
@@ -200,6 +202,18 @@ export class QualityWorkerService implements OnApplicationBootstrap {
             qualityContentHash: hash,
           },
         );
+      }
+
+      // Mark any locales missing from results as failed (e.g. chunk timeout)
+      if (valMap) {
+        for (const [localeId] of valMap.entries()) {
+          if (!checkedLocaleIds.has(localeId)) {
+            await this.valueRepo.update(
+              { keyId, localeId },
+              { qualityReviewState: 'failed' },
+            );
+          }
+        }
       }
     }
   }

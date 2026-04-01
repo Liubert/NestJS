@@ -20,14 +20,13 @@ import { FilesModule } from './modules/files/files.module';
 import { ReqWithUser } from './modules/auth/types/auth.types';
 import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { TranslationsModule } from './modules/translations/translations.module';
-import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module.js';
+import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       load: [appConfig],
-      // envFilePath: `.env`,
     }),
 
     GraphQLModule.forRoot<ApolloDriverConfig>({
@@ -36,7 +35,6 @@ import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module.js';
       plugins: [ApolloServerPluginLandingPageLocalDefault({ embed: true })],
       playground: false,
       introspection: true,
-      //autoSchemaFile: join(process.cwd(), 'src/schema.gql'),
       autoSchemaFile:
         process.env.NODE_ENV === 'development' ? 'schema.gql' : true,
       sortSchema: true,

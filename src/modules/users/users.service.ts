@@ -160,18 +160,4 @@ export class UsersService {
       mustChangePassword,
     });
   }
-
-  // Legacy: kept for backward compat with old GraphQL resolvers
-  async create(dto: {
-    email: string;
-    password: string;
-    role?: UserRole;
-    firstName?: string;
-    lastName?: string;
-    phone?: string;
-  }): Promise<UserEntity> {
-    const passwordHash = await bcrypt.hash(dto.password, 10);
-    const entity = this.usersRepo.create({ ...dto, passwordHash });
-    return this.usersRepo.save(entity);
-  }
 }

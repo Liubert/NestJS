@@ -18,17 +18,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/roles.guard.js';
 import { Roles } from '../auth/role.decorator.js';
 import { UserRole } from './types/user-role.enum.js';
-import { FilesService } from '../files/files.service.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from './types/current-user.type.js';
 
 @ApiTags('users')
 @Controller('users')
 export class UsersController {
-  constructor(
-    private readonly usersService: UsersService,
-    private readonly filesService: FilesService,
-  ) {}
+  constructor(private readonly usersService: UsersService) {}
 
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -5,6 +5,9 @@
   "author": "",
   "private": true,
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.0.0"
+  },
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
@@ -28,7 +31,6 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
-    "@apollo/gateway": "^2.13.0",
     "@apollo/server": "^5.4.0",
     "@as-integrations/express5": "^1.1.2",
     "@aws-sdk/client-s3": "^3.990.0",
@@ -52,7 +54,6 @@
     "class-validator": "^0.14.3",
     "dataloader": "^2.2.3",
     "graphql": "^16.12.0",
-    "joi": "^18.0.2",
     "passport": "^0.7.0",
     "passport-custom": "^1.1.1",
     "passport-jwt": "^4.0.1",
@@ -60,7 +61,6 @@
     "rabbitmq-client": "^5.0.8",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "ts-morph": "^27.0.2",
     "typeorm": "^0.3.28",
     "typeorm-naming-strategies": "^4.1.0",
     "uuid": "^13.0.0"
@@ -73,7 +73,6 @@
     "@nestjs/testing": "^11.0.1",
     "@types/adm-zip": "^0.5.8",
     "@types/amqplib": "^0.10.8",
-    "@types/bcrypt": "^6.0.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^5.0.0",
     "@types/jest": "^30.0.0",

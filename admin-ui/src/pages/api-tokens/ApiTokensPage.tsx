@@ -14,7 +14,7 @@ import {
 } from 'antd';
 import { KeyOutlined, PlusOutlined, DeleteOutlined, CopyOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import api from '../../api/client';
+import apiClient from '../../api/client';
 
 const { Text, Paragraph } = Typography;
 
@@ -34,17 +34,17 @@ interface GenerateTokenResponse {
 }
 
 async function fetchTokens(): Promise<McpToken[]> {
-  const res = await api.get<McpToken[]>('/mcp-tokens');
+  const res = await apiClient.get<McpToken[]>('/mcp-tokens');
   return res.data;
 }
 
 async function generateToken(name: string): Promise<GenerateTokenResponse> {
-  const res = await api.post<GenerateTokenResponse>('/mcp-tokens', { name });
+  const res = await apiClient.post<GenerateTokenResponse>('/mcp-tokens', { name });
   return res.data;
 }
 
 async function revokeToken(id: string): Promise<void> {
-  await api.delete(`/mcp-tokens/${id}`);
+  await apiClient.delete(`/mcp-tokens/${id}`);
 }
 
 export default function ApiTokensPage() {
