@@ -944,6 +944,13 @@ interface SandboxTabProps {
 const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const qc = useQueryClient();
   const [pushModalOpen, setPushModalOpen] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(new Set());
+  const [reviewStatusFilter, setReviewStatusFilter] = useState<string>('');
+  const [reviewNsFilter, setReviewNsFilter] = useState<string>('');
+  const [reviewQualityFilter, setReviewQualityFilter] = useState<string>('');
+  const [reviewPage, setReviewPage] = useState(1);
+  const REVIEW_PAGE_SIZE = 50;
+  const [sandboxChangeFilter, setSandboxChangeFilter] = useState<string>('');
 
   const { data: status, isLoading: statusLoading } = useQuery<SandboxStatus>({
     queryKey: ['sandbox-status', projectSlug],
@@ -993,6 +1000,19 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     onError: (e: any) => message.error(e.response?.data?.message ?? 'Push failed'),
   });
 
+  const promoteSelectiveMutation = useMutation({
+    mutationFn: (keys: { namespace: string; key: string }[]) =>
+      promoteSelective(projectSlug, keys),
+    onSuccess: (data) => {
+      message.success(`Pushed — ${data.promoted} entries are now live in production`);
+      invalidateSandbox();
+      qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
+      setPushModalOpen(false);
+      setSelectedRowKeys(new Set());
+    },
+    onError: (e: any) => message.error(e.response?.data?.message ?? 'Push failed'),
+  });
+
   const resetMutation = useMutation({
     mutationFn: () =>
       apiClient.post(`/translations/projects/${projectSlug}/sandbox/reset`).then((r) => r.data),
@@ -1019,6 +1039,78 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       setPushModalOpen(false);
     }
   }, [pushModalOpen, diff]);
+
+  // ── Review modal: filtered + paginated data (must be before early returns) ──
+  const reviewNamespaces = useMemo(() => {
+    const ns = new Set(keyDiffRows.map((r) => r.namespace));
+    return Array.from(ns).sort();
+  }, [keyDiffRows]);
+
+  const filteredDiffRows = useMemo(() => {
+    let rows = keyDiffRows;
+    if (reviewStatusFilter) rows = rows.filter((r) => r.status === reviewStatusFilter);
+    if (reviewNsFilter) rows = rows.filter((r) => r.namespace === reviewNsFilter);
+    if (reviewQualityFilter) {
+      if (reviewQualityFilter === 'unchecked') {
+        rows = rows.filter((r) => r.worstQualityLevel === null);
+      } else {
+        rows = rows.filter((r) => r.worstQualityLevel === reviewQualityFilter);
+      }
+    }
+    return rows;
+  }, [keyDiffRows, reviewStatusFilter, reviewNsFilter, reviewQualityFilter]);
+
+  const paginatedDiffRows = useMemo(() => {
+    const start = (reviewPage - 1) * REVIEW_PAGE_SIZE;
+    return filteredDiffRows.slice(start, start + REVIEW_PAGE_SIZE);
+  }, [filteredDiffRows, reviewPage, REVIEW_PAGE_SIZE]);
+
+  // Init selection when modal opens
+  const handleOpenReview = useCallback(() => {
+    setSelectedRowKeys(new Set(keyDiffRows.map((r) => r.id)));
+    setReviewStatusFilter('');
+    setReviewNsFilter('');
+    setReviewQualityFilter('');
+    setReviewPage(1);
+    setPushModalOpen(true);
+  }, [keyDiffRows]);
+
+  // Selection helpers
+  const allFilteredSelected = filteredDiffRows.length > 0 && filteredDiffRows.every((r) => selectedRowKeys.has(r.id));
+  const someFilteredSelected = filteredDiffRows.some((r) => selectedRowKeys.has(r.id));
+  const selectedCount = keyDiffRows.filter((r) => selectedRowKeys.has(r.id)).length;
+
+  const toggleSelectAll = useCallback(() => {
+    setSelectedRowKeys((prev) => {
+      const next = new Set(prev);
+      if (allFilteredSelected) {
+        for (const r of filteredDiffRows) next.delete(r.id);
+      } else {
+        for (const r of filteredDiffRows) next.add(r.id);
+      }
+      return next;
+    });
+  }, [allFilteredSelected, filteredDiffRows]);
+
+  const toggleRow = useCallback((id: string) => {
+    setSelectedRowKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handlePromoteSelected = useCallback(() => {
+    const selectedKeys = keyDiffRows
+      .filter((r) => selectedRowKeys.has(r.id))
+      .map((r) => ({ namespace: r.namespace, key: r.key }));
+
+    if (selectedKeys.length === total) {
+      promoteMutation.mutate();
+    } else {
+      promoteSelectiveMutation.mutate(selectedKeys);
+    }
+  }, [keyDiffRows, selectedRowKeys, total, promoteMutation, promoteSelectiveMutation]);
 
   if (!projectSlug) return <Empty description="Select a project" style={{ marginTop: 48 }} />;
   if (statusLoading) return <div style={{ textAlign: 'center', padding: 48 }}><Spin /></div>;
@@ -1048,6 +1140,22 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     : <CheckCircleOutlined style={{ fontSize: 18, color: '#52c41a' }} />;
 
   const pushDiffColumns: ColumnsType<KeyDiffRow> = [
+    {
+      title: (
+        <Checkbox
+          checked={allFilteredSelected}
+          indeterminate={!allFilteredSelected && someFilteredSelected}
+          onChange={toggleSelectAll}
+        />
+      ),
+      key: 'select', width: 40,
+      render: (_: unknown, record: KeyDiffRow) => (
+        <Checkbox
+          checked={selectedRowKeys.has(record.id)}
+          onChange={() => toggleRow(record.id)}
+        />
+      ),
+    },
     { title: 'Namespace', dataIndex: 'namespace', key: 'ns', width: 130, ellipsis: true },
     {
       title: 'Key', dataIndex: 'key', key: 'key',
@@ -1055,17 +1163,23 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     },
     {
       title: 'Status', dataIndex: 'status', key: 'status', width: 100,
-      filters: [
-        { text: 'Added', value: 'added' },
-        { text: 'Changed', value: 'changed' },
-        { text: 'Deleted', value: 'deleted' },
-      ],
-      onFilter: (value, record) => record.status === value,
       render: (s: string) => (
         <Tag color={s === 'added' ? 'green' : s === 'deleted' ? 'red' : 'orange'}>
           {s.charAt(0).toUpperCase() + s.slice(1)}
         </Tag>
       ),
+    },
+    {
+      title: 'Quality', key: 'quality', width: 80,
+      render: (_: unknown, record: KeyDiffRow) => {
+        if (record.minQualityScore === null) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
+        const level = record.worstQualityLevel ?? 'green';
+        return (
+          <span style={{ color: QUALITY_COLOR[level] ?? '#bbb', fontWeight: 600, fontSize: 12 }}>
+            {record.minQualityScore}
+          </span>
+        );
+      },
     },
     {
       title: 'Locales', key: 'locales', width: 160,
@@ -1146,7 +1260,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                   <Button icon={<SyncOutlined />} loading={resetMutation.isPending}>Reset</Button>
                 </Popconfirm>
                 <Button type="primary" icon={<ArrowRightOutlined />}
-                  onClick={() => setPushModalOpen(true)}>
+                  onClick={handleOpenReview}>
                   Review Changes
                 </Button>
               </Space>
@@ -1165,6 +1279,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         deleteFn={deleteSandboxEntry}
         enabled={!!status?.initialized}
         onMutationSuccess={invalidateSandbox}
+        isSandbox
         deleteConfirmTitle="Remove this key from sandbox?"
         deleteConfirmDescription="The key will be marked for deletion and removed from production when you push."
         renderKeyExtra={(key, namespace) => {
@@ -1182,6 +1297,27 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
           const rowStatus = keyStatusMap.get(`${namespace}/${record.key}`);
           return rowStatus ? { style: { background: ROW_BG[rowStatus] } } : {};
         }}
+        clientFilter={sandboxChangeFilter ? (record, namespace) => {
+          const rowStatus = keyStatusMap.get(`${namespace}/${record.key}`);
+          if (sandboxChangeFilter === 'unchanged') return !rowStatus;
+          return rowStatus === sandboxChangeFilter;
+        } : undefined}
+        extraControls={
+          <Col>
+            <Select
+              value={sandboxChangeFilter}
+              onChange={setSandboxChangeFilter}
+              style={{ width: 160 }}
+              options={[
+                { value: '', label: 'All changes' },
+                { value: 'added', label: 'Added' },
+                { value: 'changed', label: 'Changed' },
+                { value: 'deleted', label: 'Deleted' },
+                { value: 'unchanged', label: 'Unchanged' },
+              ]}
+            />
+          </Col>
+        }
       />
 
       {/* ── Push to Production modal ── */}
@@ -1189,33 +1325,92 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         open={pushModalOpen}
         title={<Space><ArrowRightOutlined /><span>Review Changes</span></Space>}
         onCancel={() => setPushModalOpen(false)}
-        width={1000}
+        width={1100}
         footer={[
           <Button key="cancel" onClick={() => setPushModalOpen(false)}>Cancel</Button>,
           <Button key="push" type="primary" icon={<ArrowRightOutlined />}
-            loading={promoteMutation.isPending} onClick={() => promoteMutation.mutate()}>
-            Push {total} key{total !== 1 ? 's' : ''} to Production
+            loading={promoteMutation.isPending || promoteSelectiveMutation.isPending}
+            disabled={selectedCount === 0}
+            onClick={handlePromoteSelected}>
+            Push {selectedCount} of {total} key{total !== 1 ? 's' : ''} to Production
           </Button>,
         ]}
       >
         <Alert
           type="warning"
-          style={{ marginBottom: 16 }}
-          message="Review all pending changes below. A snapshot of current production will be saved automatically before applying."
+          style={{ marginBottom: 12 }}
+          message="Review and select changes to push. A snapshot of current production will be saved automatically."
           showIcon
         />
+
+        {/* Summary tags */}
         <Space style={{ marginBottom: 12 }}>
           <Tag color="green" style={{ fontSize: 13, padding: '2px 10px' }}>+{keyAdded} added</Tag>
           <Tag color="orange" style={{ fontSize: 13, padding: '2px 10px' }}>{keyChanged} changed</Tag>
           <Tag color="red" style={{ fontSize: 13, padding: '2px 10px' }}>−{keyDeleted} deleted</Tag>
+          {selectedCount < total && (
+            <Tag color="blue" style={{ fontSize: 13, padding: '2px 10px' }}>
+              {selectedCount} selected
+            </Tag>
+          )}
         </Space>
+
+        {/* Filters row */}
+        <Row gutter={8} style={{ marginBottom: 12 }}>
+          <Col>
+            <Select
+              value={reviewStatusFilter}
+              onChange={(v) => { setReviewStatusFilter(v); setReviewPage(1); }}
+              style={{ width: 140 }}
+              options={[
+                { value: '', label: 'All statuses' },
+                { value: 'added', label: 'Added' },
+                { value: 'changed', label: 'Changed' },
+                { value: 'deleted', label: 'Deleted' },
+              ]}
+            />
+          </Col>
+          <Col>
+            <Select
+              value={reviewNsFilter}
+              onChange={(v) => { setReviewNsFilter(v); setReviewPage(1); }}
+              style={{ width: 180 }}
+              options={[
+                { value: '', label: 'All namespaces' },
+                ...reviewNamespaces.map((ns) => ({ value: ns, label: ns })),
+              ]}
+            />
+          </Col>
+          <Col>
+            <Select
+              value={reviewQualityFilter}
+              onChange={(v) => { setReviewQualityFilter(v); setReviewPage(1); }}
+              style={{ width: 150 }}
+              options={[
+                { value: '', label: 'All qualities' },
+                { value: 'green', label: 'Green' },
+                { value: 'yellow', label: 'Yellow' },
+                { value: 'red', label: 'Red' },
+                { value: 'unchecked', label: 'Not checked' },
+              ]}
+            />
+          </Col>
+        </Row>
+
         <Table<KeyDiffRow>
           rowKey="id"
           columns={pushDiffColumns}
-          dataSource={keyDiffRows}
+          dataSource={paginatedDiffRows}
           size="small"
           scroll={{ x: true, y: 420 }}
-          pagination={false}
+          pagination={{
+            current: reviewPage,
+            pageSize: REVIEW_PAGE_SIZE,
+            total: filteredDiffRows.length,
+            onChange: setReviewPage,
+            showTotal: (t) => `${t} keys`,
+            size: 'small',
+          }}
           sticky
           expandable={{
             expandedRowRender: (record) => (
@@ -1224,6 +1419,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                   <tr style={{ background: '#fafafa' }}>
                     <th style={{ padding: '4px 8px', textAlign: 'left', width: 80, fontWeight: 500, color: '#666' }}>Locale</th>
                     <th style={{ padding: '4px 8px', textAlign: 'left', width: 80, fontWeight: 500, color: '#666' }}>Status</th>
+                    <th style={{ padding: '4px 8px', textAlign: 'left', width: 60, fontWeight: 500, color: '#666' }}>Quality</th>
                     <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 500, color: '#666' }}>Production</th>
                     <th style={{ padding: '4px 8px', textAlign: 'left', fontWeight: 500, color: '#666' }}>Sandbox</th>
                   </tr>
@@ -1238,10 +1434,22 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                           {e.status}
                         </Tag>
                       </td>
-                      <td style={{ padding: '4px 8px', color: '#888', maxWidth: 260, wordBreak: 'break-word' }}>
+                      <td style={{ padding: '4px 8px' }}>
+                        {e.quality?.score != null ? (
+                          <Tooltip title={e.quality.comment ?? undefined}>
+                            <span style={{
+                              color: QUALITY_COLOR[e.quality.level ?? ''] ?? '#bbb',
+                              fontWeight: 600, fontSize: 11, cursor: e.quality.comment ? 'help' : 'default',
+                            }}>
+                              {e.quality.score}
+                            </span>
+                          </Tooltip>
+                        ) : <span style={{ color: '#bbb', fontSize: 11 }}>—</span>}
+                      </td>
+                      <td style={{ padding: '4px 8px', color: '#888', maxWidth: 240, wordBreak: 'break-word' }}>
                         {e.productionValue ?? <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>}
                       </td>
-                      <td style={{ padding: '4px 8px', maxWidth: 260, wordBreak: 'break-word' }}>
+                      <td style={{ padding: '4px 8px', maxWidth: 240, wordBreak: 'break-word' }}>
                         {e.sandboxValue != null
                           ? <span style={{ color: '#237804', fontWeight: 500 }}>{e.sandboxValue}</span>
                           : <span style={{ color: '#cf1322', fontStyle: 'italic' }}>deleted</span>}
