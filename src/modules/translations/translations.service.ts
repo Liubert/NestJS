@@ -36,9 +36,15 @@ import { AiTranslateService } from './ai-translate.service.js';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface QualityInfo {
-  reviewState: 'not_checked' | 'queued' | 'processing' | 'checked' | 'failed';
+  reviewState:
+    | 'not_checked'
+    | 'queued'
+    | 'processing'
+    | 'checked'
+    | 'expected'
+    | 'failed';
   score: number | null;
-  level: 'green' | 'yellow' | 'red' | null;
+  level: 'green' | 'yellow' | 'red' | 'expected' | null;
   comment: string | null;
   checkedAt: string | null;
 }
@@ -548,7 +554,12 @@ export class TranslationsService {
           reviewState: (v.quality_review_state ??
             'not_checked') as QualityInfo['reviewState'],
           score: v.quality_score,
-          level: v.quality_level as 'green' | 'yellow' | 'red' | null,
+          level: v.quality_level as
+            | 'green'
+            | 'yellow'
+            | 'red'
+            | 'expected'
+            | null,
           comment: v.quality_comment,
           checkedAt: v.quality_checked_at,
         };
@@ -925,8 +936,8 @@ export class TranslationsService {
         qualityCheckedAt: null,
       })
       .where(
-        'key_id = :keyId AND locale_id = :localeId AND (quality_content_hash IS NULL OR quality_content_hash != :hash)',
-        { keyId, localeId, hash },
+        'key_id = :keyId AND locale_id = :localeId AND quality_review_state != :expectedState AND (quality_content_hash IS NULL OR quality_content_hash != :hash)',
+        { keyId, localeId, hash, expectedState: 'expected' },
       )
       .execute();
   }
@@ -992,6 +1003,17 @@ export class TranslationsService {
         const valueEntity = await this.valueRepo.findOne({
           where: { keyId: keyEntity.id, localeId: locale.id },
         });
+        // Skip expected (manually accepted) translations
+        if (valueEntity?.qualityReviewState === 'expected') {
+          results[locale.code] = {
+            reviewState: 'expected',
+            score: 100,
+            level: 'expected',
+            comment: null,
+            checkedAt: valueEntity.qualityCheckedAt?.toISOString() ?? null,
+          };
+          return;
+        }
         const translation = valueEntity?.value;
         if (!translation) {
           results[locale.code] = null;
@@ -1025,6 +1047,112 @@ export class TranslationsService {
     );
 
     return results;
+  }
+
+  async markAsExpected(
+    projectSlug: string,
+    nsSlug: string,
+    key: string,
+    localeCode: string,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<QualityInfo> {
+    const project = await this.requireProject(projectSlug);
+    await this.assertAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const keyEntity = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key },
+    });
+    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    const locale = await this.localeRepo.findOne({
+      where: { projectId: project.id, code: localeCode },
+    });
+    if (!locale)
+      throw new NotFoundException(`Locale "${localeCode}" not found`);
+
+    const valueEntity = await this.valueRepo.findOne({
+      where: { keyId: keyEntity.id, localeId: locale.id },
+    });
+    if (!valueEntity || !valueEntity.value) {
+      throw new BadRequestException(
+        `No value to mark as expected for ${localeCode}`,
+      );
+    }
+
+    const hash = createHash('sha256').update(valueEntity.value).digest('hex');
+    await this.valueRepo.update(
+      { keyId: keyEntity.id, localeId: locale.id },
+      {
+        qualityScore: 100,
+        qualityLevel: 'expected',
+        qualityReviewState: 'expected',
+        qualityCheckedAt: new Date(),
+        qualityContentHash: hash,
+        qualityComment: null,
+      },
+    );
+
+    return {
+      reviewState: 'expected',
+      score: 100,
+      level: 'expected',
+      comment: null,
+      checkedAt: new Date().toISOString(),
+    };
+  }
+
+  async unmarkExpected(
+    projectSlug: string,
+    nsSlug: string,
+    key: string,
+    localeCode: string,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<QualityInfo> {
+    const project = await this.requireProject(projectSlug);
+    await this.assertAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const keyEntity = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key },
+    });
+    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    const locale = await this.localeRepo.findOne({
+      where: { projectId: project.id, code: localeCode },
+    });
+    if (!locale)
+      throw new NotFoundException(`Locale "${localeCode}" not found`);
+
+    await this.valueRepo.update(
+      { keyId: keyEntity.id, localeId: locale.id },
+      {
+        qualityScore: null,
+        qualityLevel: null,
+        qualityReviewState: 'not_checked',
+        qualityCheckedAt: null,
+        qualityContentHash: null,
+        qualityComment: null,
+      },
+    );
+
+    return {
+      reviewState: 'not_checked',
+      score: null,
+      level: null,
+      comment: null,
+      checkedAt: null,
+    };
   }
 
   private parseZip(

@@ -2,12 +2,9 @@ import React from 'react';
 import {
   Button,
   Card,
-  Col,
   Form,
   Input,
-  InputNumber,
   message,
-  Row,
   Space,
   Spin,
   Typography,
@@ -25,8 +22,6 @@ interface AiConfig {
   translatePrompt: string;
   qualityTranslatePrompt: string;
   qualityLanguagePrompt: string;
-  greenMinScore: number;
-  yellowMinScore: number;
   updatedAt: string;
 }
 
@@ -105,32 +100,10 @@ const AiConfigPage: React.FC = () => {
         <Spin />
       ) : (
         <Form form={form} layout="vertical" onFinish={onFinish}>
-          <Card size="small" title="Model & Scoring" style={{ marginBottom: 16 }}>
-            <Row gutter={16}>
-              <Col span={10}>
-                <Form.Item name="model" label="Model name" rules={[{ required: true }]}>
-                  <Input placeholder="gemini-2.0-flash" />
-                </Form.Item>
-              </Col>
-              <Col span={7}>
-                <Form.Item
-                  name="greenMinScore"
-                  label="Green min score (≥ N → green)"
-                  rules={[{ required: true }]}
-                >
-                  <InputNumber min={1} max={100} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-              <Col span={7}>
-                <Form.Item
-                  name="yellowMinScore"
-                  label="Yellow min score (≥ N → yellow)"
-                  rules={[{ required: true }]}
-                >
-                  <InputNumber min={1} max={100} style={{ width: '100%' }} />
-                </Form.Item>
-              </Col>
-            </Row>
+          <Card size="small" title="Model" style={{ marginBottom: 16 }}>
+            <Form.Item name="model" label="Model name" rules={[{ required: true }]}>
+              <Input placeholder="gemini-2.0-flash" />
+            </Form.Item>
           </Card>
 
           <Card

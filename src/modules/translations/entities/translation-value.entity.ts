@@ -42,7 +42,7 @@ export class TranslationValueEntity {
     length: 10,
     nullable: true,
   })
-  qualityLevel!: 'green' | 'yellow' | 'red' | null;
+  qualityLevel!: 'green' | 'yellow' | 'red' | 'expected' | null;
 
   @Column({ name: 'quality_comment', type: 'text', nullable: true })
   qualityComment!: string | null;
@@ -61,6 +61,7 @@ export class TranslationValueEntity {
     | 'queued'
     | 'processing'
     | 'checked'
+    | 'expected'
     | 'failed';
 
   @Column({

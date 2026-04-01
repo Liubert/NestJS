@@ -814,7 +814,12 @@ export class SandboxService {
         reviewState: (q.quality_review_state ??
           'not_checked') as QualityInfo['reviewState'],
         score: q.quality_score,
-        level: q.quality_level as 'green' | 'yellow' | 'red' | null,
+        level: q.quality_level as
+          | 'green'
+          | 'yellow'
+          | 'red'
+          | 'expected'
+          | null,
         comment: q.quality_comment,
         checkedAt: q.quality_checked_at,
       };

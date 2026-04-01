@@ -32,11 +32,19 @@ You are evaluating a translation. Check both translation accuracy AND writing qu
 Source (English): "{{source}}"
 Translation ({{locale}}): "{{translation}}"
 
-Additional checks for this mode:
-- Does the translation accurately convey the meaning of the source?
+IMPORTANT — Ambiguity and multiple meanings:
+- Many English words have multiple valid meanings depending on context (e.g. "train" can mean a rail vehicle or to practice/exercise; "moon" can mean the celestial body or a proper name; "light" can mean illumination, lightweight, or a pale color).
+- Before judging accuracy, consider ALL reasonable meanings of the source text.
+- If the translation is correct for ANY valid interpretation of the source that makes sense in a software/product UI context, treat it as accurate.
+- Do NOT penalize a translation that uses a less common but valid interpretation.
+- When the source is genuinely ambiguous, give the benefit of the doubt to the translator.
+- Only flag a meaning error if the translation cannot reasonably correspond to any valid interpretation of the source.
+
+Additional checks:
+- Does the translation accurately convey the meaning of the source (for at least one valid interpretation)?
 - Is nuance preserved correctly?
 - Does the translation sound natural in UI/product context?
-- Meaning errors or lost nuance must reduce the score significantly.
+- Meaning errors or lost nuance must reduce the score significantly — but only when the translation is genuinely wrong, not merely using an alternative valid meaning.
 
 Checks to apply (all modes):
 - Grammar: correct forms, agreement, case, verb forms
@@ -48,7 +56,7 @@ Checks to apply (all modes):
 - Natural wording for software/product UI
 - Placeholders, variables, interpolation tokens ({{name}}, %s, {count}, {0}) and markup must be preserved exactly
 
-Scoring rules — be strict. Do NOT round up. Do NOT give benefit of the doubt. Score on a 1–100 scale:
+Scoring rules — be strict on real errors, fair on ambiguity. Score on a 1–100 scale:
 - 95–100: excellent, production-ready, no meaningful issues
 - 80–94: very strong, minor improvement opportunities
 - 60–79: understandable, but clearly imperfect
@@ -60,13 +68,8 @@ Comment rules:
 - score below 80: comment must explain the main issue
 - keep comment practical and concise, up to 30 words
 
-Level mapping (strict):
-- green: score 90 or above
-- yellow: score 80–89
-- red: score below 80
-
 Return ONLY valid JSON, no markdown, no extra text:
-{"score": <1-100>, "level": "<green|yellow|red>", "comment": "<string>"}`;
+{"score": <1-100>, "comment": "<string>"}`;
 
 export const DEFAULT_QUALITY_LANGUAGE_PROMPT = `\
 You are a strict software localization and language quality reviewer.
@@ -100,13 +103,8 @@ Comment rules:
 - score below 80: comment must explain the main issue
 - keep comment practical and concise, up to 30 words
 
-Level mapping (strict):
-- green: score 90 or above
-- yellow: score 80–89
-- red: score below 80
-
 Return ONLY valid JSON, no markdown, no extra text:
-{"score": <1-100>, "level": "<green|yellow|red>", "comment": "<string>"}`;
+{"score": <1-100>, "comment": "<string>"}`;
 
 // ─── Interpolation helper ─────────────────────────────────────────────────────
 
@@ -128,8 +126,6 @@ export interface AiConfigUpdate {
   translatePrompt?: string;
   qualityTranslatePrompt?: string;
   qualityLanguagePrompt?: string;
-  greenMinScore?: number;
-  yellowMinScore?: number;
 }
 
 @Injectable()
@@ -149,8 +145,6 @@ export class AiConfigService {
         translatePrompt: DEFAULT_TRANSLATE_PROMPT,
         qualityTranslatePrompt: DEFAULT_QUALITY_TRANSLATE_PROMPT,
         qualityLanguagePrompt: DEFAULT_QUALITY_LANGUAGE_PROMPT,
-        greenMinScore: 90,
-        yellowMinScore: 80,
       }),
     );
   }
@@ -167,8 +161,6 @@ export class AiConfigService {
       translatePrompt: DEFAULT_TRANSLATE_PROMPT,
       qualityTranslatePrompt: DEFAULT_QUALITY_TRANSLATE_PROMPT,
       qualityLanguagePrompt: DEFAULT_QUALITY_LANGUAGE_PROMPT,
-      greenMinScore: 90,
-      yellowMinScore: 80,
     });
   }
 }

@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AiConfigService, interpolate } from './ai-config.service.js';
+import { scoreToLevel } from './quality-constants.js';
 
 const TARGET_LOCALES: Record<string, string> = {
   uk: 'Ukrainian',
@@ -107,11 +108,7 @@ export class AiTranslateService {
 
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
-      const prompt = this.buildBulkQualityPrompt(
-        chunk,
-        aiCfg.greenMinScore,
-        aiCfg.yellowMinScore,
-      );
+      const prompt = this.buildBulkQualityPrompt(chunk);
 
       let raw: string;
       try {
@@ -148,12 +145,7 @@ export class AiTranslateService {
         results[key] = {};
         for (const [locale, r] of Object.entries(localeMap)) {
           const score = Math.min(100, Math.max(1, Math.round(r.score)));
-          const level: 'green' | 'yellow' | 'red' =
-            score >= aiCfg.greenMinScore
-              ? 'green'
-              : score >= aiCfg.yellowMinScore
-                ? 'yellow'
-                : 'red';
+          const level = scoreToLevel(score);
           results[key][locale] = { score, level, comment: r.comment ?? '' };
         }
       }
@@ -168,21 +160,25 @@ export class AiTranslateService {
       source: string | null;
       translations: Record<string, string>;
     }>,
-    greenMinScore: number,
-    yellowMinScore: number,
   ): string {
     return `You are a professional translation quality reviewer. Evaluate each translation below.
 
+IMPORTANT — Ambiguity and multiple meanings:
+- Many English words have multiple valid meanings. If "source" is present, consider ALL reasonable meanings before judging accuracy.
+- If the translation is correct for ANY valid interpretation that makes sense in a software/product UI, treat it as accurate.
+- Only flag errors when the translation genuinely cannot correspond to any valid interpretation of the source.
+
 Score each translation on a 1–100 scale:
-- ${greenMinScore}–100: Excellent — accurate, natural, production-ready
-- ${yellowMinScore}–${greenMinScore - 1}: Acceptable — understandable but has issues
-- 1–${yellowMinScore - 1}: Poor — significant errors, needs rework
+- 95–100: Excellent — accurate, natural, production-ready
+- 80–94: Very strong — minor improvement opportunities
+- 60–79: Understandable but clearly imperfect
+- 1–59: Significant errors, needs rework
 
 If "source" is present, compare translation accuracy to it. If "source" is null, evaluate language quality alone.
 
 Return ONLY valid JSON with no markdown, no explanation, no extra keys:
 {
-  "<key>": { "<locale>": { "score": <number 1-100>, "comment": "<brief note or 'Looks good'>" } }
+  "<key>": { "<locale>": { "score": <number 1-100>, "comment": "<brief note or empty string>" } }
 }
 
 Translations to review:
@@ -234,12 +230,7 @@ ${JSON.stringify(items, null, 2)}`;
     try {
       const parsed = JSON.parse(cleaned) as { score: number; comment: string };
       const score = Math.min(100, Math.max(1, Math.round(parsed.score)));
-      const level: 'green' | 'yellow' | 'red' =
-        score >= aiCfg.greenMinScore
-          ? 'green'
-          : score >= aiCfg.yellowMinScore
-            ? 'yellow'
-            : 'red';
+      const level = scoreToLevel(score);
       return { score, level, comment: parsed.comment ?? '' };
     } catch {
       throw new BadGatewayException(

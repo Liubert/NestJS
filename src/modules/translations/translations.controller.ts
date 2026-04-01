@@ -425,6 +425,57 @@ export class TranslationsController {
     );
   }
 
+  @Post(
+    'projects/:slug/namespaces/:ns/entries/:key/locales/:locale/mark-expected',
+  )
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Mark a translation as manually accepted (expected)',
+  })
+  async markExpected(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @Param('locale') locale: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.markAsExpected(
+      slug,
+      ns,
+      key,
+      locale,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Delete(
+    'projects/:slug/namespaces/:ns/entries/:key/locales/:locale/mark-expected',
+  )
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Remove manual acceptance (unmark expected)',
+  })
+  async unmarkExpected(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @Param('locale') locale: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.unmarkExpected(
+      slug,
+      ns,
+      key,
+      locale,
+      user.userId,
+      user.role,
+    );
+  }
+
   @Delete('projects/:slug/namespaces/:ns/entries/:key')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard, BlockMcpGuard)

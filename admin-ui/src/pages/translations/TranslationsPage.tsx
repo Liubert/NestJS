@@ -32,9 +32,9 @@ interface ProjectDetails {
 }
 
 interface QualityInfo {
-  reviewState: 'not_checked' | 'queued' | 'processing' | 'checked' | 'failed';
+  reviewState: 'not_checked' | 'queued' | 'processing' | 'checked' | 'expected' | 'failed';
   score: number | null;
-  level: 'green' | 'yellow' | 'red' | null;
+  level: 'green' | 'yellow' | 'red' | 'expected' | null;
   comment: string | null;
   checkedAt: string | null;
 }
@@ -84,7 +84,7 @@ interface Snapshot {
 
 interface QualityResult {
   score: number;
-  level: 'green' | 'yellow' | 'red';
+  level: 'green' | 'yellow' | 'red' | 'expected';
   comment: string;
 }
 
@@ -231,20 +231,45 @@ const revertSandboxKey = async (slug: string, ns: string, key: string) => {
   );
 };
 
+const markExpected = async (
+  slug: string,
+  ns: string,
+  key: string,
+  locale: string,
+): Promise<QualityInfo> => {
+  const res = await apiClient.post<QualityInfo>(
+    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
+  );
+  return res.data;
+};
+
+const unmarkExpected = async (
+  slug: string,
+  ns: string,
+  key: string,
+  locale: string,
+): Promise<void> => {
+  await apiClient.delete(
+    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
+  );
+};
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
 
 const QUALITY_CONFIG = {
-  green:  { color: 'success', label: 'Good' },
-  yellow: { color: 'warning', label: 'Review' },
-  red:    { color: 'error',   label: 'Poor' },
+  green:    { color: 'success',    label: 'Good' },
+  yellow:   { color: 'warning',    label: 'Review' },
+  red:      { color: 'error',      label: 'Poor' },
+  expected: { color: 'processing', label: 'Expected' },
 } as const;
 
 const QUALITY_COLOR: Record<string, string> = {
-  green:  '#52c41a',
-  yellow: '#faad14',
-  red:    '#ff4d4f',
+  green:    '#52c41a',
+  yellow:   '#faad14',
+  red:      '#ff4d4f',
+  expected: '#1677ff',
 };
 
 const ROW_BG: Record<string, string> = {
@@ -255,12 +280,21 @@ const ROW_BG: Record<string, string> = {
 
 // ─── Quality Badge ───────────────────────────────────────────────────────────
 
-const QualityBadge: React.FC<{ info: QualityInfo | null | undefined }> = ({ info }) => {
+interface QualityBadgeProps {
+  info: QualityInfo | null | undefined;
+  slug?: string;
+  namespace?: string;
+  entryKey?: string;
+  locale?: string;
+  onUpdate?: () => void;
+}
+
+const QualityBadge: React.FC<QualityBadgeProps> = ({ info, slug, namespace, entryKey, locale, onUpdate }) => {
   if (!info) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
 
   if (info.reviewState === 'queued' || info.reviewState === 'processing') {
     return (
-      <Tooltip title={info.reviewState === 'processing' ? 'Reviewing…' : 'Queued for review'}>
+      <Tooltip title={info.reviewState === 'processing' ? 'Reviewing...' : 'Queued for review'}>
         <SyncOutlined spin style={{ color: '#8c8c8c', fontSize: 10 }} />
       </Tooltip>
     );
@@ -288,18 +322,68 @@ const QualityBadge: React.FC<{ info: QualityInfo | null | undefined }> = ({ info
     );
   }
 
+  if (info.reviewState === 'expected') {
+    const canInteract = slug && namespace && entryKey && locale;
+    const badge = (
+      <Tooltip title="Manually accepted — score: 100/100">
+        <CheckCircleOutlined style={{ color: '#1677ff', fontSize: 12, cursor: canInteract ? 'pointer' : 'help' }} />
+      </Tooltip>
+    );
+
+    if (!canInteract) return badge;
+
+    return (
+      <Popconfirm
+        title="Unmark expected?"
+        description="This will reset validation status. The item will be revalidated."
+        onConfirm={async () => {
+          try {
+            await unmarkExpected(slug, namespace, entryKey, locale);
+            message.success('Unmarked');
+            onUpdate?.();
+          } catch { message.error('Failed to unmark'); }
+        }}
+        okText="Reset"
+        cancelText="Cancel"
+      >
+        {badge}
+      </Popconfirm>
+    );
+  }
+
   // checked
-  return (
+  const canInteract = slug && namespace && entryKey && locale;
+  const badge = (
     <Tooltip title={`Score: ${info.score ?? '?'}/100${info.comment ? ` — ${info.comment}` : ''}`}>
       <span style={{
         display: 'inline-block',
         width: 10, height: 10,
         borderRadius: '50%',
         backgroundColor: QUALITY_COLOR[info.level ?? ''] ?? '#bbb',
-        cursor: 'help',
+        cursor: canInteract ? 'pointer' : 'help',
         flexShrink: 0,
       }} />
     </Tooltip>
+  );
+
+  if (!canInteract) return badge;
+
+  return (
+    <Popconfirm
+      title="Mark as expected?"
+      description="This translation will be accepted and skip future validation."
+      onConfirm={async () => {
+        try {
+          await markExpected(slug, namespace, entryKey, locale);
+          message.success('Marked as expected');
+          onUpdate?.();
+        } catch { message.error('Failed to mark as expected'); }
+      }}
+      okText="Accept"
+      cancelText="Cancel"
+    >
+      {badge}
+    </Popconfirm>
   );
 };
 
@@ -715,7 +799,14 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         const val = record.values[locale];
         return (
           <Space size={4} align="start">
-            <QualityBadge info={record.quality?.[locale]} />
+            <QualityBadge
+              info={record.quality?.[locale]}
+              slug={projectSlug}
+              namespace={namespace}
+              entryKey={record.key}
+              locale={locale}
+              onUpdate={invalidate}
+            />
             {val
               ? <Tooltip title={val}><span style={{ display: 'block', wordBreak: 'break-word', whiteSpace: 'normal' }}>{val}</span></Tooltip>
               : <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>}
@@ -736,7 +827,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         if (!scores.length) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
         const minScore = Math.min(...scores);
         const levels = locales.map((l) => record.quality?.[l]?.level).filter(Boolean);
-        const level = levels.includes('red') ? 'red' : levels.includes('yellow') ? 'yellow' : 'green';
+        const level = levels.includes('red') ? 'red' : levels.includes('yellow') ? 'yellow' : levels.includes('expected') ? 'expected' : 'green';
         return (
           <span style={{ color: QUALITY_COLOR[level] ?? '#bbb', fontWeight: 600, fontSize: 12 }}>
             {minScore}
@@ -796,6 +887,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
               { value: 'green', label: 'Green' },
               { value: 'yellow', label: 'Yellow' },
               { value: 'red', label: 'Red' },
+              { value: 'expected', label: 'Expected' },
               { value: 'unchecked', label: 'Not checked' },
             ]}
           />
