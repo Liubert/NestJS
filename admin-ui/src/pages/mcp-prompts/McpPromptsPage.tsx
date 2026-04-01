@@ -1,8 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Badge,
   Button,
-  Collapse,
+  Card,
   Drawer,
   Input,
   message,
@@ -164,104 +163,8 @@ const McpPromptsPage: React.FC = () => {
     },
   ];
 
-  const collapseItems = (prompts ?? []).map((prompt) => {
-    const busy = saveMutation.isPending || resetMutation.isPending;
-    const currentValue = getTextAreaValue(prompt);
-    const isDirty = editContent[prompt.key] !== undefined;
-
-    return {
-      key: prompt.key,
-      label: (
-        <Space>
-          <Text strong style={{ fontFamily: 'monospace' }}>{prompt.key}</Text>
-          <Text type="secondary" style={{ fontSize: 13 }}>{prompt.description}</Text>
-          {prompt.hasOverride ? (
-            <Tag color="blue">DB override</Tag>
-          ) : (
-            <Tag color="default">Code default</Tag>
-          )}
-          {prompt.createdAt && (
-            <Text type="secondary" style={{ fontSize: 12 }}>
-              Updated: {new Date(prompt.createdAt).toLocaleString()}
-            </Text>
-          )}
-        </Space>
-      ),
-      children: (
-        <div>
-          {!prompt.hasOverride && !isDirty && (
-            <div style={{ marginBottom: 8 }}>
-              <Badge status="default" />
-              <Text type="secondary" style={{ marginLeft: 6 }}>
-                No override — using built-in code default. Type to create one.
-              </Text>
-            </div>
-          )}
-          <TextArea
-            value={currentValue}
-            onChange={(e) =>
-              setEditContent((prev) => ({ ...prev, [prompt.key]: e.target.value }))
-            }
-            rows={14}
-            style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 12 }}
-          />
-          <Space>
-            <Button
-              type="primary"
-              icon={<SaveOutlined />}
-              loading={saveMutation.isPending && saveMutation.variables?.key === prompt.key}
-              disabled={busy || !isDirty}
-              onClick={() => {
-                saveMutation.mutate(
-                  { key: prompt.key, content: currentValue },
-                  {
-                    onSuccess: () =>
-                      setEditContent((prev) => {
-                        const next = { ...prev };
-                        delete next[prompt.key];
-                        return next;
-                      }),
-                  },
-                );
-              }}
-            >
-              Save
-            </Button>
-            {prompt.hasOverride && (
-              <>
-                <Popconfirm
-                  title="Reset to code default?"
-                  description="This will remove the DB override and use the built-in default."
-                  onConfirm={() => resetMutation.mutate(prompt.key)}
-                  okText="Reset"
-                  cancelText="Cancel"
-                >
-                  <Button
-                    icon={<ReloadOutlined />}
-                    loading={resetMutation.isPending && resetMutation.variables === prompt.key}
-                    disabled={busy}
-                    danger
-                  >
-                    Reset to default
-                  </Button>
-                </Popconfirm>
-                <Button
-                  icon={<HistoryOutlined />}
-                  disabled={busy}
-                  onClick={() => setHistoryDrawer({ open: true, key: prompt.key })}
-                >
-                  View history
-                </Button>
-              </>
-            )}
-          </Space>
-        </div>
-      ),
-    };
-  });
-
   return (
-    <div style={{ maxWidth: 1000 }}>
+    <div style={{ maxWidth: 900 }}>
       <div style={{ marginBottom: 20 }}>
         <Typography.Title level={4} style={{ margin: 0 }}>MCP Prompts</Typography.Title>
         <Text type="secondary">
@@ -272,7 +175,101 @@ const McpPromptsPage: React.FC = () => {
       {isLoading ? (
         <Spin />
       ) : (
-        <Collapse items={collapseItems} />
+        (prompts ?? []).map((prompt) => {
+          const busy = saveMutation.isPending || resetMutation.isPending;
+          const currentValue = getTextAreaValue(prompt);
+          const isDirty = editContent[prompt.key] !== undefined;
+
+          return (
+            <Card
+              key={prompt.key}
+              size="small"
+              title={<Text strong style={{ fontFamily: 'monospace' }}>{prompt.key}</Text>}
+              extra={
+                <Space>
+                  {prompt.hasOverride ? (
+                    <Tag color="blue">DB override</Tag>
+                  ) : (
+                    <Tag color="default">Code default</Tag>
+                  )}
+                  {prompt.createdAt && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      Updated: {new Date(prompt.createdAt).toLocaleString()}
+                    </Text>
+                  )}
+                </Space>
+              }
+              style={{ marginBottom: 16 }}
+            >
+              <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                {prompt.description}
+              </Text>
+              {!prompt.hasOverride && !isDirty && (
+                <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+                  No override — using built-in code default. Type to create one.
+                </Text>
+              )}
+              <TextArea
+                value={currentValue}
+                onChange={(e) =>
+                  setEditContent((prev) => ({ ...prev, [prompt.key]: e.target.value }))
+                }
+                rows={14}
+                style={{ fontFamily: 'monospace', fontSize: 12, marginBottom: 12 }}
+              />
+              <Space>
+                <Button
+                  type="primary"
+                  icon={<SaveOutlined />}
+                  loading={saveMutation.isPending && saveMutation.variables?.key === prompt.key}
+                  disabled={busy || !isDirty}
+                  onClick={() => {
+                    saveMutation.mutate(
+                      { key: prompt.key, content: currentValue },
+                      {
+                        onSuccess: () =>
+                          setEditContent((prev) => {
+                            const next = { ...prev };
+                            delete next[prompt.key];
+                            return next;
+                          }),
+                      },
+                    );
+                  }}
+                >
+                  Save
+                </Button>
+                {prompt.hasOverride && (
+                  <>
+                    <Popconfirm
+                      title="Reset to code default?"
+                      description="This will remove the DB override and use the built-in default."
+                      onConfirm={() => resetMutation.mutate(prompt.key)}
+                      okText="Reset"
+                      cancelText="Cancel"
+                    >
+                      <Button
+                        icon={<ReloadOutlined />}
+                        loading={resetMutation.isPending && resetMutation.variables === prompt.key}
+                        disabled={busy}
+                        danger
+                      >
+                        Reset to default
+                      </Button>
+                    </Popconfirm>
+                    <Button
+                      icon={<HistoryOutlined />}
+                      disabled={busy}
+                      onClick={() => setHistoryDrawer({ open: true, key: prompt.key })}
+                    >
+                      View history
+                    </Button>
+                  </>
+                )}
+              </Space>
+            </Card>
+          );
+        })
       )}
 
       <Drawer

@@ -10,11 +10,9 @@ import {
   TeamOutlined,
   RobotOutlined,
   KeyOutlined,
-  MessageOutlined,
 } from '@ant-design/icons';
 import TranslationsPage from './pages/translations/TranslationsPage';
-import AiConfigPage from './pages/ai-config/AiConfigPage';
-import { McpPromptsPage } from './pages/mcp-prompts/McpPromptsPage';
+import AiSettingsPage from './pages/ai-settings/AiSettingsPage';
 import ProjectsPage from './pages/projects/ProjectsPage';
 import ProjectSettingsPage from './pages/projects/ProjectSettingsPage';
 import UsersPage from './pages/users/UsersPage';
@@ -100,23 +98,20 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             label: <Link to="/users">Users</Link>,
           },
           {
-            key: '/ai-config',
+            key: '/ai-settings',
             icon: <RobotOutlined />,
-            label: <Link to="/ai-config">AI Config</Link>,
-          },
-          {
-            key: '/mcp-prompts',
-            icon: <MessageOutlined />,
-            label: <Link to="/mcp-prompts">MCP Prompts</Link>,
+            label: <Link to="/ai-settings">AI Settings</Link>,
           },
         ]
       : []),
   ];
 
-  // Highlight parent route for /projects/:slug
+  // Highlight parent route for nested paths
   const selectedKey = location.pathname.startsWith('/projects')
     ? '/projects'
-    : location.pathname;
+    : location.pathname.startsWith('/ai-settings')
+      ? '/ai-settings'
+      : location.pathname;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -183,8 +178,9 @@ function App() {
                       <Route path="/projects/:slug" element={<ProjectSettingsPage />} />
                       <Route path="/translations" element={<TranslationsPage />} />
                       <Route path="/users" element={<UsersPage />} />
-                      <Route path="/ai-config" element={<AiConfigPage />} />
-                      <Route path="/mcp-prompts" element={<McpPromptsPage />} />
+                      <Route path="/ai-settings" element={<AiSettingsPage />} />
+                      <Route path="/ai-config" element={<Navigate to="/ai-settings" replace />} />
+                      <Route path="/mcp-prompts" element={<Navigate to="/ai-settings?tab=mcp-prompts" replace />} />
                       <Route path="/api-tokens" element={<ApiTokensPage />} />
                       <Route path="/locales" element={<Navigate to="/projects" replace />} />
                     </Routes>
