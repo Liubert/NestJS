@@ -46,6 +46,82 @@ const fetchMembers = async (slug: string): Promise<MemberRow[]> => {
   return res.data;
 };
 
+// ─── AI Usage Section ─────────────────────────────────────────────────────
+
+interface AiUsageBreakdown {
+  operation: string;
+  totalTokens: number;
+  callCount: number;
+}
+
+interface AiUsageData {
+  totalTokens: number;
+  breakdown: AiUsageBreakdown[];
+}
+
+const OPERATION_LABELS: Record<string, string> = {
+  translate: 'Translation',
+  quality_check: 'Quality Check',
+  auto_translate: 'Auto-Translate',
+};
+
+const formatTokens = (n: number): string => {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+};
+
+const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
+  const { data, isLoading } = useQuery<AiUsageData>({
+    queryKey: ['ai-usage', slug],
+    queryFn: async () => {
+      const res = await apiClient.get(`/translations/projects/${slug}/ai-usage`);
+      return res.data;
+    },
+    enabled: !!slug,
+  });
+
+  return (
+    <div style={{ marginBottom: 32 }}>
+      <Title level={5} style={{ margin: 0, marginBottom: 12 }}>AI Token Usage</Title>
+      {isLoading ? (
+        <Spin size="small" />
+      ) : !data || data.totalTokens === 0 ? (
+        <Text type="secondary">No AI usage recorded yet.</Text>
+      ) : (
+        <>
+          <div style={{ marginBottom: 12 }}>
+            <Text strong style={{ fontSize: 20 }}>{formatTokens(data.totalTokens)}</Text>
+            <Text type="secondary" style={{ marginLeft: 8 }}>total tokens</Text>
+          </div>
+          <Table<AiUsageBreakdown>
+            rowKey="operation"
+            dataSource={data.breakdown}
+            size="small"
+            pagination={false}
+            style={{ maxWidth: 500 }}
+            columns={[
+              {
+                title: 'Operation', dataIndex: 'operation', key: 'operation',
+                render: (op: string) => OPERATION_LABELS[op] ?? op,
+              },
+              {
+                title: 'Tokens', dataIndex: 'totalTokens', key: 'totalTokens', width: 120,
+                render: (v: number) => formatTokens(v),
+              },
+              {
+                title: 'Calls', dataIndex: 'callCount', key: 'callCount', width: 80,
+              },
+            ]}
+          />
+        </>
+      )}
+    </div>
+  );
+};
+
+// ─── Main Page ──────────────────────────────────────────────────────────────
+
 const ProjectSettingsPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
@@ -211,6 +287,9 @@ const ProjectSettingsPage: React.FC = () => {
           style={{ maxWidth: 600 }}
         />
       </div>
+
+      {/* ── AI Token Usage ── */}
+      <AiUsageSection slug={slug!} />
 
       <Divider />
 
