@@ -654,7 +654,15 @@ export class SandboxService {
     });
     if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
 
-    const { page, limit, search, sortBy, sortOrder, qualityLevel, missingLocale } = query;
+    const {
+      page,
+      limit,
+      search,
+      sortBy,
+      sortOrder,
+      qualityLevel,
+      missingLocale,
+    } = query;
     const params: unknown[] = [project.id, ns.id];
 
     let searchCondition = '';
@@ -1074,7 +1082,11 @@ export class SandboxService {
   async batchUpsert(
     project: ProjectEntity,
     namespace: NamespaceEntity,
-    entries: { key: string; values: Record<string, string>; context?: string }[],
+    entries: {
+      key: string;
+      values: Record<string, string>;
+      context?: string;
+    }[],
   ): Promise<{ created: number; updated: number }> {
     if (!project.sandboxInitializedAt) {
       throw new BadRequestException('Sandbox is not initialized');
