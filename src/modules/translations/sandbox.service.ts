@@ -731,13 +731,19 @@ export class SandboxService {
     const limitIdx = params.length - 1;
     const offsetIdx = params.length;
 
+    const qualitySelectExpr =
+      sortBy === 'qualityScore'
+        ? `, (SELECT MIN(tv_qs.quality_score) FROM translation_values tv_qs WHERE tv_qs.key_id = tk.id AND tv_qs.quality_score IS NOT NULL) AS _qs`
+        : '';
+    const qualityOrderCol = sortBy === 'qualityScore' ? '_qs' : '';
+
     const keys = await this.dataSource.query<
       { id: string; key: string; created_at: Date }[]
     >(
-      `SELECT DISTINCT tk.id, tk.key, tk.created_at
+      `SELECT DISTINCT tk.id, tk.key, tk.created_at${qualitySelectExpr}
        FROM translation_keys tk
        WHERE ${baseWhere}
-       ORDER BY ${sortCol} ${sortDir}${nullsLast}
+       ORDER BY ${qualityOrderCol || sortCol} ${sortDir}${nullsLast}
        LIMIT $${limitIdx} OFFSET $${offsetIdx}`,
       params,
     );
