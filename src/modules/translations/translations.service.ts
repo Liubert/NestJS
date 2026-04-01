@@ -2,8 +2,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -32,6 +34,10 @@ import {
   PaginatedResponse,
 } from '../../common/dto/paginated-response.dto.js';
 import { AiTranslateService } from './ai-translate.service.js';
+import {
+  WebhooksService,
+  WebhookEventPayload,
+} from '../webhooks/webhooks.service.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -100,7 +106,29 @@ export class TranslationsService {
     private readonly userRepo: Repository<UserEntity>,
     private readonly dataSource: DataSource,
     private readonly aiTranslateService: AiTranslateService,
+    @Inject(forwardRef(() => WebhooksService))
+    private readonly webhooksService: WebhooksService,
   ) {}
+
+  private emitWebhook(
+    event: WebhookEventPayload['event'],
+    project: ProjectEntity,
+    namespace: string,
+    key: string,
+    locales?: string[],
+    environment: 'production' | 'sandbox' = 'production',
+  ): void {
+    void this.webhooksService.emit({
+      event,
+      projectId: project.id,
+      projectSlug: project.slug,
+      namespace,
+      key,
+      locales,
+      environment,
+      timestamp: new Date().toISOString(),
+    });
+  }
 
   // ─── Access control helpers ────────────────────────────────────────────────
 
@@ -611,6 +639,14 @@ export class TranslationsService {
       dto.values ?? {},
     );
 
+    this.emitWebhook(
+      'translation.created',
+      project,
+      nsSlug,
+      dto.key,
+      Object.keys(dto.values ?? {}),
+    );
+
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
@@ -646,6 +682,14 @@ export class TranslationsService {
       dto.values,
     );
 
+    this.emitWebhook(
+      'translation.updated',
+      project,
+      nsSlug,
+      key,
+      Object.keys(dto.values),
+    );
+
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
@@ -673,6 +717,8 @@ export class TranslationsService {
       where: { namespaceId: ns.id, key },
     });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    this.emitWebhook('translation.deleted', project, nsSlug, key);
 
     await this.keyRepo.remove(keyEntity);
   }

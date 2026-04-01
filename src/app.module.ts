@@ -21,6 +21,7 @@ import { ReqWithUser } from './modules/auth/types/auth.types';
 import { RabbitMQModule } from './rabbitmq/rabbitmq.module';
 import { TranslationsModule } from './modules/translations/translations.module';
 import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
 
 @Module({
   imports: [
@@ -61,6 +62,7 @@ import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module';
     FilesModule,
     RabbitMQModule,
     TranslationsModule,
+    WebhooksModule,
     McpPromptsModule,
   ],
   controllers: [AppController],

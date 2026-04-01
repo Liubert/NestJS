@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TranslationsController } from './translations.controller.js';
 import { TranslationsService } from './translations.service.js';
@@ -17,6 +17,7 @@ import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import { ProductionSnapshotEntity } from './entities/production-snapshot.entity.js';
 import { AiConfigEntity } from './entities/ai-config.entity.js';
 import { UserEntity } from '../users/user.entity.js';
+import { WebhooksModule } from '../webhooks/webhooks.module.js';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { UserEntity } from '../users/user.entity.js';
       AiConfigEntity,
       UserEntity,
     ]),
+    forwardRef(() => WebhooksModule),
   ],
   controllers: [TranslationsController, SandboxController, AiConfigController],
   providers: [
