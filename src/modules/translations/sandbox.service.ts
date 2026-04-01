@@ -1180,4 +1180,89 @@ export class SandboxService {
 
     await this.projectRepo.update(project.id, { sandboxHasChanges: true });
   }
+
+  // ─── Expected override (sandbox) ────────────────────────────────────────────
+
+  async markSandboxExpected(
+    slug: string,
+    ns: string,
+    key: string,
+    locale: string,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<QualityInfo> {
+    const project = await this.requireInitializedProject(slug);
+    this.assertAccess(project, userId, userRole);
+
+    const sv = await this.findSandboxValue(project.id, ns, key, locale);
+    if (!sv) throw new NotFoundException('Sandbox value not found');
+
+    sv.qualityReviewState = 'expected';
+    sv.qualityScore = 100;
+    sv.qualityLevel = 'expected';
+    sv.qualityComment = null;
+    sv.qualityCheckedAt = new Date();
+    await this.sandboxRepo.save(sv);
+
+    return {
+      reviewState: 'expected',
+      score: 100,
+      level: 'expected',
+      comment: null,
+      checkedAt: sv.qualityCheckedAt.toISOString(),
+    };
+  }
+
+  async unmarkSandboxExpected(
+    slug: string,
+    ns: string,
+    key: string,
+    locale: string,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<void> {
+    const project = await this.requireInitializedProject(slug);
+    this.assertAccess(project, userId, userRole);
+
+    const sv = await this.findSandboxValue(project.id, ns, key, locale);
+    if (!sv) throw new NotFoundException('Sandbox value not found');
+
+    sv.qualityReviewState = 'not_checked';
+    sv.qualityScore = null;
+    sv.qualityLevel = null;
+    sv.qualityComment = null;
+    sv.qualityCheckedAt = null;
+    await this.sandboxRepo.save(sv);
+  }
+
+  async updateAutoTranslate(
+    slug: string,
+    enabled: boolean,
+  ): Promise<{ autoTranslateEnabled: boolean }> {
+    const project = await this.projectRepo.findOneBy({ slug });
+    if (!project) throw new NotFoundException('Project not found');
+    project.autoTranslateEnabled = enabled;
+    await this.projectRepo.save(project);
+    return { autoTranslateEnabled: enabled };
+  }
+
+  // ─── Private helper ─────────────────────────────────────────────────────────
+
+  private async findSandboxValue(
+    projectId: string,
+    ns: string,
+    key: string,
+    locale: string,
+  ): Promise<SandboxValueEntity | null> {
+    return this.sandboxRepo
+      .createQueryBuilder('sv')
+      .innerJoin('sv.translationKey', 'tk')
+      .innerJoin('tk.namespace', 'ns')
+      .innerJoin('sv.locale', 'l')
+      .where('sv.project_id = :projectId', { projectId })
+      .andWhere('ns.slug = :ns', { ns })
+      .andWhere('tk.key = :key', { key })
+      .andWhere('l.code = :locale', { locale })
+      .getOne();
+  }
 }

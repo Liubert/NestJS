@@ -76,6 +76,7 @@ export interface ProjectDetails {
   createdAt: Date;
   locales: LocaleInfo[];
   namespaces: string[];
+  autoTranslateEnabled: boolean;
 }
 
 export interface MemberRow {
@@ -273,6 +274,7 @@ export class TranslationsService {
       createdAt: project.createdAt,
       locales: locales.map((l) => ({ code: l.code, isDefault: l.isDefault })),
       namespaces: namespaces.map((ns) => ns.slug),
+      autoTranslateEnabled: project.autoTranslateEnabled,
     };
   }
 

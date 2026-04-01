@@ -261,4 +261,65 @@ export class SandboxController {
     );
     return { oldKey: decodeURIComponent(key), newKey: dto.newKey };
   }
+
+  @Post('namespaces/:ns/entries/:key/locales/:locale/mark-expected')
+  @ApiOperation({
+    summary:
+      'Mark a sandbox translation as manually accepted (expected)',
+  })
+  markExpected(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @Param('locale') locale: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.markSandboxExpected(
+      slug,
+      ns,
+      decodeURIComponent(key),
+      locale,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Delete('namespaces/:ns/entries/:key/locales/:locale/mark-expected')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({
+    summary: 'Remove manual acceptance from sandbox translation',
+  })
+  unmarkExpected(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @Param('locale') locale: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.unmarkSandboxExpected(
+      slug,
+      ns,
+      decodeURIComponent(key),
+      locale,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Patch('settings')
+  @ApiOperation({
+    summary: 'Update project sandbox settings (auto-translate toggle)',
+  })
+  updateSettings(
+    @Param('slug') slug: string,
+    @Body() body: { autoTranslateEnabled?: boolean },
+  ) {
+    if (body.autoTranslateEnabled !== undefined) {
+      return this.sandboxService.updateAutoTranslate(
+        slug,
+        body.autoTranslateEnabled,
+      );
+    }
+    return {};
+  }
 }

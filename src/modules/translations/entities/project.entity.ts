@@ -37,6 +37,13 @@ export class ProjectEntity {
   @Column({ name: 'sandbox_has_changes', type: 'boolean', default: false })
   sandboxHasChanges!: boolean;
 
+  @Column({
+    name: 'auto_translate_enabled',
+    type: 'boolean',
+    default: false,
+  })
+  autoTranslateEnabled!: boolean;
+
   @OneToMany(() => NamespaceEntity, (ns) => ns.project)
   namespaces!: NamespaceEntity[];
 

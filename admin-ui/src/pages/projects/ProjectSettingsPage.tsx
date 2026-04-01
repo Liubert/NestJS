@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import {
-  Typography, Button, Tag, Space, Divider, Spin, Modal, Form, Input,
-  Popconfirm, message, Breadcrumb, Table,
+  Typography, Button, Tag, Space, Divider, Spin, Modal, Form, Input, Switch,
+  Popconfirm, message, Breadcrumb, Table, Alert,
 } from 'antd';
 import {
   PlusOutlined, DeleteOutlined, TranslationOutlined,
@@ -25,6 +25,7 @@ interface ProjectDetails {
   createdAt: string;
   locales: LocaleEntry[];
   namespaces: string[];
+  autoTranslateEnabled: boolean;
 }
 
 interface MemberRow {
@@ -184,6 +185,34 @@ const ProjectSettingsPage: React.FC = () => {
           Open in Translations
         </Button>
       </div>
+
+      {/* ── Auto-Translation ── */}
+      <div style={{ marginBottom: 32 }}>
+        <Title level={5} style={{ margin: 0, marginBottom: 12 }}>Auto-Translation</Title>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+          <Switch
+            checked={project?.autoTranslateEnabled ?? false}
+            onChange={async (checked) => {
+              try {
+                await apiClient.patch(`/translations/projects/${slug}/sandbox/settings`, { autoTranslateEnabled: checked });
+                qc.invalidateQueries({ queryKey: ['project', slug] });
+                message.success(checked ? 'Auto-translation enabled' : 'Auto-translation disabled');
+              } catch { message.error('Failed to update setting'); }
+            }}
+          />
+          <Text strong>
+            {project?.autoTranslateEnabled ? 'Enabled' : 'Disabled'}
+          </Text>
+        </div>
+        <Alert
+          type="info"
+          showIcon
+          message="When enabled, the system continuously checks for missing translations and automatically generates them using AI. Auto-generated translations are created in sandbox only and must be manually reviewed and pushed to production."
+          style={{ maxWidth: 600 }}
+        />
+      </div>
+
+      <Divider />
 
       {/* ── Locales ── */}
       <div style={{ marginBottom: 32 }}>
