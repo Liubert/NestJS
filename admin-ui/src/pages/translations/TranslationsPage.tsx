@@ -254,6 +254,39 @@ const unmarkExpected = async (
   );
 };
 
+const markSandboxExpected = async (
+  slug: string,
+  ns: string,
+  key: string,
+  locale: string,
+): Promise<QualityInfo> => {
+  const res = await apiClient.post<QualityInfo>(
+    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
+  );
+  return res.data;
+};
+
+const unmarkSandboxExpected = async (
+  slug: string,
+  ns: string,
+  key: string,
+  locale: string,
+): Promise<void> => {
+  await apiClient.delete(
+    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
+  );
+};
+
+const promoteSelective = async (
+  slug: string, keys: { namespace: string; key: string }[],
+): Promise<{ snapshotId: string; promoted: number }> => {
+  const res = await apiClient.post(
+    `/translations/projects/${slug}/sandbox/promote-selective`,
+    { keys },
+  );
+  return res.data;
+};
+
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
@@ -286,10 +319,11 @@ interface QualityBadgeProps {
   namespace?: string;
   entryKey?: string;
   locale?: string;
+  isSandbox?: boolean;
   onUpdate?: () => void;
 }
 
-const QualityBadge: React.FC<QualityBadgeProps> = ({ info, slug, namespace, entryKey, locale, onUpdate }) => {
+const QualityBadge: React.FC<QualityBadgeProps> = ({ info, slug, namespace, entryKey, locale, isSandbox, onUpdate }) => {
   if (!info) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
 
   if (info.reviewState === 'queued' || info.reviewState === 'processing') {
@@ -338,7 +372,8 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({ info, slug, namespace, entr
         description="This will reset validation status. The item will be revalidated."
         onConfirm={async () => {
           try {
-            await unmarkExpected(slug, namespace, entryKey, locale);
+            if (isSandbox) await unmarkSandboxExpected(slug, namespace, entryKey, locale);
+            else await unmarkExpected(slug, namespace, entryKey, locale);
             message.success('Unmarked');
             onUpdate?.();
           } catch { message.error('Failed to unmark'); }
@@ -374,7 +409,8 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({ info, slug, namespace, entr
       description="This translation will be accepted and skip future validation."
       onConfirm={async () => {
         try {
-          await markExpected(slug, namespace, entryKey, locale);
+          if (isSandbox) await markSandboxExpected(slug, namespace, entryKey, locale);
+          else await markExpected(slug, namespace, entryKey, locale);
           message.success('Marked as expected');
           onUpdate?.();
         } catch { message.error('Failed to mark as expected'); }
@@ -397,13 +433,18 @@ interface EditModalProps {
   onClose: () => void;
   onSave: (key: string, values: Record<string, string>) => void;
   saving: boolean;
+  projectSlug?: string;
+  namespace?: string;
+  isSandbox?: boolean;
+  onQualityUpdate?: () => void;
 }
 
-const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onClose, onSave, saving }) => {
+const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onClose, onSave, saving, projectSlug, namespace, isSandbox, onQualityUpdate }) => {
   const [form] = Form.useForm();
   const [aiLoadingLocale, setAiLoadingLocale] = useState<string | null>(null); // null | 'all' | locale
   const [qualityLoadingLocale, setQualityLoadingLocale] = useState<string | null>(null); // null | 'all' | locale
   const [qualityResults, setQualityResults] = useState<Record<string, QualityResult>>({});
+  const [expectedLoading, setExpectedLoading] = useState<string | null>(null);
 
   React.useEffect(() => {
     if (open) {
@@ -540,12 +581,73 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
         )}
         {locales.map((locale) => {
           const qr = qualityResults[locale];
+          const storedQuality = entry?.quality?.[locale];
           const isEnRow = locale === 'en';
           const isAiLocale = AI_LOCALES.includes(locale);
+          const canToggleExpected = !isNew && projectSlug && namespace && entry;
+
+          const handleToggleExpected = async () => {
+            if (!canToggleExpected) return;
+            setExpectedLoading(locale);
+            try {
+              if (storedQuality?.reviewState === 'expected') {
+                if (isSandbox) await unmarkSandboxExpected(projectSlug, namespace, entry.key, locale);
+                else await unmarkExpected(projectSlug, namespace, entry.key, locale);
+                message.success('Unmarked as expected');
+              } else {
+                if (isSandbox) await markSandboxExpected(projectSlug, namespace, entry.key, locale);
+                else await markExpected(projectSlug, namespace, entry.key, locale);
+                message.success('Marked as expected');
+              }
+              onQualityUpdate?.();
+            } catch {
+              message.error('Failed to update expected status');
+            } finally {
+              setExpectedLoading(null);
+            }
+          };
 
           const labelContent = (
             <Space size={4} wrap>
               <span>{locale}</span>
+              {/* Stored quality state badge */}
+              {!isNew && storedQuality && storedQuality.reviewState === 'checked' && storedQuality.level && (
+                <Tooltip title={`Stored: ${storedQuality.score}/100${storedQuality.comment ? ` — ${storedQuality.comment}` : ''}`}>
+                  <Tag color={QUALITY_CONFIG[storedQuality.level]?.color ?? 'default'} style={{ fontSize: 11, margin: 0 }}>
+                    {QUALITY_CONFIG[storedQuality.level]?.label ?? storedQuality.level} · {storedQuality.score}
+                  </Tag>
+                </Tooltip>
+              )}
+              {!isNew && storedQuality?.reviewState === 'expected' && (
+                <Tag color="processing" style={{ fontSize: 11, margin: 0 }}>
+                  <CheckCircleOutlined /> Expected
+                </Tag>
+              )}
+              {!isNew && storedQuality?.reviewState === 'processing' && (
+                <Tag style={{ fontSize: 11, margin: 0 }}>
+                  <SyncOutlined spin /> Reviewing...
+                </Tag>
+              )}
+              {/* Expected toggle button */}
+              {canToggleExpected && !isEnRow && storedQuality && storedQuality.reviewState !== 'not_checked' && storedQuality.reviewState !== 'processing' && (
+                <Tooltip title={storedQuality.reviewState === 'expected' ? 'Remove manual acceptance' : 'Accept — skip future validation'}>
+                  <Button
+                    size="small"
+                    type={storedQuality.reviewState === 'expected' ? 'primary' : 'dashed'}
+                    icon={<CheckCircleOutlined />}
+                    loading={expectedLoading === locale}
+                    onClick={handleToggleExpected}
+                    style={{
+                      fontSize: 11,
+                      padding: '0 6px',
+                      height: 22,
+                      ...(storedQuality.reviewState === 'expected' ? { background: '#1677ff' } : {}),
+                    }}
+                  >
+                    {storedQuality.reviewState === 'expected' ? 'Accepted' : 'Accept'}
+                  </Button>
+                </Tooltip>
+              )}
               {/* English row: global buttons */}
               {isEnRow && hasAiLocales && (
                 <Button size="small" icon={<ThunderboltOutlined />}
@@ -671,6 +773,8 @@ interface EntriesTableProps {
   // Sandbox customization
   getRowProps?: (record: Entry, namespace: string) => React.HTMLAttributes<HTMLElement>;
   renderKeyExtra?: (key: string, namespace: string) => React.ReactNode;
+  clientFilter?: (record: Entry, namespace: string) => boolean;
+  isSandbox?: boolean;
   deleteConfirmTitle?: string;
   deleteConfirmDescription?: string;
   extraControls?: React.ReactNode;
@@ -687,6 +791,8 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   onMutationSuccess,
   getRowProps,
   renderKeyExtra,
+  clientFilter,
+  isSandbox,
   deleteConfirmTitle = 'Delete this key?',
   deleteConfirmDescription,
   extraControls,
@@ -805,6 +911,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
               namespace={namespace}
               entryKey={record.key}
               locale={locale}
+              isSandbox={isSandbox}
               onUpdate={invalidate}
             />
             {val
@@ -904,7 +1011,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       <Table<Entry>
         rowKey="key"
         columns={columns}
-        dataSource={entriesData?.data ?? []}
+        dataSource={clientFilter ? (entriesData?.data ?? []).filter((r) => clientFilter(r, namespace)) : (entriesData?.data ?? [])}
         loading={entriesLoading}
         scroll={{ x: true }}
         onChange={handleTableChange}
@@ -930,6 +1037,10 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           else updateMutation.mutate({ key, values });
         }}
         saving={createMutation.isPending || updateMutation.isPending}
+        projectSlug={projectSlug}
+        namespace={namespace}
+        isSandbox={isSandbox}
+        onQualityUpdate={invalidate}
       />
     </>
   );

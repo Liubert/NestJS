@@ -25,6 +25,7 @@ import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { BulkImportDto } from './dto/bulk-import.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
+import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
 
 class InitSandboxDto {
   @IsOptional()
@@ -85,6 +86,25 @@ export class SandboxController {
   })
   promote(@Param('slug') slug: string, @CurrentUser() user: CurrentUserType) {
     return this.sandboxService.promote(slug, user.userId, user.role);
+  }
+
+  @Post('promote-selective')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(BlockMcpGuard)
+  @ApiOperation({
+    summary: 'Promote only selected keys from sandbox to production',
+  })
+  promoteSelective(
+    @Param('slug') slug: string,
+    @Body() dto: SelectivePromoteDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.promoteSelective(
+      slug,
+      dto.keys,
+      user.userId,
+      user.role,
+    );
   }
 
   @Post('revert')
