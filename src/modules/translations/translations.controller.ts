@@ -32,6 +32,7 @@ import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
 import { SandboxService } from './sandbox.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
+import { AiUsageService } from './ai-usage.service.js';
 import { AiTranslateDto } from './dto/ai-translate.dto.js';
 import { CheckQualityDto } from './dto/check-quality.dto.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
@@ -51,6 +52,7 @@ export class TranslationsController {
     private readonly translationsService: TranslationsService,
     private readonly sandboxService: SandboxService,
     private readonly aiTranslateService: AiTranslateService,
+    private readonly aiUsageService: AiUsageService,
   ) {}
 
   // ─── Public (Locize-compatible) ───────────────────────────────────────────
@@ -144,7 +146,14 @@ export class TranslationsController {
   async aiTranslate(
     @Body() dto: AiTranslateDto,
   ): Promise<Record<string, string>> {
-    return this.aiTranslateService.translate(dto.text);
+    let projectId: string | undefined;
+    if (dto.projectSlug) {
+      const project = await this.translationsService.getProjectBySlug(
+        dto.projectSlug,
+      );
+      projectId = project.id;
+    }
+    return this.aiTranslateService.translate(dto.text, projectId);
   }
 
   @Post('ai-quality-check')
@@ -202,6 +211,18 @@ export class TranslationsController {
       user.userId,
       user.role,
     );
+  }
+
+  @Get('projects/:slug/ai-usage')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get AI token usage for a project' })
+  async getAiUsage(
+    @Param('slug') slug: string,
+    @CurrentUser() _user: CurrentUserType,
+  ) {
+    const project = await this.translationsService.getProjectBySlug(slug);
+    return this.aiUsageService.getProjectUsage(project.id);
   }
 
   @Delete('projects/:slug')

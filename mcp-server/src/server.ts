@@ -6,13 +6,14 @@ import { registerProjectManagementTools } from "./tools/project-management.js";
 import { registerDiffTools } from "./tools/diff.js";
 import { registerSnapshotTools } from "./tools/snapshots.js";
 import { registerProductionTools } from "./tools/production.js";
+import { registerAiTools } from "./tools/ai.js";
 import { registerPrompts } from "./prompts.js";
 import { registerWebhookTools } from "./tools/webhooks.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
     name: "localization-mcp-server",
-    version: "1.0.3",
+    version: "1.1.0",
   });
 
   registerEnvironmentTools(server);
@@ -23,6 +24,7 @@ export function createServer(): McpServer {
   registerSnapshotTools(server);
   registerProductionTools(server);
   registerWebhookTools(server);
+  registerAiTools(server);
   registerPrompts(server);
 
   return server;

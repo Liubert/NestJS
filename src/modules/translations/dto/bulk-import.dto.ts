@@ -1,13 +1,18 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
   IsObject,
   IsOptional,
   IsString,
   Matches,
   MaxLength,
+  ValidateNested,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 
-export class CreateEntryDto {
+export class BulkImportEntryDto {
   @ApiProperty({ example: 'accessControl' })
   @IsString()
   @Matches(/^[a-zA-Z0-9._-]+$/, {
@@ -17,20 +22,29 @@ export class CreateEntryDto {
   @MaxLength(255)
   key!: string;
 
-  @ApiPropertyOptional({
+  @ApiProperty({
     example: { en: 'Access control', 'nb-NO': 'Adgangskontroll' },
-    description: 'Initial values per locale code',
+    description: 'Values per locale code',
   })
-  @IsOptional()
   @IsObject()
-  values?: Record<string, string>;
+  values!: Record<string, string>;
 
   @ApiPropertyOptional({
     example: 'Button label on the settings page',
-    description: 'Short context describing where/how the key is used (max 200 chars)',
+    description: 'Short context describing where/how the key is used',
   })
   @IsOptional()
   @IsString()
   @MaxLength(200)
   context?: string;
+}
+
+export class BulkImportDto {
+  @ApiProperty({ type: [BulkImportEntryDto] })
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => BulkImportEntryDto)
+  @ArrayMinSize(1)
+  @ArrayMaxSize(500)
+  entries!: BulkImportEntryDto[];
 }

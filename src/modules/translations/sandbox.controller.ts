@@ -18,10 +18,13 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
+import { TranslationsService } from './translations.service.js';
 import { SandboxService } from './sandbox.service.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
+import { BulkImportDto } from './dto/bulk-import.dto.js';
+import { RenameKeyDto } from './dto/rename-key.dto.js';
 
 class InitSandboxDto {
   @IsOptional()
@@ -39,7 +42,10 @@ class RevertDto {
 @UseGuards(JwtAuthGuard)
 @ApiBearerAuth()
 export class SandboxController {
-  constructor(private readonly sandboxService: SandboxService) {}
+  constructor(
+    private readonly sandboxService: SandboxService,
+    private readonly translationsService: TranslationsService,
+  ) {}
 
   @Get('status')
   @ApiOperation({ summary: 'Get sandbox status for a project' })
@@ -213,5 +219,46 @@ export class SandboxController {
       user.userId,
       user.role,
     );
+  }
+
+  @Post('namespaces/:ns/entries/batch')
+  @ApiOperation({
+    summary: 'Batch upsert multiple translation keys in sandbox',
+  })
+  async batchUpsertEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkImportDto,
+    @CurrentUser() _user: CurrentUserType,
+  ) {
+    const project = await this.translationsService.getProjectBySlug(slug);
+    const namespace = await this.translationsService.requireNamespace(
+      project.id,
+      ns,
+    );
+    return this.sandboxService.batchUpsert(project, namespace, dto.entries);
+  }
+
+  @Post('namespaces/:ns/entries/:key/rename')
+  @ApiOperation({ summary: 'Rename a translation key in sandbox' })
+  async renameKey(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @Body() dto: RenameKeyDto,
+    @CurrentUser() _user: CurrentUserType,
+  ) {
+    const project = await this.translationsService.getProjectBySlug(slug);
+    const namespace = await this.translationsService.requireNamespace(
+      project.id,
+      ns,
+    );
+    await this.sandboxService.renameKey(
+      project,
+      namespace,
+      decodeURIComponent(key),
+      dto.newKey,
+    );
+    return { oldKey: decodeURIComponent(key), newKey: dto.newKey };
   }
 }

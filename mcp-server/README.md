@@ -1,6 +1,6 @@
 # localization-mcp-server
 
-MCP server for the localization backend. It exposes controlled tools for reading translations, managing projects, comparing environments, and applying sandbox changes through a backend API.
+MCP server for the localization backend. It exposes controlled tools for reading translations, managing projects, comparing environments, applying sandbox changes, AI-powered translation and quality checks through a backend API.
 
 ## Installation
 
@@ -31,6 +31,16 @@ Run the interactive setup helper:
 ```bash
 localization-mcp-server setup
 ```
+
+## Capabilities
+
+- **Project management:** create projects, namespaces, locales
+- **Translation CRUD:** set, delete, rename keys in sandbox
+- **Bulk operations:** batch import with context, batch locale fill
+- **Diff and validation:** sandbox vs production diff, translation validation
+- **AI translation:** translate text to all project locales via Gemini
+- **AI quality checks:** stateless quality scoring and persistent per-entry checks
+- **Export and analysis:** namespace export, coverage reports, local vs server comparison
 
 ## Published Files
 

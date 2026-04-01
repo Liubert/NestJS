@@ -33,6 +33,7 @@ const MAX_SNAPSHOTS = 5;
 export interface SandboxEntryRow {
   key: string;
   createdAt: Date;
+  context: string | null;
   values: Record<string, string>;
   quality: Record<string, QualityInfo | null>;
 }
@@ -653,7 +654,7 @@ export class SandboxService {
     });
     if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
 
-    const { page, limit, search, sortBy, sortOrder, qualityLevel } = query;
+    const { page, limit, search, sortBy, sortOrder, qualityLevel, missingLocale } = query;
     const params: unknown[] = [project.id, ns.id];
 
     let searchCondition = '';
@@ -697,6 +698,24 @@ export class SandboxService {
       }
     }
 
+    let missingLocaleCondition = '';
+    if (missingLocale) {
+      params.push(missingLocale);
+      const mli = params.length;
+      missingLocaleCondition = `
+        AND NOT EXISTS (
+          SELECT 1 FROM (
+            SELECT COALESCE(sv_ml.value, tv_ml.value) AS effective_value
+            FROM translation_locales tl_ml
+            LEFT JOIN translation_values tv_ml ON tv_ml.key_id = tk.id AND tv_ml.locale_id = tl_ml.id
+            LEFT JOIN sandbox_values sv_ml ON sv_ml.key_id = tk.id AND sv_ml.locale_id = tl_ml.id AND sv_ml.project_id = $1 AND sv_ml.is_deleted = false
+            WHERE tl_ml.project_id = $1 AND tl_ml.code = $${mli}
+          ) sub
+          WHERE sub.effective_value IS NOT NULL AND sub.effective_value != ''
+        )
+      `;
+    }
+
     // A key is visible in sandbox if:
     // (a) it has production values OR sandbox-active values, AND
     // (b) it is NOT fully deleted in sandbox (all sandbox entries are is_deleted=true)
@@ -711,7 +730,7 @@ export class SandboxService {
       )
     `;
 
-    const baseWhere = `tk.namespace_id = $2 ${visibilityWhere} ${searchCondition} ${qualityCondition}`;
+    const baseWhere = `tk.namespace_id = $2 ${visibilityWhere} ${searchCondition} ${qualityCondition} ${missingLocaleCondition}`;
 
     const [{ count }] = await this.dataSource.query<{ count: string }[]>(
       `SELECT COUNT(DISTINCT tk.id) AS count FROM translation_keys tk WHERE ${baseWhere}`,
@@ -738,9 +757,9 @@ export class SandboxService {
     const qualityOrderCol = sortBy === 'qualityScore' ? '_qs' : '';
 
     const keys = await this.dataSource.query<
-      { id: string; key: string; created_at: Date }[]
+      { id: string; key: string; created_at: Date; context: string | null }[]
     >(
-      `SELECT DISTINCT tk.id, tk.key, tk.created_at${qualitySelectExpr}
+      `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context${qualitySelectExpr}
        FROM translation_keys tk
        WHERE ${baseWhere}
        ORDER BY ${qualityOrderCol || sortCol} ${sortDir}${nullsLast}
@@ -828,6 +847,7 @@ export class SandboxService {
     const data: SandboxEntryRow[] = keys.map((k) => ({
       key: k.key,
       createdAt: k.created_at,
+      context: k.context ?? null,
       values: valuesByKey.get(k.id) ?? {},
       quality: qualityByKey.get(k.id) ?? {},
     }));
@@ -868,7 +888,11 @@ export class SandboxService {
     }
 
     const keyEntity = await this.keyRepo.save(
-      this.keyRepo.create({ namespaceId: ns.id, key: dto.key }),
+      this.keyRepo.create({
+        namespaceId: ns.id,
+        key: dto.key,
+        context: dto.context ?? null,
+      }),
     );
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
@@ -885,6 +909,7 @@ export class SandboxService {
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
+      context: keyEntity.context,
       values: resultValues,
       quality: {},
     };
@@ -917,6 +942,11 @@ export class SandboxService {
     });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
+    if (dto.context !== undefined) {
+      keyEntity.context = dto.context ?? null;
+      await this.keyRepo.save(keyEntity);
+    }
+
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const resultValues: Record<string, string> = {};
 
@@ -931,6 +961,7 @@ export class SandboxService {
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
+      context: keyEntity.context,
       values: resultValues,
       quality: {},
     };
@@ -1032,5 +1063,109 @@ export class SandboxService {
     for (const locale of locales) {
       await this.deleteSandboxValue(project.id, keyEntity.id, locale.id);
     }
+  }
+
+  // ─── Batch upsert ──────────────────────────────────────────────────────────
+
+  /**
+   * Batch upsert: creates or updates multiple keys+values in sandbox.
+   * Uses efficient patterns: bulk fetch existing keys, then split into creates/updates.
+   */
+  async batchUpsert(
+    project: ProjectEntity,
+    namespace: NamespaceEntity,
+    entries: { key: string; values: Record<string, string>; context?: string }[],
+  ): Promise<{ created: number; updated: number }> {
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const locales = await this.localeRepo.findBy({ projectId: project.id });
+    const localeByCode = new Map(locales.map((l) => [l.code, l]));
+
+    // Fetch all existing keys for this namespace in one query
+    const existingKeys = await this.keyRepo.find({
+      where: { namespaceId: namespace.id },
+    });
+    const existingKeyMap = new Map(existingKeys.map((k) => [k.key, k]));
+
+    let created = 0;
+    let updated = 0;
+
+    for (const entry of entries) {
+      let keyEntity = existingKeyMap.get(entry.key);
+
+      if (!keyEntity) {
+        // Create new key
+        keyEntity = await this.keyRepo.save(
+          this.keyRepo.create({
+            namespaceId: namespace.id,
+            key: entry.key,
+            context: entry.context ?? null,
+          }),
+        );
+        existingKeyMap.set(entry.key, keyEntity);
+        created++;
+      } else {
+        // Update context if provided
+        if (entry.context !== undefined) {
+          keyEntity.context = entry.context ?? null;
+          await this.keyRepo.save(keyEntity);
+        }
+        updated++;
+      }
+
+      // Upsert sandbox values for each locale
+      for (const [code, value] of Object.entries(entry.values)) {
+        const locale = localeByCode.get(code);
+        if (locale) {
+          await this.upsertSandboxValue(
+            project.id,
+            keyEntity.id,
+            locale.id,
+            value,
+          );
+        }
+      }
+    }
+
+    return { created, updated };
+  }
+
+  // ─── Rename key ──────────────────────────────────────────────────────────
+
+  /**
+   * Renames a translation key. Safe because all FKs reference key.id, not key.key.
+   */
+  async renameKey(
+    project: ProjectEntity,
+    namespace: NamespaceEntity,
+    oldKey: string,
+    newKey: string,
+  ): Promise<void> {
+    const keyEntity = await this.keyRepo.findOne({
+      where: { namespaceId: namespace.id, key: oldKey },
+    });
+    if (!keyEntity) {
+      throw new NotFoundException(
+        `Key "${oldKey}" not found in namespace "${namespace.slug}"`,
+      );
+    }
+
+    // Check that newKey doesn't already exist in this namespace
+    const exists = await this.keyRepo.existsBy({
+      namespaceId: namespace.id,
+      key: newKey,
+    });
+    if (exists) {
+      throw new ConflictException(
+        `Key "${newKey}" already exists in namespace "${namespace.slug}"`,
+      );
+    }
+
+    keyEntity.key = newKey;
+    await this.keyRepo.save(keyEntity);
+
+    await this.projectRepo.update(project.id, { sandboxHasChanges: true });
   }
 }

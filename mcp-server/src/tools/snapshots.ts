@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { apiGet, ApiError } from "../api-client.js";
+import { apiGet } from "../api-client.js";
+import { errorResult, textResult } from "../utils.js";
 
 interface SnapshotItem {
   id: string;
@@ -23,14 +24,9 @@ export function registerSnapshotTools(server: McpServer): void {
         );
 
         if (snapshots.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `No snapshots available for project "${projectSlug}".\n\nSnapshots are created automatically when sandbox changes are pushed to production.`,
-              },
-            ],
-          };
+          return textResult(
+            `No snapshots available for project "${projectSlug}".\n\nSnapshots are created automatically when sandbox changes are pushed to production.`,
+          );
         }
 
         const rows = snapshots.map((s, i) => {
@@ -41,28 +37,12 @@ export function registerSnapshotTools(server: McpServer): void {
           return `${i + 1}. ${s.label ?? "(no label)"}\n   ID: ${s.id}\n   Created: ${date}\n   Entries: ${s.entryCount}`;
         });
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Snapshots for "${projectSlug}" (${snapshots.length} available, max 5):\n\n${rows.join("\n\n")}`,
-            },
-          ],
-        };
+        return textResult(
+          `Snapshots for "${projectSlug}" (${snapshots.length} available, max 5):\n\n${rows.join("\n\n")}`,
+        );
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
-}
-
-function errorContent(error: unknown): { content: { type: "text"; text: string }[] } {
-  if (error instanceof ApiError) {
-    return {
-      content: [{ type: "text" as const, text: `Error ${error.status}: ${error.message}` }],
-    };
-  }
-  return {
-    content: [{ type: "text" as const, text: `Unexpected error: ${String(error)}` }],
-  };
 }

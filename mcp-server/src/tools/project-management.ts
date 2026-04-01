@@ -3,6 +3,7 @@ import { z } from "zod";
 import { readFileSync } from "fs";
 import { apiGet, apiPost, ApiError } from "../api-client.js";
 import { logWrite } from "../logger.js";
+import { errorResult, textResult } from "../utils.js";
 
 interface NamespaceCreated {
   id: string;
@@ -78,23 +79,12 @@ export function registerProjectManagementTools(server: McpServer): void {
           `3. init_sandbox — initialize the sandbox before any writes`,
         ];
 
-        return {
-          content: [{ type: "text" as const, text: lines.join("\n") }],
-        };
+        return textResult(lines.join("\n"));
       } catch (error) {
-        if (error instanceof ApiError) {
-          if (error.status === 409) {
-            return {
-              content: [{ type: "text" as const, text: `Error: A project with slug "${slug}" already exists. Use a different slug or call list_projects to see existing projects.` }],
-            };
-          }
-          return {
-            content: [{ type: "text" as const, text: `Error ${error.status}: ${error.message}` }],
-          };
+        if (error instanceof ApiError && error.status === 409) {
+          return textResult(`Error: A project with slug "${slug}" already exists. Use a different slug or call list_projects to see existing projects.`);
         }
-        return {
-          content: [{ type: "text" as const, text: `Unexpected error: ${String(error)}` }],
-        };
+        return errorResult(error);
       }
     },
   );
@@ -142,25 +132,18 @@ export function registerProjectManagementTools(server: McpServer): void {
           { slug: namespace },
         );
         logWrite("create_namespace", { projectSlug, namespace, reason, existingNamespaces }, created);
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `Created namespace: ${projectSlug}/${namespace}`,
-                existingNamespaces.length > 0
-                  ? `Existing namespaces at time of creation: ${existingNamespaces.join(", ")}`
-                  : `This is the first namespace in the project.`,
-                `Reason provided: ${reason}`,
-                ``,
-                `The namespace is empty. Use set_translation to add keys, or bulk_import to load from a JSON map.`,
-                `Remember to init_sandbox after creating the namespace if you plan to use sandbox workflow.`,
-              ].join("\n"),
-            },
-          ],
-        };
+        return textResult([
+          `Created namespace: ${projectSlug}/${namespace}`,
+          existingNamespaces.length > 0
+            ? `Existing namespaces at time of creation: ${existingNamespaces.join(", ")}`
+            : `This is the first namespace in the project.`,
+          `Reason provided: ${reason}`,
+          ``,
+          `The namespace is empty. Use set_translation to add keys, or bulk_import to load from a JSON map.`,
+          `Remember to init_sandbox after creating the namespace if you plan to use sandbox workflow.`,
+        ].join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -214,19 +197,12 @@ export function registerProjectManagementTools(server: McpServer): void {
               ]
             : [``, `No namespaces exist yet — create a namespace first, then add translations.`];
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `Added locale: ${code}${isDefault ? " (default)" : ""} to project ${projectSlug}`,
-                ...nextSteps,
-              ].join("\n"),
-            },
-          ],
-        };
+        return textResult([
+          `Added locale: ${code}${isDefault ? " (default)" : ""} to project ${projectSlug}`,
+          ...nextSteps,
+        ].join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -271,14 +247,7 @@ export function registerProjectManagementTools(server: McpServer): void {
         }
 
         if (allEntries.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Namespace ${projectSlug}/${namespace} [${env}] is empty.`,
-              },
-            ],
-          };
+          return textResult(`Namespace ${projectSlug}/${namespace} [${env}] is empty.`);
         }
 
         // Build per-locale maps
@@ -308,11 +277,9 @@ export function registerProjectManagementTools(server: McpServer): void {
         lines.push(``, `JSON export:`);
         lines.push(JSON.stringify(result, null, 2));
 
-        return {
-          content: [{ type: "text" as const, text: lines.join("\n") }],
-        };
+        return textResult(lines.join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -339,12 +306,20 @@ export function registerProjectManagementTools(server: McpServer): void {
         .string()
         .optional()
         .describe('Absolute path to a JSON file on disk. Format: { "locale": { "key": "value" } }. Use this for large translation files instead of inline JSON.'),
+      contexts: z
+        .record(z.string(), z.string())
+        .optional()
+        .describe('Optional key -> context map. Context is a short description (max 200 chars) of where/how each key is used. Example: { "button.save": "Save button in expense form footer" }'),
+      useBatchEndpoint: z
+        .boolean()
+        .default(true)
+        .describe("If true (default), use the batch endpoint for faster imports. Falls back to individual requests if batch returns 404."),
       dryRun: z
         .boolean()
         .default(false)
         .describe("If true, validate and preview what would be imported without writing anything"),
     },
-    async ({ projectSlug, namespace, translations, filePath, dryRun }) => {
+    async ({ projectSlug, namespace, translations, filePath, contexts, useBatchEndpoint, dryRun }) => {
       try {
         // Resolve translations — from inline or file
         let resolvedTranslations: Record<string, Record<string, string>>;
@@ -354,22 +329,12 @@ export function registerProjectManagementTools(server: McpServer): void {
             const raw = readFileSync(filePath, "utf-8");
             resolvedTranslations = JSON.parse(raw);
           } catch (e) {
-            return {
-              content: [{
-                type: "text" as const,
-                text: `❌ Could not read file: ${filePath}\n${String(e)}`,
-              }],
-            };
+            return textResult(`Could not read file: ${filePath}\n${String(e)}`);
           }
         } else if (translations) {
           resolvedTranslations = translations;
         } else {
-          return {
-            content: [{
-              type: "text" as const,
-              text: `❌ Provide either "translations" (inline JSON) or "filePath" (path to JSON file).`,
-            }],
-          };
+          return textResult(`Provide either "translations" (inline JSON) or "filePath" (path to JSON file).`);
         }
 
         // Validate locale codes and check sandbox state in parallel.
@@ -407,20 +372,15 @@ export function registerProjectManagementTools(server: McpServer): void {
         const unknownLocales = requestedLocales.filter((l) => !validLocales.has(l));
 
         if (unknownLocales.length > 0) {
-          return {
-            content: [{
-              type: "text" as const,
-              text: [
-                `❌ Import aborted — locale codes do not match the project.`,
-                ``,
-                `Unknown codes: ${unknownLocales.map((l) => `"${l}"`).join(", ")}`,
-                `Valid locales for "${projectSlug}": ${[...validLocales].join(", ")}`,
-                ``,
-                `Call get_project_details to get the exact locale codes. Do not guess or remap them.`,
-                `If the locale does not exist in the project yet, call create_locale first.`,
-              ].join("\n"),
-            }],
-          };
+          return textResult([
+            `Import aborted — locale codes do not match the project.`,
+            ``,
+            `Unknown codes: ${unknownLocales.map((l) => `"${l}"`).join(", ")}`,
+            `Valid locales for "${projectSlug}": ${[...validLocales].join(", ")}`,
+            ``,
+            `Call get_project_details to get the exact locale codes. Do not guess or remap them.`,
+            `If the locale does not exist in the project yet, call create_locale first.`,
+          ].join("\n"));
         }
 
         // Collect all unique keys
@@ -435,20 +395,15 @@ export function registerProjectManagementTools(server: McpServer): void {
           const perLocale = requestedLocales.map(
             (l) => `  ${l}: ${Object.keys(resolvedTranslations[l]).length} values`,
           );
-          return {
-            content: [{
-              type: "text" as const,
-              text: [
-                `DRY RUN — nothing written`,
-                ``,
-                `Would import to sandbox: ${projectSlug}/${namespace}`,
-                `  Source: ${filePath ?? "inline"}`,
-                `  Unique keys: ${allKeys.size}`,
-                `  Locales:`,
-                ...perLocale,
-              ].join("\n"),
-            }],
-          };
+          return textResult([
+            `DRY RUN — nothing written`,
+            ``,
+            `Would import to sandbox: ${projectSlug}/${namespace}`,
+            `  Source: ${filePath ?? "inline"}`,
+            `  Unique keys: ${allKeys.size}`,
+            `  Locales:`,
+            ...perLocale,
+          ].join("\n"));
         }
 
         const basePath = `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries`;
@@ -468,27 +423,54 @@ export function registerProjectManagementTools(server: McpServer): void {
 
         const { apiPatch } = await import("../api-client.js");
 
-        for (const [key, values] of keyMap.entries()) {
+        let usedBatch = false;
+        if (useBatchEndpoint) {
+          const batchPayload = {
+            entries: Array.from(keyMap.entries()).map(([key, values]) => ({
+              key,
+              values,
+              ...(contexts?.[key] ? { context: contexts[key] } : {}),
+            })),
+          };
+
           try {
-            await apiPatch<unknown>(`${basePath}/${encodeURIComponent(key)}`, { values });
-            upserted++;
-          } catch (err) {
-            // PATCH acts as upsert — if it fails, try POST (key may not exist on older API versions)
-            if (err instanceof ApiError && err.status === 404) {
-              try {
-                await apiPost<unknown>(basePath, { key, values });
-                upserted++;
-              } catch (postErr) {
-                failed++;
-                errors.push(`  ${key}: ${postErr instanceof ApiError ? `${postErr.status} ${postErr.message}` : String(postErr)}`);
-              }
-            } else {
-              failed++;
-              errors.push(`  ${key}: ${err instanceof ApiError ? `${err.status} ${err.message}` : String(err)}`);
+            const batchResult = await apiPost<{ created: number; updated: number }>(
+              `${basePath}/batch`,
+              batchPayload,
+            );
+            upserted = batchResult.created + batchResult.updated;
+            usedBatch = true;
+          } catch (batchErr) {
+            // Fallback to individual requests if batch endpoint returns 404
+            if (!(batchErr instanceof ApiError) || batchErr.status !== 404) {
+              // Non-404 error — still try individual fallback
             }
-            if (failed > 5) {
-              errors.push(`  ... and more errors (stopping early)`);
-              break;
+          }
+        }
+
+        if (!usedBatch) {
+          for (const [key, values] of keyMap.entries()) {
+            const body = { values, ...(contexts?.[key] ? { context: contexts[key] } : {}) };
+            try {
+              await apiPatch<unknown>(`${basePath}/${encodeURIComponent(key)}`, body);
+              upserted++;
+            } catch (err) {
+              if (err instanceof ApiError && err.status === 404) {
+                try {
+                  await apiPost<unknown>(basePath, { key, ...body });
+                  upserted++;
+                } catch (postErr) {
+                  failed++;
+                  errors.push(`  ${key}: ${postErr instanceof ApiError ? `${postErr.status} ${postErr.message}` : String(postErr)}`);
+                }
+              } else {
+                failed++;
+                errors.push(`  ${key}: ${err instanceof ApiError ? `${err.status} ${err.message}` : String(err)}`);
+              }
+              if (failed > 5) {
+                errors.push(`  ... and more errors (stopping early)`);
+                break;
+              }
             }
           }
         }
@@ -512,11 +494,9 @@ export function registerProjectManagementTools(server: McpServer): void {
           ? sandboxWarning + "\n\n" + lines.join("\n")
           : lines.join("\n");
 
-        return {
-          content: [{ type: "text" as const, text }],
-        };
+        return textResult(text);
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -555,16 +535,12 @@ export function registerProjectManagementTools(server: McpServer): void {
           try {
             local = JSON.parse(readFileSync(filePath, "utf-8"));
           } catch (e) {
-            return {
-              content: [{ type: "text" as const, text: `❌ Could not read file: ${filePath}\n${String(e)}` }],
-            };
+            return textResult(`Could not read file: ${filePath}\n${String(e)}`);
           }
         } else if (translations) {
           local = translations;
         } else {
-          return {
-            content: [{ type: "text" as const, text: `❌ Provide either "translations" (inline) or "filePath".` }],
-          };
+          return textResult(`Provide either "translations" (inline) or "filePath".`);
         }
 
         // Fetch all server entries
@@ -670,9 +646,9 @@ export function registerProjectManagementTools(server: McpServer): void {
           lines.push(``, `✅ Local and server are in sync — no import needed.`);
         }
 
-        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+        return textResult(lines.join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -731,9 +707,9 @@ export function registerProjectManagementTools(server: McpServer): void {
           lines.push(``, `✅ All keys exist on the server.`);
         }
 
-        return { content: [{ type: "text" as const, text: lines.join("\n") }] };
+        return textResult(lines.join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -764,9 +740,7 @@ export function registerProjectManagementTools(server: McpServer): void {
         const localeCodes = project.locales.map((l) => l.code);
 
         if (localeCodes.length === 0) {
-          return {
-            content: [{ type: "text" as const, text: `Project "${projectSlug}" has no locales configured.` }],
-          };
+          return textResult(`Project "${projectSlug}" has no locales configured.`);
         }
 
         // Fetch all entries
@@ -785,14 +759,7 @@ export function registerProjectManagementTools(server: McpServer): void {
         }
 
         if (allEntries.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Namespace ${projectSlug}/${namespace} [${env}] is empty. No keys to analyze.`,
-              },
-            ],
-          };
+          return textResult(`Namespace ${projectSlug}/${namespace} [${env}] is empty. No keys to analyze.`);
         }
 
         const totalKeys = allEntries.length;
@@ -838,23 +805,10 @@ export function registerProjectManagementTools(server: McpServer): void {
           lines.push(``, `All locales are fully covered.`);
         }
 
-        return {
-          content: [{ type: "text" as const, text: lines.join("\n") }],
-        };
+        return textResult(lines.join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
-}
-
-function errorContent(error: unknown): { content: { type: "text"; text: string }[] } {
-  if (error instanceof ApiError) {
-    return {
-      content: [{ type: "text" as const, text: `Error ${error.status}: ${error.message}` }],
-    };
-  }
-  return {
-    content: [{ type: "text" as const, text: `Unexpected error: ${String(error)}` }],
-  };
 }

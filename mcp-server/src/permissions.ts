@@ -67,6 +67,12 @@ export const TOOL_REGISTRY = {
   get_namespace_coverage: { env: "both", access: "read" },
   compare_local_vs_server: { env: "both", access: "read" },
   validate_keys: { env: "both", access: "read" },
+  // ── AI tools ────────────────────────────────────────────────────────────────
+  ai_translate: { env: "both", access: "read" },
+  ai_quality_check: { env: "both", access: "read" },
+  check_entry_quality: { env: "both", access: "write" },
+  // ── Sandbox key management ──────────────────────────────────────────────────
+  rename_key: { env: "sandbox", access: "write" },
 } as const satisfies Record<string, ToolMeta>;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
