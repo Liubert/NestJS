@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { apiGet, ApiError } from "../api-client.js";
+import { apiGet } from "../api-client.js";
+import { errorResult, textResult } from "../utils.js";
 
 type DiffStatus = "added" | "changed" | "deleted";
 
@@ -48,14 +49,7 @@ export function registerDiffTools(server: McpServer): void {
         const summary = `Diff for ${projectSlug}: ${diff.total} total changes — ${diff.added} added, ${diff.changed} changed, ${diff.deleted} deleted`;
 
         if (entries.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `${summary}\n\nNo entries match the current filters.`,
-              },
-            ],
-          };
+          return textResult(`${summary}\n\nNo entries match the current filters.`);
         }
 
         const grouped = groupByNamespace(entries);
@@ -69,16 +63,9 @@ export function registerDiffTools(server: McpServer): void {
             ? `\nFilters: ${[namespace && `namespace=${namespace}`, locale && `locale=${locale}`, statusFilter !== "all" && `status=${statusFilter}`].filter(Boolean).join(", ")}`
             : "";
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${summary}${filterNote}\n\n${sections.join("\n\n")}`,
-            },
-          ],
-        };
+        return textResult(`${summary}${filterNote}\n\n${sections.join("\n\n")}`);
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -166,26 +153,12 @@ export function registerDiffTools(server: McpServer): void {
         const header = `Validation for ${projectSlug}${namespace ? `/${namespace}` : ""} (${diff.total} pending changes)`;
 
         if (issues.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `${header}\n\nNo issues found. All pending translations look complete.`,
-              },
-            ],
-          };
+          return textResult(`${header}\n\nNo issues found. All pending translations look complete.`);
         }
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${header}\n\nFound ${issues.length} issue(s):\n\n${issues.join("\n\n")}`,
-            },
-          ],
-        };
+        return textResult(`${header}\n\nFound ${issues.length} issue(s):\n\n${issues.join("\n\n")}`);
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -213,13 +186,3 @@ function formatDiffEntry(e: DiffEntry): string {
   return `  ${label}\n    before: "${e.productionValue}"\n    after:  "${e.sandboxValue}"`;
 }
 
-function errorContent(error: unknown): { content: { type: "text"; text: string }[] } {
-  if (error instanceof ApiError) {
-    return {
-      content: [{ type: "text" as const, text: `Error ${error.status}: ${error.message}` }],
-    };
-  }
-  return {
-    content: [{ type: "text" as const, text: `Unexpected error: ${String(error)}` }],
-  };
-}

@@ -16,6 +16,9 @@ The following actions are **irreversible or high-impact**. Never call them unles
 | `push_changes_to_production` | Overwrites production data |
 | `delete_translation` | Permanently removes a key and all its values |
 | `bulk_import` with overwrite | Can silently overwrite existing translations |
+| `check_entry_quality` | Writes quality scores to DB — may overwrite manual "expected" overrides |
+
+AI read-like operations (`ai_translate`, `ai_quality_check`) are safe — they generate data but do not mutate anything.
 
 **Investigating a problem ≠ permission to fix it.** If the user asks "why does X show Y", that is a diagnostic question — answer it, do not take action. Only act when the user says to.
 
@@ -24,6 +27,8 @@ The following actions are **irreversible or high-impact**. Never call them unles
 ## System overview
 
 This MCP server wraps the Localization backend API. It lets agents manage translation keys through a **sandbox/production** workflow. All writes go to sandbox. Production is read-only. Nothing reaches production until a human promotes the sandbox via the Admin UI.
+
+**Capabilities:** project/namespace/locale management, translation CRUD, sandbox/production diff, AI translation (Gemini), AI quality checks (stateless and persistent), key renaming, batch import with context.
 
 **Backend URL (local):** `http://localhost:8080`
 **Admin UI (local):** `http://localhost:3010`
@@ -446,6 +451,105 @@ Read-only preview of what would happen if sandbox were promoted to production ri
 
 ---
 
+### `ai_translate`
+Translate English text to all project locales using AI (Gemini). Does not persist results — use `set_translation` or `bulk_import` to save.
+
+**Params:**
+- `projectSlug` (required) — project slug for usage tracking
+- `text` (required) — English text to translate
+
+```
+ai_translate({ projectSlug: "travis", text: "Save changes" })
+```
+
+**Returns:** translations for each configured locale. Use the output with `set_translation` or `bulk_import`.
+
+---
+
+### `ai_quality_check`
+Stateless AI quality check. Compares source English text against a translation for a specific locale. Does NOT persist results.
+
+**Params:**
+- `projectSlug` (required) — project slug for usage tracking
+- `source` (required) — source English text
+- `translation` (required) — translation to evaluate
+- `locale` (required) — target locale code (e.g. `nb-NO`, `uk`)
+- `mode` (optional, default `translation_quality`) — `translation_quality` compares to source, `language_quality` evaluates standalone
+
+```
+ai_quality_check({ projectSlug: "travis", source: "Save", translation: "Lagre", locale: "nb-NO" })
+```
+
+**Returns:** score (1-100), level (green/yellow/red), comment.
+
+---
+
+### `check_entry_quality`
+Run AI quality check on all locales of a specific key and **persist** results to the database. Results appear in Admin UI.
+
+**Params:**
+- `projectSlug` (required)
+- `namespace` (required)
+- `key` (required) — translation key to check
+
+```
+check_entry_quality({ projectSlug: "travis", namespace: "backoffice-translations", key: "button.save" })
+```
+
+**Returns:** per-locale score, level, comment. Results saved to DB.
+
+---
+
+### `rename_key`
+Rename a translation key in the sandbox. Preserves all translation values — only the key name changes.
+
+**Params:**
+- `projectSlug` (required)
+- `namespace` (required)
+- `oldKey` (required) — current key name
+- `newKey` (required) — new key name (must match `/^[a-zA-Z0-9._-]+$/`)
+
+```
+rename_key({ projectSlug: "travis", namespace: "backoffice-translations", oldKey: "btn.save", newKey: "button.save" })
+```
+
+The new key must not already exist. This is a sandbox operation reflected in diffs.
+
+---
+
+### Context field
+
+`set_translation` and `bulk_import` support an optional `context` parameter (max 200 chars) describing where/how a key is used. This helps translators and AI produce better translations.
+
+**set_translation:**
+```
+set_translation({
+  projectSlug: "travis",
+  namespace: "backoffice-translations",
+  key: "button.save",
+  values: { "en": "Save" },
+  context: "Save button in the expense form footer"
+})
+```
+
+**bulk_import** accepts a `contexts` map:
+```
+bulk_import({
+  projectSlug: "travis",
+  namespace: "expenses",
+  translations: { "en": { "button.save": "Save" } },
+  contexts: { "button.save": "Save button in expense form footer" }
+})
+```
+
+---
+
+### Server-side `missingLocale` filtering
+
+`list_translations` now passes `missingLocale` as a server-side query parameter instead of fetching all pages and filtering client-side. This is faster and supports proper pagination.
+
+---
+
 ## Module migration workflow
 
 Use this when moving a frontend module's local translation files to the server for the first time.
@@ -649,7 +753,11 @@ Translation keys are **decoupled from code deployments**. They are fetched at ru
 | `create_namespace` | ✅ | |
 | `create_locale` | ✅ | Must use BCP 47 codes |
 | `export_namespace` | ✅ | Auto-paginates |
-| `bulk_import` | ✅ | PATCH→POST upsert; locale validation |
+| `bulk_import` | ✅ | PATCH→POST upsert; locale validation; batch endpoint support; contexts |
+| `ai_translate` | ✅ | Stateless — does not persist |
+| `ai_quality_check` | ✅ | Stateless — does not persist |
+| `check_entry_quality` | ✅ | Persists results to DB |
+| `rename_key` | ✅ | Sandbox only |
 
 ---
 
@@ -666,5 +774,5 @@ Translation keys are **decoupled from code deployments**. They are fetched at ru
 | Sandbox data not testable without promoting | Fixed: `?env=sandbox` on public endpoint |
 | **API gap: no locale alias information** | **Open** — API returns canonical codes only (e.g. `nb-NO`), no information about aliases (e.g. `no`, `nb`). Agent cannot resolve source-to-server locale mapping without external context. Report as blocker if ambiguous. |
 | **API gap: no `isDefault` in locales list** | Fixed 2026-03-28 — locales now return `{ code, isDefault }` |
-| MCP has no `rename_key` / `bulk_delete` | By design — not implemented |
+| MCP has no `bulk_delete` | By design — not implemented |
 | Production push via MCP | By design — manual only via Admin UI |

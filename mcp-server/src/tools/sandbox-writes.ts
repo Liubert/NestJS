@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "../api-client.js";
 import { logWrite } from "../logger.js";
+import { errorResult, textResult, ToolResult } from "../utils.js";
 
 interface EntryRow {
   key: string;
@@ -98,8 +99,13 @@ export function registerSandboxWriteTools(server: McpServer): void {
           "Locale-to-value map. Pass only the locales you want to set — other locales are preserved. " +
           "Locale codes must match the project exactly (e.g. { \"nb-NO\": \"Lagre\" } or { \"nb-NO\": \"Lagre\", \"en\": \"Save\" }).",
         ),
+      context: z
+        .string()
+        .max(200)
+        .optional()
+        .describe("Short context about where/how this key is used (max 200 chars / ~30 words). Helps translators and AI produce better translations."),
     },
-    async ({ projectSlug, namespace, key, values }) => {
+    async ({ projectSlug, namespace, key, values, context }) => {
       // Validate locale codes and check sandbox state in parallel.
       const [{ unknown: unknownLocales }, sandboxWarning] = await Promise.all([
         validateLocales(projectSlug, Object.keys(values)),
@@ -107,55 +113,51 @@ export function registerSandboxWriteTools(server: McpServer): void {
       ]);
 
       if (unknownLocales.length > 0) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `❌ Invalid locale codes — call get_project_details to get the exact codes for this project.`,
-                ``,
-                `Unknown codes: ${unknownLocales.map((l) => `"${l}"`).join(", ")}`,
-                ``,
-                `Do not guess or remap locale codes. Use only what get_project_details returns.`,
-              ].join("\n"),
-            },
-          ],
-        };
+        return textResult([
+          `Invalid locale codes — call get_project_details to get the exact codes for this project.`,
+          ``,
+          `Unknown codes: ${unknownLocales.map((l) => `"${l}"`).join(", ")}`,
+          ``,
+          `Do not guess or remap locale codes. Use only what get_project_details returns.`,
+        ].join("\n"));
       }
 
       const basePath = `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries`;
 
-      const withWarning = (result: { content: { type: "text"; text: string }[] }) => {
+      const withWarning = (result: ToolResult): ToolResult => {
         if (sandboxWarning) {
           result.content[0].text = sandboxWarning + "\n\n" + result.content[0].text;
         }
         return result;
       };
 
+      const patchBody = { values, ...(context !== undefined ? { context } : {}) };
+      const postBody = { key, values, ...(context !== undefined ? { context } : {}) };
+
       try {
-        const updated = await apiPatch<EntryRow>(`${basePath}/${encodeURIComponent(key)}`, { values });
+        const updated = await apiPatch<EntryRow>(`${basePath}/${encodeURIComponent(key)}`, patchBody);
         logWrite("set_translation", { projectSlug, namespace, key, action: "updated" }, updated);
         return withWarning(successContent("Updated", projectSlug, namespace, key, updated.values));
       } catch (updateError) {
         if (!(updateError instanceof ApiError) || updateError.status !== 404) {
-          return errorContent(updateError);
+          return errorResult(updateError);
         }
 
         try {
-          const created = await apiPost<EntryRow>(basePath, { key, values });
+          const created = await apiPost<EntryRow>(basePath, postBody);
           logWrite("set_translation", { projectSlug, namespace, key, action: "created" }, created);
           return withWarning(successContent("Created", projectSlug, namespace, key, created.values));
         } catch (createError) {
           if (createError instanceof ApiError && createError.status === 409) {
             try {
-              const retried = await apiPatch<EntryRow>(`${basePath}/${encodeURIComponent(key)}`, { values });
+              const retried = await apiPatch<EntryRow>(`${basePath}/${encodeURIComponent(key)}`, patchBody);
               logWrite("set_translation", { projectSlug, namespace, key, action: "updated" }, retried);
               return withWarning(successContent("Updated", projectSlug, namespace, key, retried.values));
             } catch (retryError) {
-              return errorContent(retryError);
+              return errorResult(retryError);
             }
           }
-          return errorContent(createError);
+          return errorResult(createError);
         }
       }
     },
@@ -200,36 +202,22 @@ export function registerSandboxWriteTools(server: McpServer): void {
         dryRun ? Promise.resolve(null) : getSandboxWarning(projectSlug),
       ]);
       if (unknownLocales.length > 0) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `❌ Invalid locale code "${locale}" — call get_project_details to get the exact codes for this project.`,
-                `Do not guess or remap locale codes.`,
-              ].join("\n"),
-            },
-          ],
-        };
+        return textResult([
+          `Invalid locale code "${locale}" — call get_project_details to get the exact codes for this project.`,
+          `Do not guess or remap locale codes.`,
+        ].join("\n"));
       }
 
       if (dryRun) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `DRY RUN — nothing written`,
-                ``,
-                `Would write to sandbox: ${projectSlug}/${namespace} [locale: ${locale}]`,
-                `  Keys: ${entries.length}`,
-                ``,
-                entries.slice(0, 10).map((e) => `  ${e.key}: "${e.value}"`).join("\n"),
-                entries.length > 10 ? `  ... and ${entries.length - 10} more` : "",
-              ].filter(Boolean).join("\n"),
-            },
-          ],
-        };
+        return textResult([
+          `DRY RUN — nothing written`,
+          ``,
+          `Would write to sandbox: ${projectSlug}/${namespace} [locale: ${locale}]`,
+          `  Keys: ${entries.length}`,
+          ``,
+          entries.slice(0, 10).map((e) => `  ${e.key}: "${e.value}"`).join("\n"),
+          entries.length > 10 ? `  ... and ${entries.length - 10} more` : "",
+        ].filter(Boolean).join("\n"));
       }
 
       const basePath = `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries`;
@@ -239,25 +227,51 @@ export function registerSandboxWriteTools(server: McpServer): void {
       let failed = 0;
       const errors: string[] = [];
 
-      for (const { key, value } of entries) {
-        try {
+      // Try batch endpoint first
+      const batchPayload = {
+        entries: entries.map(({ key, value }) => ({
+          key,
+          values: { [locale]: value },
+        })),
+      };
+
+      let usedBatch = false;
+      try {
+        const batchResult = await apiPost<{ created: number; updated: number }>(
+          `${basePath}/batch`,
+          batchPayload,
+        );
+        created = batchResult.created;
+        updated = batchResult.updated;
+        usedBatch = true;
+      } catch (batchErr) {
+        // Fallback to individual requests if batch endpoint not available (404)
+        if (!(batchErr instanceof ApiError) || batchErr.status !== 404) {
+          // Non-404 error from batch — still try individual fallback
+        }
+      }
+
+      if (!usedBatch) {
+        for (const { key, value } of entries) {
           try {
-            await apiPatch<unknown>(`${basePath}/${encodeURIComponent(key)}`, { values: { [locale]: value } });
-            updated++;
-          } catch (patchErr) {
-            if (patchErr instanceof ApiError && patchErr.status === 404) {
-              await apiPost<unknown>(basePath, { key, values: { [locale]: value } });
-              created++;
-            } else {
-              throw patchErr;
+            try {
+              await apiPatch<unknown>(`${basePath}/${encodeURIComponent(key)}`, { values: { [locale]: value } });
+              updated++;
+            } catch (patchErr) {
+              if (patchErr instanceof ApiError && patchErr.status === 404) {
+                await apiPost<unknown>(basePath, { key, values: { [locale]: value } });
+                created++;
+              } else {
+                throw patchErr;
+              }
             }
-          }
-        } catch (err) {
-          failed++;
-          errors.push(`  ${key}: ${err instanceof ApiError ? `${err.status} ${err.message}` : String(err)}`);
-          if (failed > 5) {
-            errors.push(`  ... stopping early after ${failed} errors`);
-            break;
+          } catch (err) {
+            failed++;
+            errors.push(`  ${key}: ${err instanceof ApiError ? `${err.status} ${err.message}` : String(err)}`);
+            if (failed > 5) {
+              errors.push(`  ... stopping early after ${failed} errors`);
+              break;
+            }
           }
         }
       }
@@ -285,9 +299,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
         ? sandboxWarning + "\n\n" + lines.join("\n")
         : lines.join("\n");
 
-      return {
-        content: [{ type: "text" as const, text }],
-      };
+      return textResult(text);
     },
   );
 
@@ -308,21 +320,49 @@ export function registerSandboxWriteTools(server: McpServer): void {
 
         logWrite("delete_translation", { projectSlug, namespace, key }, { deleted: true });
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `Deleted sandbox key: ${projectSlug}/${namespace}/${key}`,
-                ``,
-                `Marked for deletion in sandbox. Removed from production only after promote via Admin UI.`,
-                `Use get_translation_diff to review the pending deletion.`,
-              ].join("\n"),
-            },
-          ],
-        };
+        return textResult([
+          `Deleted sandbox key: ${projectSlug}/${namespace}/${key}`,
+          ``,
+          `Marked for deletion in sandbox. Removed from production only after promote via Admin UI.`,
+          `Use get_translation_diff to review the pending deletion.`,
+        ].join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── rename_key ──────────────────────────────────────────────────────────────
+  server.tool(
+    "rename_key",
+    [
+      "Rename a translation key in a namespace.",
+      "Preserves all translation values and sandbox values — only the key name changes.",
+      "The new key name must not already exist in the namespace.",
+      "This is a sandbox operation — the rename takes effect in sandbox and is reflected in diffs.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+      namespace: z.string().describe("Namespace slug"),
+      oldKey: z.string().describe("Current key name to rename"),
+      newKey: z
+        .string()
+        .regex(/^[a-zA-Z0-9._-]+$/, "Key must contain only letters, digits, dots, underscores or dashes")
+        .describe("New key name"),
+    },
+    async ({ projectSlug, namespace, oldKey, newKey }) => {
+      try {
+        await apiPost<void>(
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/${encodeURIComponent(oldKey)}/rename`,
+          { newKey },
+        );
+        logWrite("rename_key", { projectSlug, namespace, oldKey, newKey }, { renamed: true });
+        return textResult(
+          `Renamed key: ${oldKey} → ${newKey} in ${projectSlug}/${namespace}\n\n` +
+          `All translation values preserved. Use get_translation_diff to review.`,
+        );
+      } catch (error) {
+        return errorResult(error);
       }
     },
   );
@@ -334,35 +374,17 @@ function successContent(
   namespace: string,
   key: string,
   values: Record<string, string>,
-): { content: { type: "text"; text: string }[] } {
+): ToolResult {
   const valueLines = Object.entries(values)
     .map(([locale, val]) => `  [${locale}] ${val || "(empty)"}`)
     .join("\n");
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: [
-          `${action} sandbox key: ${projectSlug}/${namespace}/${key}`,
-          ``,
-          `Values saved in sandbox:`,
-          valueLines || "  (no values set)",
-          ``,
-          `Production is unchanged. Use preview_push_to_production to review before promoting.`,
-        ].join("\n"),
-      },
-    ],
-  };
-}
-
-function errorContent(error: unknown): { content: { type: "text"; text: string }[] } {
-  if (error instanceof ApiError) {
-    return {
-      content: [{ type: "text" as const, text: `Error ${error.status}: ${error.message}` }],
-    };
-  }
-  return {
-    content: [{ type: "text" as const, text: `Unexpected error: ${String(error)}` }],
-  };
+  return textResult([
+    `${action} sandbox key: ${projectSlug}/${namespace}/${key}`,
+    ``,
+    `Values saved in sandbox:`,
+    valueLines || "  (no values set)",
+    ``,
+    `Production is unchanged. Use preview_push_to_production to review before promoting.`,
+  ].join("\n"));
 }

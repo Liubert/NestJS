@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AiConfigService, interpolate } from './ai-config.service.js';
+import { AiUsageService } from './ai-usage.service.js';
 import { scoreToLevel } from './quality-constants.js';
 
 const TARGET_LOCALES: Record<string, string> = {
@@ -20,9 +21,13 @@ export class AiTranslateService {
   constructor(
     private readonly config: ConfigService,
     private readonly aiConfig: AiConfigService,
+    private readonly aiUsageService: AiUsageService,
   ) {}
 
-  async translate(text: string): Promise<Record<string, string>> {
+  async translate(
+    text: string,
+    projectId?: string,
+  ): Promise<Record<string, string>> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -54,13 +59,31 @@ export class AiTranslateService {
       .replace(/\s*```$/, '')
       .trim();
 
+    let parsed: Record<string, string>;
     try {
-      return JSON.parse(cleaned) as Record<string, string>;
+      parsed = JSON.parse(cleaned) as Record<string, string>;
     } catch {
       throw new BadGatewayException(
         `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,
       );
     }
+
+    if (projectId) {
+      const inputTokens = Math.ceil(prompt.length / 4);
+      const outputTokens = Math.ceil(raw.length / 4);
+      await this.aiUsageService
+        .logUsage({
+          projectId,
+          operation: 'translate',
+          inputTokens,
+          outputTokens,
+          model: aiCfg.model,
+          metadata: { textLength: text.length, localeCount: Object.keys(parsed).length },
+        })
+        .catch(() => {}); // Non-blocking: don't fail the translation if logging fails
+    }
+
+    return parsed;
   }
 
   /**
@@ -78,6 +101,7 @@ export class AiTranslateService {
     }>,
     chunkSize = 5,
     chunkTimeoutMs = 90_000,
+    projectId?: string,
   ): Promise<
     Record<
       string,
@@ -151,6 +175,25 @@ export class AiTranslateService {
       }
     }
 
+    if (projectId) {
+      const totalLocales = items.reduce(
+        (sum, item) => sum + Object.keys(item.translations).length,
+        0,
+      );
+      const inputTokens = Math.ceil(JSON.stringify(items).length / 4);
+      const outputTokens = Math.ceil(JSON.stringify(results).length / 4);
+      await this.aiUsageService
+        .logUsage({
+          projectId,
+          operation: 'bulk_quality_check',
+          inputTokens,
+          outputTokens,
+          model: (await this.aiConfig.getConfig()).model,
+          metadata: { keyCount: items.length, localeCount: totalLocales },
+        })
+        .catch(() => {});
+    }
+
     return results;
   }
 
@@ -190,6 +233,7 @@ ${JSON.stringify(items, null, 2)}`;
     translation: string,
     locale: string,
     mode: 'translation_quality' | 'language_quality' = 'translation_quality',
+    projectId?: string,
   ): Promise<{
     score: number;
     level: 'green' | 'yellow' | 'red';
@@ -231,7 +275,24 @@ ${JSON.stringify(items, null, 2)}`;
       const parsed = JSON.parse(cleaned) as { score: number; comment: string };
       const score = Math.min(100, Math.max(1, Math.round(parsed.score)));
       const level = scoreToLevel(score);
-      return { score, level, comment: parsed.comment ?? '' };
+      const result = { score, level, comment: parsed.comment ?? '' };
+
+      if (projectId) {
+        const inputTokens = Math.ceil(prompt.length / 4);
+        const outputTokens = Math.ceil(raw.length / 4);
+        await this.aiUsageService
+          .logUsage({
+            projectId,
+            operation: 'quality_check',
+            inputTokens,
+            outputTokens,
+            model: aiCfg.model,
+            metadata: { locale, mode },
+          })
+          .catch(() => {});
+      }
+
+      return result;
     } catch {
       throw new BadGatewayException(
         `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,

@@ -40,4 +40,12 @@ export class ListEntriesQueryDto extends PaginationDto {
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder: 'asc' | 'desc' = 'asc';
+
+  @ApiPropertyOptional({
+    description: 'Filter to keys missing a value for the specified locale',
+    example: 'nb-NO',
+  })
+  @IsOptional()
+  @IsString()
+  missingLocale?: string;
 }

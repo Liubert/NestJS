@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { apiGet, ApiError } from "../api-client.js";
+import { apiGet } from "../api-client.js";
+import { errorResult, textResult } from "../utils.js";
 
 interface TranslationEntry {
   key: string;
@@ -46,87 +47,25 @@ export function registerTranslationTools(server: McpServer): void {
     },
     async ({ projectSlug, namespace, env, page, limit, search, searchLocale, missingLocale, sortBy, sortOrder }) => {
       try {
-        // When filtering by missingLocale we must fetch all pages to filter correctly,
-        // then re-paginate manually. Otherwise we fetch a single page and return it directly.
         const basePath =
           env === "sandbox"
             ? `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries`
             : `/translations/projects/${projectSlug}/namespaces/${namespace}/entries`;
 
-        if (missingLocale) {
-          // Fetch all pages so we can filter by missing locale correctly.
-          const allEntries: TranslationEntry[] = [];
-          let currentPage = 1;
-          while (true) {
-            const params: Record<string, unknown> = { page: currentPage, limit: 100, sortBy, sortOrder };
-            if (search) params.search = search;
-            const data = await apiGet<EntriesResponse>(basePath, params);
-            allEntries.push(...data.data);
-            if (currentPage >= data.meta.totalPages) break;
-            currentPage++;
-          }
-
-          const missing = allEntries.filter(
-            (e) => !e.values[missingLocale] || e.values[missingLocale].trim() === "",
-          );
-
-          if (missing.length === 0) {
-            return {
-              content: [
-                {
-                  type: "text" as const,
-                  text:
-                    `No missing entries for locale "${missingLocale}" in ${projectSlug}/${namespace} [${env}]. ` +
-                    `All ${allEntries.length} keys have a value for this locale.`,
-                },
-              ],
-            };
-          }
-
-          const rows = missing.map((entry) => {
-            const otherValues = Object.entries(entry.values)
-              .filter(([l]) => l !== missingLocale)
-              .slice(0, 3)
-              .map(([locale, value]) => `  [${locale}] ${value || "(empty)"}`)
-              .join("\n");
-            return `${entry.key}:${otherValues ? `\n${otherValues}` : ""}`;
-          });
-
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: [
-                  `Keys missing "${missingLocale}" in ${projectSlug}/${namespace} [${env}]: ${missing.length} of ${allEntries.length} total`,
-                  ``,
-                  `Use bulk_set_locale or set_translation to fill these values.`,
-                  ``,
-                  rows.join("\n\n"),
-                ].join("\n"),
-              },
-            ],
-          };
-        }
-
-        // Normal paginated fetch (no missingLocale filter).
         const params: Record<string, unknown> = { page, limit, sortBy, sortOrder };
         if (search) params.search = search;
         if (searchLocale) params.searchLocale = searchLocale;
+        if (missingLocale) params.missingLocale = missingLocale;
 
         const data = await apiGet<EntriesResponse>(basePath, params);
 
         if (data.data.length === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text:
-                  `No entries found in ${projectSlug}/${namespace} [${env}]` +
-                  (search ? ` matching "${search}"` : "") +
-                  `. Total: 0.`,
-              },
-            ],
-          };
+          const context = missingLocale
+            ? `No missing entries for locale "${missingLocale}" in ${projectSlug}/${namespace} [${env}]. All keys have a value for this locale.`
+            : `No entries found in ${projectSlug}/${namespace} [${env}]` +
+              (search ? ` matching "${search}"` : "") +
+              `. Total: 0.`;
+          return textResult(context);
         }
 
         const rows = data.data.map((entry) => {
@@ -136,32 +75,15 @@ export function registerTranslationTools(server: McpServer): void {
           return `${entry.key}:\n${valuesStr}`;
         });
 
-        const header =
-          `Entries in ${projectSlug}/${namespace} [${env}] — page ${data.meta.page}, ` +
-          `showing ${data.data.length} of ${data.meta.total}${search ? ` (search: "${search}")` : ""}`;
+        const header = missingLocale
+          ? `Keys missing "${missingLocale}" in ${projectSlug}/${namespace} [${env}]: showing ${data.data.length} of ${data.meta.total}\n\nUse bulk_set_locale or set_translation to fill these values.`
+          : `Entries in ${projectSlug}/${namespace} [${env}] — page ${data.meta.page}, ` +
+            `showing ${data.data.length} of ${data.meta.total}${search ? ` (search: "${search}")` : ""}`;
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `${header}\n\n${rows.join("\n\n")}`,
-            },
-          ],
-        };
+        return textResult(`${header}\n\n${rows.join("\n\n")}`);
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
-}
-
-function errorContent(error: unknown): { content: { type: "text"; text: string }[] } {
-  if (error instanceof ApiError) {
-    return {
-      content: [{ type: "text" as const, text: `Error ${error.status}: ${error.message}` }],
-    };
-  }
-  return {
-    content: [{ type: "text" as const, text: `Unexpected error: ${String(error)}` }],
-  };
 }

@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { apiGet, ApiError } from "../api-client.js";
+import { apiGet } from "../api-client.js";
 import { fetchPromptContent } from "../prompt-loader.js";
+import { errorResult, textResult } from "../utils.js";
 
 interface ProjectListItem {
   id: string;
@@ -54,16 +55,9 @@ export function registerEnvironmentTools(server: McpServer): void {
           return `• ${p.slug}${p.name ? ` (${p.name})` : ""} — sandbox: ${sandboxState}`;
         });
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Found ${data.meta.total} project(s):\n\n${rows.join("\n")}`,
-            },
-          ],
-        };
+        return textResult(`Found ${data.meta.total} project(s):\n\n${rows.join("\n")}`);
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -112,16 +106,9 @@ export function registerEnvironmentTools(server: McpServer): void {
           `Sandbox: ${sandboxLine}`,
         ];
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: lines.join("\n"),
-            },
-          ],
-        };
+        return textResult(lines.join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -214,11 +201,9 @@ export function registerEnvironmentTools(server: McpServer): void {
           }
         }
 
-        return {
-          content: [{ type: "text" as const, text: lines.join("\n") }],
-        };
+        return textResult(lines.join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -307,23 +292,3 @@ Invalid: \`button/save\`, \`button save\`, \`button:save\`
 
 **There is no MCP tool that writes to production.** Production push is manual via Admin UI only.`;
 
-function errorContent(error: unknown): { content: { type: "text"; text: string }[] } {
-  if (error instanceof ApiError) {
-    return {
-      content: [
-        {
-          type: "text" as const,
-          text: `Error ${error.status}: ${error.message}`,
-        },
-      ],
-    };
-  }
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: `Unexpected error: ${String(error)}`,
-      },
-    ],
-  };
-}

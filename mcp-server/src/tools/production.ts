@@ -1,7 +1,8 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
-import { apiGet, apiPost, ApiError } from "../api-client.js";
+import { apiGet, apiPost } from "../api-client.js";
 import { logWrite } from "../logger.js";
+import { errorResult, textResult } from "../utils.js";
 
 type DiffStatus = "added" | "changed" | "deleted";
 
@@ -41,28 +42,14 @@ export function registerProductionTools(server: McpServer): void {
         );
 
         if (!result.initialized) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Sandbox for "${projectSlug}" is already initialized. Use force: true to re-initialize.`,
-              },
-            ],
-          };
+          return textResult(`Sandbox for "${projectSlug}" is already initialized. Use force: true to re-initialize.`);
         }
 
         logWrite("init_sandbox", { projectSlug, force }, result);
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Sandbox initialized for "${projectSlug}". Copied ${result.copiedRows} translation values from production.`,
-            },
-          ],
-        };
+        return textResult(`Sandbox initialized for "${projectSlug}". Copied ${result.copiedRows} translation values from production.`);
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -79,19 +66,12 @@ export function registerProductionTools(server: McpServer): void {
     },
     async ({ projectSlug, confirmed }) => {
       if (!confirmed) {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: [
-                `This will DISCARD all sandbox changes for "${projectSlug}" and re-copy from production.`,
-                `All pending edits in sandbox will be lost permanently.`,
-                ``,
-                `To execute, call this tool again with confirmed: true.`,
-              ].join("\n"),
-            },
-          ],
-        };
+        return textResult([
+          `This will DISCARD all sandbox changes for "${projectSlug}" and re-copy from production.`,
+          `All pending edits in sandbox will be lost permanently.`,
+          ``,
+          `To execute, call this tool again with confirmed: true.`,
+        ].join("\n"));
       }
 
       try {
@@ -101,16 +81,9 @@ export function registerProductionTools(server: McpServer): void {
 
         logWrite("reset_sandbox", { projectSlug }, result);
 
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Sandbox reset for "${projectSlug}". Re-copied ${result.copiedRows} values from current production.`,
-            },
-          ],
-        };
+        return textResult(`Sandbox reset for "${projectSlug}". Re-copied ${result.copiedRows} values from current production.`);
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -128,14 +101,7 @@ export function registerProductionTools(server: McpServer): void {
         );
 
         if (diff.total === 0) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `No pending changes in sandbox for "${projectSlug}". Nothing to push to production.`,
-              },
-            ],
-          };
+          return textResult(`No pending changes in sandbox for "${projectSlug}". Nothing to push to production.`);
         }
 
         const grouped = groupByNamespace(diff.entries);
@@ -157,11 +123,9 @@ export function registerProductionTools(server: McpServer): void {
           ...sections,
         ];
 
-        return {
-          content: [{ type: "text" as const, text: summary.join("\n") }],
-        };
+        return textResult(summary.join("\n"));
       } catch (error) {
-        return errorContent(error);
+        return errorResult(error);
       }
     },
   );
@@ -184,13 +148,3 @@ function formatDiffEntry(e: DiffEntry): string {
   return `${label}\n    before: "${e.productionValue}"\n    after:  "${e.sandboxValue}"`;
 }
 
-function errorContent(error: unknown): { content: { type: "text"; text: string }[] } {
-  if (error instanceof ApiError) {
-    return {
-      content: [{ type: "text" as const, text: `Error ${error.status}: ${error.message}` }],
-    };
-  }
-  return {
-    content: [{ type: "text" as const, text: `Unexpected error: ${String(error)}` }],
-  };
-}

@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsObject } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateEntryDto {
   @ApiProperty({
@@ -8,4 +8,13 @@ export class UpdateEntryDto {
   })
   @IsObject()
   values!: Record<string, string>;
+
+  @ApiPropertyOptional({
+    example: 'Button label on the settings page',
+    description: 'Short context describing where/how the key is used (max 200 chars)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  context?: string;
 }

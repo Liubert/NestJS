@@ -52,6 +52,7 @@ export interface QualityInfo {
 export interface EntryRow {
   key: string;
   createdAt: Date;
+  context: string | null;
   values: Record<string, string>;
   quality: Record<string, QualityInfo | null>;
 }
@@ -145,6 +146,23 @@ export class TranslationsService {
     const project = await this.projectRepo.findOne({ where: { slug } });
     if (!project) throw new NotFoundException(`Project "${slug}" not found`);
     return project;
+  }
+
+  /** Public accessor for project by slug (used by controllers). */
+  async getProjectBySlug(slug: string): Promise<ProjectEntity> {
+    return this.requireProject(slug);
+  }
+
+  /** Public accessor for namespace by projectId + slug (used by controllers). */
+  async requireNamespace(
+    projectId: string,
+    nsSlug: string,
+  ): Promise<NamespaceEntity> {
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    return ns;
   }
 
   // ─── Projects ─────────────────────────────────────────────────────────────
@@ -439,6 +457,7 @@ export class TranslationsService {
       sortBy,
       sortOrder,
       qualityLevel,
+      missingLocale,
     } = query;
 
     const project = await this.requireProject(projectSlug);
@@ -496,6 +515,20 @@ export class TranslationsService {
           { qualityLevel },
         );
       }
+    }
+
+    if (missingLocale) {
+      qb.andWhere(
+        `NOT EXISTS (
+          SELECT 1 FROM translation_values tv_ml
+          JOIN translation_locales tl_ml ON tl_ml.id = tv_ml.locale_id
+          WHERE tv_ml.key_id = tk.id
+            AND tl_ml.code = :missingLocale
+            AND tv_ml.value IS NOT NULL
+            AND tv_ml.value != ''
+        )`,
+        { missingLocale },
+      );
     }
 
     if (sortBy === 'qualityScore') {
@@ -569,6 +602,7 @@ export class TranslationsService {
     const data: EntryRow[] = keys.map((k) => ({
       key: k.key,
       createdAt: k.createdAt,
+      context: k.context ?? null,
       values: valuesByKey.get(k.id) ?? {},
       quality: qualityByKey.get(k.id) ?? {},
     }));
@@ -602,7 +636,11 @@ export class TranslationsService {
     }
 
     const keyEntity = await this.keyRepo.save(
-      this.keyRepo.create({ namespaceId: ns.id, key: dto.key }),
+      this.keyRepo.create({
+        namespaceId: ns.id,
+        key: dto.key,
+        context: dto.context ?? null,
+      }),
     );
 
     const values = await this.upsertValues(
@@ -614,6 +652,7 @@ export class TranslationsService {
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
+      context: keyEntity.context,
       values,
       quality: {},
     };
@@ -640,6 +679,11 @@ export class TranslationsService {
     });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
+    if (dto.context !== undefined) {
+      keyEntity.context = dto.context ?? null;
+      await this.keyRepo.save(keyEntity);
+    }
+
     const values = await this.upsertValues(
       project.id,
       keyEntity.id,
@@ -649,6 +693,7 @@ export class TranslationsService {
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
+      context: keyEntity.context,
       values,
       quality: {},
     };
@@ -1031,6 +1076,7 @@ export class TranslationsService {
             translation,
             locale.code,
             mode,
+            project.id,
           );
           await this.persistQualityResult(keyEntity.id, locale.id, result);
           results[locale.code] = {
