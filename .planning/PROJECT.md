@@ -26,7 +26,7 @@ Translations are reliably stored, served, and editable — teams can use the sys
 ### Active
 
 - [ ] Stable deployment pipeline — deploys pass on first attempt without manual retries
-- [ ] Base test coverage to catch regressions
+- ✓ Base test coverage to catch regressions — Validated in Phase 1: Test Infrastructure
 - [ ] Fix Quality Check skip bug — "skipped" must be a distinct state (score=100, blue indicator)
 - [ ] Endpoint audit — verify every endpoint is connected to MCP or frontend, remove or fix orphans
 - [ ] Clean up unfinished/partially-reverted features — finish or remove completely
@@ -64,7 +64,7 @@ Translations are reliably stored, served, and editable — teams can use the sys
 | Stability before features | Existing bugs and deploy failures block real team adoption | — Pending |
 | Quality Check "skipped" as distinct state | Skip ≠ unchecked; needs its own score (100), color (blue), and status | — Pending |
 | Audit-then-remove for dead code | Don't delete blindly; verify each endpoint's usage first | — Pending |
-| Base test coverage, not full coverage | Catch regressions without over-investing in tests for a small internal tool | — Pending |
+| Base test coverage, not full coverage | Catch regressions without over-investing in tests for a small internal tool | ✓ Phase 1 |
 
 ## Evolution
 
@@ -84,4 +84,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after initialization*
+*Last updated: 2026-04-02 after Phase 1 completion — test infrastructure established*
