@@ -147,10 +147,18 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
     >;
-    let contextInfo: Record<string, { need: 'required' | 'useful' | 'none'; reason: string | null }>;
+    let contextInfo: Record<
+      string,
+      { need: 'required' | 'useful' | 'none'; reason: string | null }
+    >;
+    let allSkippedKeys = new Set<string>();
 
     try {
-      const emptyResult = { results: {}, contextInfo: {} };
+      const emptyResult = {
+        results: {},
+        contextInfo: {},
+        skippedKeys: [] as string[],
+      };
       const [mainResult, defaultResult] = await Promise.all([
         items.length
           ? this.aiTranslateService.bulkCheckQuality(
@@ -177,6 +185,10 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       for (const [key, localeMap] of Object.entries(defaultResult.results)) {
         results[key] = Object.assign({}, results[key] ?? {}, localeMap);
       }
+      allSkippedKeys = new Set([
+        ...mainResult.skippedKeys,
+        ...defaultResult.skippedKeys,
+      ]);
     } catch (e: unknown) {
       this.logger.error(
         `Gemini failed for batch: ${e instanceof Error ? e.message : String(e)}`,
@@ -205,7 +217,8 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       const keyResult = results[keyEntity.key];
       const need = info?.need ?? keyEntity.contextNeed;
       if (need && need !== 'none' && !keyEntity.context && keyResult) {
-        const cap = need === 'required' ? CONTEXT_REQUIRED_CAP : CONTEXT_USEFUL_CAP;
+        const cap =
+          need === 'required' ? CONTEXT_REQUIRED_CAP : CONTEXT_USEFUL_CAP;
         const note =
           need === 'required'
             ? 'Context is required but missing — confidence reduced.'
@@ -226,6 +239,26 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       const keyEntity = keyById.get(keyId);
       const valMap = valuesByKey.get(keyId);
       const keyResult = keyEntity ? results[keyEntity.key] : undefined;
+
+      // Mark skipped keys (chunk timed out — not evaluated by AI)
+      if (keyEntity && allSkippedKeys.has(keyEntity.key)) {
+        if (valMap) {
+          for (const [localeId] of valMap.entries()) {
+            await this.valueRepo.update(
+              { keyId, localeId },
+              {
+                qualityReviewState: 'skipped',
+                qualityScore: 100,
+                qualityLevel: null,
+                qualityComment:
+                  'Quality check skipped — AI timed out on this chunk',
+                qualityCheckedAt: now,
+              },
+            );
+          }
+        }
+        continue;
+      }
 
       if (!keyResult) {
         if (valMap) {

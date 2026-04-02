@@ -48,7 +48,7 @@ export class QualityBackfillService
          FROM translation_values tv
          JOIN translation_keys tk ON tk.id = tv.key_id
          JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-         WHERE tv.quality_review_state IN ('not_checked', 'failed')
+         WHERE tv.quality_review_state IN ('not_checked', 'failed', 'skipped')
            AND tv.value IS NOT NULL
          LIMIT $1`,
         [MAX_KEYS_PER_CYCLE],
@@ -74,7 +74,10 @@ export class QualityBackfillService
           .set({ qualityReviewState: 'queued' })
           .where(
             'key_id IN (:...keyIds) AND quality_review_state IN (:...states)',
-            { keyIds: projectKeyIds, states: ['not_checked', 'failed'] },
+            {
+              keyIds: projectKeyIds,
+              states: ['not_checked', 'failed', 'skipped'],
+            },
           )
           .execute();
 

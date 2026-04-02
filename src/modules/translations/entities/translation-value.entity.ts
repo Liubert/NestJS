@@ -62,7 +62,8 @@ export class TranslationValueEntity {
     | 'processing'
     | 'checked'
     | 'expected'
-    | 'failed';
+    | 'failed'
+    | 'skipped';
 
   @Column({
     name: 'quality_content_hash',

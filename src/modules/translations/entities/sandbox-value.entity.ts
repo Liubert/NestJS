@@ -87,5 +87,6 @@ export class SandboxValueEntity {
     | 'processing'
     | 'checked'
     | 'failed'
-    | 'expected';
+    | 'expected'
+    | 'skipped';
 }

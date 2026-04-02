@@ -185,7 +185,11 @@ export class AiTranslateService {
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
     >;
-    contextInfo: Record<string, { need: 'required' | 'useful' | 'none'; reason: string | null }>;
+    contextInfo: Record<
+      string,
+      { need: 'required' | 'useful' | 'none'; reason: string | null }
+    >;
+    skippedKeys: string[];
   }> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
@@ -205,7 +209,11 @@ export class AiTranslateService {
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
     > = {};
-    const contextInfo: Record<string, { need: 'required' | 'useful' | 'none'; reason: string | null }> = {};
+    const contextInfo: Record<
+      string,
+      { need: 'required' | 'useful' | 'none'; reason: string | null }
+    > = {};
+    const skippedKeys: string[] = [];
 
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
@@ -225,7 +233,10 @@ export class AiTranslateService {
         raw = await Promise.race([geminiCall, timeout]);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg === 'chunk_timeout') continue;
+        if (msg === 'chunk_timeout') {
+          chunk.forEach((item) => skippedKeys.push(item.key));
+          continue;
+        }
         throw new BadGatewayException(`Gemini API error: ${msg}`);
       }
 
@@ -255,7 +266,10 @@ export class AiTranslateService {
           if (need === 'required' || need === 'useful' || need === 'none') {
             contextInfo[key] = {
               need,
-              reason: (typeof keyData.contextReason === 'string' ? keyData.contextReason : null),
+              reason:
+                typeof keyData.contextReason === 'string'
+                  ? keyData.contextReason
+                  : null,
             };
           } else if (typeof keyData.contextRequired === 'boolean') {
             // Backward compat: old format with boolean contextRequired
@@ -319,7 +333,7 @@ export class AiTranslateService {
         .catch(() => {});
     }
 
-    return { results, contextInfo };
+    return { results, contextInfo, skippedKeys };
   }
 
   private buildBulkQualityPrompt(
@@ -436,7 +450,13 @@ ${JSON.stringify(items, null, 2)}`;
         contextNeed !== 'none' && typeof parsed.contextReason === 'string'
           ? parsed.contextReason
           : null;
-      const result = { score, level, comment: parsed.comment ?? '', contextNeed, contextReason };
+      const result = {
+        score,
+        level,
+        comment: parsed.comment ?? '',
+        contextNeed,
+        contextReason,
+      };
 
       if (projectId) {
         const inputTokens = Math.ceil(prompt.length / 4);
