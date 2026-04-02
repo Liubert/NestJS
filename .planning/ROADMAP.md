@@ -68,7 +68,7 @@ Plans:
   3. No partially-reverted features remain — each is either fully implemented or fully removed
 **Plans**: 2 plans
 Plans:
-- [ ] 04-01-PLAN.md — Audit all endpoints and produce route-to-consumer inventory
+- [x] 04-01-PLAN.md — Audit all endpoints and produce route-to-consumer inventory
 - [ ] 04-02-PLAN.md — Remove orphaned endpoints with cascading cleanup
 
 ### Phase 5: UI Polish

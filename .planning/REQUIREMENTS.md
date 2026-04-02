@@ -27,7 +27,7 @@ Requirements for stabilization milestone. Each maps to roadmap phases.
 
 ### Dead Code Cleanup
 
-- [ ] **CLEAN-01**: Every API endpoint mapped to its consumer (MCP module, Admin UI, or public API)
+- [x] **CLEAN-01**: Every API endpoint mapped to its consumer (MCP module, Admin UI, or public API)
 - [ ] **CLEAN-02**: Confirmed orphaned endpoints removed with commit message explaining why
 
 ### UI Polish
@@ -90,7 +90,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BUG-01 | Phase 3 | Complete |
 | BUG-02 | Phase 3 | Complete |
 | BUG-03 | Phase 3 | Complete |
-| CLEAN-01 | Phase 4 | Pending |
+| CLEAN-01 | Phase 4 | Complete |
 | CLEAN-02 | Phase 4 | Pending |
 | UI-01 | Phase 5 | Pending |
 | UI-02 | Phase 5 | Pending |
