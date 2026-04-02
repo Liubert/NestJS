@@ -30,7 +30,7 @@ Translations are reliably stored, served, and editable — teams can use the sys
 - [ ] Fix Quality Check skip bug — "skipped" must be a distinct state (score=100, blue indicator)
 - ✓ Endpoint audit — verify every endpoint is connected to MCP or frontend, remove or fix orphans — Validated in Phase 4: Dead Code Cleanup
 - ✓ Clean up unfinished/partially-reverted features — finish or remove completely — Validated in Phase 4: Dead Code Cleanup
-- [ ] UI polish for translations page — improve readability and UX without new functionality
+- ✓ UI polish for translations page — improve readability and UX without new functionality — Validated in Phase 5: UI Polish
 
 ### Out of Scope
 
@@ -84,4 +84,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after Phase 3 completion — bug fixes (quality 'skipped' state, sandbox context isolation)*
+*Last updated: 2026-04-02 after Phase 5 completion — UI polish (component extraction, quality badges, filter/sort expansion). All 5 milestone phases complete.*
