@@ -154,12 +154,14 @@ export function buildColumns(
       fixed: 'right',
       render: (_: unknown, record: Entry) => (
         <Space size={4}>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => onEdit(record)}
-          />
+          <Tooltip title="Edit translation">
+            <Button
+              type="text"
+              size="small"
+              icon={<EditOutlined />}
+              onClick={() => onEdit(record)}
+            />
+          </Tooltip>
           <Popconfirm
             title={deleteConfirmTitle ?? 'Delete this key?'}
             description={deleteConfirmDescription}
@@ -168,7 +170,9 @@ export function buildColumns(
             okButtonProps={{ danger: true }}
             cancelText="Keep"
           >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+            <Tooltip title="Delete key">
+              <Button type="text" size="small" danger icon={<DeleteOutlined />} />
+            </Tooltip>
           </Popconfirm>
         </Space>
       ),

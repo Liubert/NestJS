@@ -9,13 +9,17 @@ import {
   Tag,
   message,
   Alert,
+  Typography,
 } from 'antd';
 import {
   ThunderboltOutlined,
   SafetyCertificateOutlined,
   CheckCircleOutlined,
   SyncOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
+
+const { Text } = Typography;
 import type { EditModalProps, QualityResult } from './types';
 import {
   aiTranslate,
@@ -52,6 +56,9 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     Record<string, QualityResult>
   >({});
   const [expectedLoading, setExpectedLoading] = useState<string | null>(null);
+  const [keyValue, setKeyValue] = useState('');
+
+  const hasKey = isNew ? keyValue.trim().length > 0 : true;
 
   React.useEffect(() => {
     if (open) {
@@ -64,8 +71,10 @@ const EntryEditModal: React.FC<EditModalProps> = ({
           context: entry.context ?? '',
           ...entry.values,
         });
+        setKeyValue(entry.key);
       } else {
         form.resetFields();
+        setKeyValue('');
       }
     }
   }, [open, entry, form]);
@@ -89,7 +98,8 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     }
     setAiLoadingLocale('all');
     try {
-      const result = await aiTranslate(enText, projectSlug);
+      const contextVal: string = form.getFieldValue('context') ?? '';
+      const result = await aiTranslate(enText, projectSlug, contextVal);
       const patch: Record<string, string> = {};
       for (const locale of AI_LOCALES) {
         if (result[locale] !== undefined) patch[locale] = result[locale];
@@ -113,7 +123,8 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     }
     setAiLoadingLocale(locale);
     try {
-      const result = await aiTranslate(enText, projectSlug);
+      const contextVal: string = form.getFieldValue('context') ?? '';
+      const result = await aiTranslate(enText, projectSlug, contextVal);
       if (result[locale] !== undefined) {
         form.setFieldsValue({ [locale]: result[locale] });
         setQualityResults((prev) => {
@@ -209,6 +220,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
       onCancel={onClose}
       onOk={handleOk}
       confirmLoading={saving}
+      okButtonProps={{ disabled: isNew && !hasKey }}
       width={640}
       destroyOnHidden
     >
@@ -225,27 +237,31 @@ const EntryEditModal: React.FC<EditModalProps> = ({
               },
             ]}
           >
-            <Input placeholder="e.g. accessControl" />
+            <Input
+              placeholder="e.g. accessControl"
+              onChange={(e) => setKeyValue(e.target.value)}
+            />
           </Form.Item>
         )}
         <Form.Item
           name="context"
           label={
             <Space size={4}>
-              Context{' '}
-              {entry?.contextNeed === 'required' && !entry?.context && (
+              Context
+              {entry?.contextNeed === 'required' && !entry?.context ? (
                 <Tooltip title={entry?.contextReason}>
-                  <Tag color="error" style={{ fontSize: 11 }}>
+                  <Tag color="error" style={{ fontSize: 11, margin: 0 }}>
                     Required
                   </Tag>
                 </Tooltip>
-              )}
-              {entry?.contextNeed === 'useful' && !entry?.context && (
+              ) : entry?.contextNeed === 'useful' && !entry?.context ? (
                 <Tooltip title={entry?.contextReason}>
-                  <Tag color="processing" style={{ fontSize: 11 }}>
+                  <Tag color="processing" style={{ fontSize: 11, margin: 0 }}>
                     Suggested
                   </Tag>
                 </Tooltip>
+              ) : (
+                <Tag style={{ fontSize: 11, margin: 0 }}>optional</Tag>
               )}
             </Space>
           }
@@ -256,15 +272,23 @@ const EntryEditModal: React.FC<EditModalProps> = ({
               ? entry.contextReason
               : undefined
           }
+          style={isNew && !hasKey ? { marginBottom: 8 } : undefined}
         >
           <Input.TextArea
-            placeholder="Describe where this key is used (e.g. 'Save button in expense form footer')"
+            placeholder="e.g. Button label on permissions settings page"
             maxLength={500}
             showCount
-            rows={2}
+            style={{ maxHeight: 200, resize: 'vertical' }}
+            autoSize={{ minRows: 2, maxRows: 5 }}
           />
         </Form.Item>
-        {locales.map((locale) => {
+        {(!entry?.contextReason || entry?.context || entry?.contextNeed === 'none') && (
+          <Text type="secondary" style={{ fontSize: 12, marginTop: -12, marginBottom: 12, display: 'block' }}>
+            <InfoCircleOutlined style={{ marginRight: 4 }} />
+            Providing context improves auto-translation quality.
+          </Text>
+        )}
+        {(!isNew || hasKey) && locales.map((locale) => {
           const qr = qualityResults[locale];
           const storedQuality = entry?.quality?.[locale];
           const isEnRow = locale === 'en';
@@ -355,8 +379,8 @@ const EntryEditModal: React.FC<EditModalProps> = ({
                   <Tooltip
                     title={
                       storedQuality.reviewState === 'expected'
-                        ? 'Remove manual acceptance'
-                        : 'Accept — skip future validation'
+                        ? 'Remove confirmation — translation will be revalidated'
+                        : 'Confirm this translation is correct — skips future revalidation'
                     }
                   >
                     <Button
@@ -379,8 +403,8 @@ const EntryEditModal: React.FC<EditModalProps> = ({
                       }}
                     >
                       {storedQuality.reviewState === 'expected'
-                        ? 'Accepted'
-                        : 'Accept'}
+                        ? 'Confirmed'
+                        : 'Confirm'}
                     </Button>
                   </Tooltip>
                 )}
@@ -394,7 +418,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
                   onClick={handleAiGenerateAll}
                   type="dashed"
                 >
-                  Translate All
+                  Auto-translate all
                 </Button>
               )}
               {isEnRow && (
@@ -406,7 +430,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
                   onClick={handleCheckQualityAll}
                   type="dashed"
                 >
-                  Check All
+                  Check all
                 </Button>
               )}
               {/* Per-locale translate button for AI locales */}

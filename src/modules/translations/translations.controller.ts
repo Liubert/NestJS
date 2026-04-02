@@ -171,7 +171,7 @@ export class TranslationsController {
       );
       projectId = project.id;
     }
-    return this.aiTranslateService.translate(dto.text, projectId);
+    return this.aiTranslateService.translate(dto.text, projectId, dto.context);
   }
 
   @Post('ai-quality-check')

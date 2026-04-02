@@ -5,7 +5,7 @@ import { AiConfigEntity } from './entities/ai-config.entity.js';
 
 // ─── Default prompt templates ─────────────────────────────────────────────────
 // Variables interpolated at runtime (unknown {{...}} are left as-is):
-//   translatePrompt         → {{text}}, {{languages}}
+//   translatePrompt         → {{text}}, {{languages}}, {{context}}
 //   qualityTranslatePrompt  → {{source}}, {{translation}}, {{locale}}, {{context}}
 //   qualityLanguagePrompt   → {{translation}}, {{locale}}, {{context}}
 //   contextDetectionPrompt  → (embedded in bulk quality prompt, no runtime variables)
@@ -20,6 +20,10 @@ Rules:
 - No explanations, no commentary, no markdown fences — only raw JSON
 
 Target languages: {{languages}}
+
+Context (if provided): "{{context}}"
+- If context is present, use it to determine the intended meaning and choose the most appropriate translation.
+- If context is empty or not provided, translate using the most common UI interpretation.
 
 English text: "{{text}}"
 

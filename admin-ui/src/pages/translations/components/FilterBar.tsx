@@ -1,6 +1,11 @@
 import React from 'react';
-import { Row, Col, Select, Input, Button } from 'antd';
-import { SearchOutlined, PlusOutlined } from '@ant-design/icons';
+import { Row, Col, Select, Input, Button, Tooltip } from 'antd';
+import {
+  SearchOutlined,
+  PlusOutlined,
+  FilterOutlined,
+  SortAscendingOutlined,
+} from '@ant-design/icons';
 import type { FilterBarProps } from './types';
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
@@ -10,7 +15,7 @@ const QUALITY_FILTER_OPTIONS = [
   { value: 'level:green', label: 'Good (80-100)' },
   { value: 'level:yellow', label: 'Review (50-80)' },
   { value: 'level:red', label: 'Poor (0-50)' },
-  { value: 'level:unchecked', label: 'Not checked' },
+  { value: 'level:unchecked', label: 'Not checked yet' },
   { value: 'level:needs_context', label: 'Needs Context' },
   { value: 'state:skipped', label: 'Skipped' },
   { value: 'state:expected', label: 'Expected' },
@@ -65,25 +70,31 @@ const FilterBar: React.FC<FilterBarProps> = ({
         />
       </Col>
       <Col>
-        <Select
-          value={qualityFilter || ''}
-          onChange={onQualityFilterChange}
-          style={{ width: 180 }}
-          placeholder="Filter by quality"
-          options={QUALITY_FILTER_OPTIONS}
-        />
+        <Tooltip title="Filter by quality level">
+          <Select
+            value={qualityFilter || ''}
+            onChange={onQualityFilterChange}
+            style={{ width: 180 }}
+            placeholder="Filter by quality"
+            suffixIcon={<FilterOutlined />}
+            options={QUALITY_FILTER_OPTIONS}
+          />
+        </Tooltip>
       </Col>
       <Col>
-        <Select
-          value={sortBy}
-          onChange={onSortByChange}
-          style={{ width: 160 }}
-          options={[
-            { value: 'key', label: 'Sort: Key' },
-            { value: 'createdAt', label: 'Sort: Created' },
-            { value: 'qualityScore', label: 'Sort: Quality' },
-          ]}
-        />
+        <Tooltip title="Sort entries">
+          <Select
+            value={sortBy}
+            onChange={onSortByChange}
+            style={{ width: 160 }}
+            suffixIcon={<SortAscendingOutlined />}
+            options={[
+              { value: 'key', label: 'Sort: Key' },
+              { value: 'createdAt', label: 'Sort: Created' },
+              { value: 'qualityScore', label: 'Sort: Quality score' },
+            ]}
+          />
+        </Tooltip>
       </Col>
       <Col>
         <Button

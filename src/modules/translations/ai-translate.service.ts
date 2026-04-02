@@ -27,6 +27,7 @@ export class AiTranslateService {
   async translate(
     text: string,
     projectId?: string,
+    context?: string,
   ): Promise<Record<string, string>> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
@@ -43,7 +44,9 @@ export class AiTranslateService {
       .map(([code, name]) => `${name} (${code})`)
       .join(', ');
 
-    const prompt = interpolate(aiCfg.translatePrompt, { text, languages });
+    const translateVars: Record<string, string> = { text, languages };
+    if (context) translateVars.context = context;
+    const prompt = interpolate(aiCfg.translatePrompt, translateVars);
 
     let raw: string;
     try {

@@ -90,11 +90,11 @@ export const deleteEntry = async (
 export const aiTranslate = async (
   text: string,
   projectSlug?: string,
+  context?: string,
 ): Promise<Record<string, string>> => {
-  const res = await apiClient.post('/translations/ai-translate', {
-    text,
-    projectSlug,
-  });
+  const body: Record<string, string | undefined> = { text, projectSlug };
+  if (context?.trim()) body.context = context.trim();
+  const res = await apiClient.post('/translations/ai-translate', body);
   return res.data;
 };
 

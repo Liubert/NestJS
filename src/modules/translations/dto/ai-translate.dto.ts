@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MinLength } from 'class-validator';
+import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class AiTranslateDto {
   @ApiProperty({
@@ -17,4 +17,14 @@ export class AiTranslateDto {
   @IsOptional()
   @IsString()
   projectSlug?: string;
+
+  @ApiPropertyOptional({
+    example: 'Button label in user permissions settings page',
+    description:
+      'Optional context to improve translation quality (e.g. where the text appears in UI)',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  context?: string;
 }

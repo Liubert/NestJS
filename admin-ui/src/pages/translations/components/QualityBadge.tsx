@@ -184,20 +184,20 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
 
   return (
     <Popconfirm
-      title="Mark as expected?"
-      description="This translation will be accepted and skip future validation."
+      title="Confirm this translation?"
+      description="This translation will be marked as correct and skip future revalidation."
       onConfirm={async () => {
         try {
           if (isSandbox)
             await markSandboxExpected(slug, namespace, entryKey, locale);
           else await markExpected(slug, namespace, entryKey, locale);
-          message.success('Marked as expected');
+          message.success('Translation confirmed');
           onUpdate?.();
         } catch {
-          message.error('Failed to mark as expected');
+          message.error('Failed to confirm');
         }
       }}
-      okText="Accept"
+      okText="Confirm"
       cancelText="Cancel"
     >
       {badge}
