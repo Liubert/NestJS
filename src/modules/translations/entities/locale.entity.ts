@@ -24,4 +24,7 @@ export class LocaleEntity {
 
   @Column({ name: 'is_default', type: 'boolean', default: false })
   isDefault!: boolean;
+
+  @Column({ type: 'text', array: true, default: '{}' })
+  aliases!: string[];
 }

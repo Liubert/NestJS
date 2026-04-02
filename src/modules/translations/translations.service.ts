@@ -67,6 +67,7 @@ export interface EntryRow {
 export interface LocaleInfo {
   code: string;
   isDefault: boolean;
+  aliases: string[];
 }
 
 export interface ProjectDetails {
@@ -273,7 +274,11 @@ export class TranslationsService {
       name: project.name,
       ownerId: project.ownerId,
       createdAt: project.createdAt,
-      locales: locales.map((l) => ({ code: l.code, isDefault: l.isDefault })),
+      locales: locales.map((l) => ({
+        code: l.code,
+        isDefault: l.isDefault,
+        aliases: l.aliases ?? [],
+      })),
       namespaces: namespaces.map((ns) => ns.slug),
       autoTranslateEnabled: project.autoTranslateEnabled,
     };
@@ -437,6 +442,25 @@ export class TranslationsService {
     );
   }
 
+  async updateLocale(
+    projectSlug: string,
+    code: string,
+    aliases: string[],
+    userId: string,
+    userRole: UserRole,
+  ): Promise<LocaleEntity> {
+    const project = await this.requireProject(projectSlug);
+    await this.assertManageAccess(project, userId, userRole);
+
+    const locale = await this.localeRepo.findOne({
+      where: { projectId: project.id, code },
+    });
+    if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
+
+    locale.aliases = aliases;
+    return this.localeRepo.save(locale);
+  }
+
   async deleteLocale(
     projectSlug: string,
     code: string,
@@ -452,6 +476,38 @@ export class TranslationsService {
     if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
 
     await this.localeRepo.remove(locale);
+  }
+
+  async updateNamespace(
+    projectSlug: string,
+    oldSlug: string,
+    newSlug: string,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<NamespaceEntity> {
+    const project = await this.requireProject(projectSlug);
+    await this.assertManageAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: oldSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${oldSlug}" not found`);
+
+    if (oldSlug !== newSlug) {
+      const exists = await this.namespaceRepo.existsBy({
+        projectId: project.id,
+        slug: newSlug,
+      });
+      if (exists) {
+        throw new ConflictException(
+          `Namespace "${newSlug}" already exists in project "${projectSlug}"`,
+        );
+      }
+    }
+
+    ns.slug = newSlug;
+    ns.originalFile = `${newSlug}.json`;
+    return this.namespaceRepo.save(ns);
   }
 
   async deleteNamespace(
@@ -688,7 +744,10 @@ export class TranslationsService {
     }
 
     // Always include keys where context is required but missing
-    if (options.qualityLevels.includes('needs_context') || !options.qualityLevels.length) {
+    if (
+      options.qualityLevels.includes('needs_context') ||
+      !options.qualityLevels.length
+    ) {
       conditions.push(`(tk.context_required = true AND tk.context IS NULL)`);
     }
 
@@ -707,7 +766,13 @@ export class TranslationsService {
 
     params.push(limit);
     const keys = await this.dataSource.query<
-      { id: string; key: string; created_at: Date; context: string | null; context_required: boolean | null }[]
+      {
+        id: string;
+        key: string;
+        created_at: Date;
+        context: string | null;
+        context_required: boolean | null;
+      }[]
     >(
       `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context, tk.context_required,
               (SELECT MIN(tv_qs.quality_score) FROM translation_values tv_qs WHERE tv_qs.key_id = tk.id AND tv_qs.quality_score IS NOT NULL) AS _qs
@@ -734,7 +799,15 @@ export class TranslationsService {
     );
 
     const qualityRows = await this.dataSource.query<
-      { key_id: string; locale: string; quality_score: number | null; quality_level: string | null; quality_comment: string | null; quality_checked_at: string | null; quality_review_state: string | null }[]
+      {
+        key_id: string;
+        locale: string;
+        quality_score: number | null;
+        quality_level: string | null;
+        quality_comment: string | null;
+        quality_checked_at: string | null;
+        quality_review_state: string | null;
+      }[]
     >(
       `SELECT tv.key_id, l.code AS locale,
               tv.quality_score, tv.quality_level, tv.quality_comment,
@@ -756,7 +829,8 @@ export class TranslationsService {
     for (const q of qualityRows) {
       if (!qualityByKey.has(q.key_id)) qualityByKey.set(q.key_id, {});
       qualityByKey.get(q.key_id)![q.locale] = {
-        reviewState: (q.quality_review_state ?? 'not_checked') as QualityInfo['reviewState'],
+        reviewState: (q.quality_review_state ??
+          'not_checked') as QualityInfo['reviewState'],
         score: q.quality_score,
         level: q.quality_level as QualityInfo['level'],
         comment: q.quality_comment,
@@ -1194,10 +1268,10 @@ export class TranslationsService {
         qualityComment: null,
         qualityCheckedAt: null,
       })
-      .where(
-        'key_id = :keyId AND quality_review_state != :expectedState',
-        { keyId, expectedState: 'expected' },
-      )
+      .where('key_id = :keyId AND quality_review_state != :expectedState', {
+        keyId,
+        expectedState: 'expected',
+      })
       .execute();
   }
 

@@ -39,6 +39,8 @@ import { ImportTranslationsDto } from './dto/import-translations.dto.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
 import { CreateNamespaceDto } from './dto/create-namespace.dto.js';
 import { CreateLocaleDto } from './dto/create-locale.dto.js';
+import { UpdateLocaleDto } from './dto/update-locale.dto.js';
+import { UpdateNamespaceDto } from './dto/update-namespace.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
@@ -236,7 +238,6 @@ export class TranslationsController {
     );
   }
 
-
   @Delete('projects/:slug')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
@@ -335,6 +336,25 @@ export class TranslationsController {
     );
   }
 
+  @Patch('projects/:slug/locales/:code')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update locale aliases' })
+  async updateLocale(
+    @Param('slug') slug: string,
+    @Param('code') code: string,
+    @Body() dto: UpdateLocaleDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.updateLocale(
+      slug,
+      code,
+      dto.aliases,
+      user.userId,
+      user.role,
+    );
+  }
+
   @Delete('projects/:slug/locales/:code')
   @HttpCode(HttpStatus.NO_CONTENT)
   @UseGuards(JwtAuthGuard)
@@ -348,6 +368,25 @@ export class TranslationsController {
     return this.translationsService.deleteLocale(
       slug,
       code,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Patch('projects/:slug/namespaces/:ns')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Rename a namespace' })
+  async updateNamespace(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: UpdateNamespaceDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.updateNamespace(
+      slug,
+      ns,
+      dto.slug,
       user.userId,
       user.role,
     );
