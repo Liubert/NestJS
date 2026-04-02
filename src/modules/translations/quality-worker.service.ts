@@ -10,7 +10,11 @@ import {
   QualityQueueService,
   QualityBatchMessage,
 } from './quality-queue.service.js';
-import { CONTEXT_MISSING_CAP, scoreToLevel } from './quality-constants.js';
+import {
+  CONTEXT_REQUIRED_CAP,
+  CONTEXT_USEFUL_CAP,
+  scoreToLevel,
+} from './quality-constants.js';
 
 @Injectable()
 export class QualityWorkerService implements OnApplicationBootstrap {
@@ -56,7 +60,7 @@ export class QualityWorkerService implements OnApplicationBootstrap {
     const defaultLocale = projectLocales.find((l) => l.isDefault);
     const localeById = new Map(projectLocales.map((l) => [l.id, l]));
 
-    // Load key entities (including context and contextRequired)
+    // Load key entities (including context and contextNeed)
     const keys = await this.keyRepo.findBy({ id: In(keyIds) });
     const keyById = new Map(keys.map((k) => [k.id, k]));
 
@@ -143,10 +147,10 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
     >;
-    let contextFlags: Record<string, boolean>;
+    let contextInfo: Record<string, { need: 'required' | 'useful' | 'none'; reason: string | null }>;
 
     try {
-      const emptyResult = { results: {}, contextFlags: {} };
+      const emptyResult = { results: {}, contextInfo: {} };
       const [mainResult, defaultResult] = await Promise.all([
         items.length
           ? this.aiTranslateService.bulkCheckQuality(
@@ -166,9 +170,9 @@ export class QualityWorkerService implements OnApplicationBootstrap {
           : Promise.resolve(emptyResult),
       ]);
       results = { ...mainResult.results };
-      contextFlags = {
-        ...mainResult.contextFlags,
-        ...defaultResult.contextFlags,
+      contextInfo = {
+        ...mainResult.contextInfo,
+        ...defaultResult.contextInfo,
       };
       for (const [key, localeMap] of Object.entries(defaultResult.results)) {
         results[key] = Object.assign({}, results[key] ?? {}, localeMap);
@@ -181,31 +185,36 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       throw e;
     }
 
-    // Apply context penalty and persist contextRequired flags
+    // Persist contextNeed/contextReason and apply context penalties
     for (const keyId of keyIds) {
       const keyEntity = keyById.get(keyId);
       if (!keyEntity) continue;
 
-      const isContextRequired = contextFlags[keyEntity.key];
-      // Persist contextRequired if AI determined it
-      if (
-        isContextRequired !== undefined &&
-        keyEntity.contextRequired !== isContextRequired
-      ) {
-        keyEntity.contextRequired = isContextRequired;
-        await this.keyRepo.save(keyEntity);
+      const info = contextInfo[keyEntity.key];
+      if (info) {
+        const needChanged = keyEntity.contextNeed !== info.need;
+        const reasonChanged = keyEntity.contextReason !== info.reason;
+        if (needChanged || reasonChanged) {
+          keyEntity.contextNeed = info.need;
+          keyEntity.contextReason = info.reason;
+          await this.keyRepo.save(keyEntity);
+        }
       }
 
-      // Apply context penalty: cap scores at CONTEXT_MISSING_CAP if context required but missing
+      // Apply context penalty when context is missing
       const keyResult = results[keyEntity.key];
-      if (isContextRequired && !keyEntity.context && keyResult) {
-        for (const [locale, r] of Object.entries(keyResult)) {
-          if (r.score > CONTEXT_MISSING_CAP) {
-            r.score = CONTEXT_MISSING_CAP;
-            r.level = scoreToLevel(CONTEXT_MISSING_CAP);
-            const contextNote =
-              'Context is required but missing — confidence reduced.';
-            r.comment = r.comment ? `${r.comment} ${contextNote}` : contextNote;
+      const need = info?.need ?? keyEntity.contextNeed;
+      if (need && need !== 'none' && !keyEntity.context && keyResult) {
+        const cap = need === 'required' ? CONTEXT_REQUIRED_CAP : CONTEXT_USEFUL_CAP;
+        const note =
+          need === 'required'
+            ? 'Context is required but missing — confidence reduced.'
+            : 'Context would improve this evaluation — consider adding it.';
+        for (const [, r] of Object.entries(keyResult)) {
+          if (r.score > cap) {
+            r.score = cap;
+            r.level = scoreToLevel(cap);
+            r.comment = r.comment ? `${r.comment} ${note}` : note;
           }
         }
       }

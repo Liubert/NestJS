@@ -59,7 +59,8 @@ export interface EntryRow {
   key: string;
   createdAt: Date;
   context: string | null;
-  contextRequired: boolean | null;
+  contextNeed: 'required' | 'useful' | 'none' | null;
+  contextReason: string | null;
   values: Record<string, string>;
   quality: Record<string, QualityInfo | null>;
 }
@@ -594,7 +595,11 @@ export class TranslationsService {
           WHERE tv3.key_id = tk.id AND tv3.value IS NOT NULL AND tv3.quality_level IS NULL
         )`);
       } else if (qualityLevel === 'needs_context') {
-        qb.andWhere('tk.context_required = true AND tk.context IS NULL');
+        qb.andWhere("tk.context_need IN ('required', 'useful') AND tk.context IS NULL");
+      } else if (qualityLevel === 'context_required') {
+        qb.andWhere("tk.context_need = 'required' AND tk.context IS NULL");
+      } else if (qualityLevel === 'context_useful') {
+        qb.andWhere("tk.context_need = 'useful' AND tk.context IS NULL");
       } else {
         qb.andWhere(
           `EXISTS (
@@ -692,7 +697,8 @@ export class TranslationsService {
       key: k.key,
       createdAt: k.createdAt,
       context: k.context ?? null,
-      contextRequired: k.contextRequired ?? null,
+      contextNeed: k.contextNeed ?? null,
+      contextReason: k.contextReason ?? null,
       values: valuesByKey.get(k.id) ?? {},
       quality: qualityByKey.get(k.id) ?? {},
     }));
@@ -743,12 +749,12 @@ export class TranslationsService {
       )`);
     }
 
-    // Always include keys where context is required but missing
+    // Always include keys where context is required/useful but missing
     if (
       options.qualityLevels.includes('needs_context') ||
       !options.qualityLevels.length
     ) {
-      conditions.push(`(tk.context_required = true AND tk.context IS NULL)`);
+      conditions.push(`(tk.context_need IN ('required', 'useful') AND tk.context IS NULL)`);
     }
 
     const whereClause = conditions.length
@@ -771,10 +777,11 @@ export class TranslationsService {
         key: string;
         created_at: Date;
         context: string | null;
-        context_required: boolean | null;
+        context_need: string | null;
+        context_reason: string | null;
       }[]
     >(
-      `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context, tk.context_required,
+      `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context, tk.context_need, tk.context_reason,
               (SELECT MIN(tv_qs.quality_score) FROM translation_values tv_qs WHERE tv_qs.key_id = tk.id AND tv_qs.quality_score IS NOT NULL) AS _qs
        FROM translation_keys tk
        WHERE tk.namespace_id = $1 ${whereClause}
@@ -842,7 +849,8 @@ export class TranslationsService {
       key: k.key,
       createdAt: k.created_at,
       context: k.context ?? null,
-      contextRequired: k.context_required ?? null,
+      contextNeed: (k.context_need as EntryRow['contextNeed']) ?? null,
+      contextReason: k.context_reason ?? null,
       values: valuesByKey.get(k.id) ?? {},
       quality: qualityByKey.get(k.id) ?? {},
     }));
@@ -901,7 +909,8 @@ export class TranslationsService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       context: keyEntity.context,
-      contextRequired: keyEntity.contextRequired ?? null,
+      contextNeed: keyEntity.contextNeed ?? null,
+      contextReason: keyEntity.contextReason ?? null,
       values,
       quality: {},
     };
@@ -931,9 +940,10 @@ export class TranslationsService {
     if (dto.context !== undefined) {
       const oldContext = keyEntity.context;
       keyEntity.context = dto.context ?? null;
-      // Reset contextRequired so AI re-determines it with new context
+      // Reset contextNeed so AI re-determines it with new context
       if (oldContext !== keyEntity.context) {
-        keyEntity.contextRequired = null;
+        keyEntity.contextNeed = null;
+        keyEntity.contextReason = null;
       }
       await this.keyRepo.save(keyEntity);
       // Context change triggers async quality re-evaluation
@@ -960,7 +970,8 @@ export class TranslationsService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       context: keyEntity.context,
-      contextRequired: keyEntity.contextRequired ?? null,
+      contextNeed: keyEntity.contextNeed ?? null,
+      contextReason: keyEntity.contextReason ?? null,
       values,
       quality: {},
     };
@@ -1365,7 +1376,20 @@ export class TranslationsService {
             locale.code,
             mode,
             project.id,
+            keyEntity.context ?? undefined,
           );
+
+          // Persist contextNeed/contextReason from AI evaluation
+          if (
+            result.contextNeed &&
+            (keyEntity.contextNeed !== result.contextNeed ||
+              keyEntity.contextReason !== result.contextReason)
+          ) {
+            keyEntity.contextNeed = result.contextNeed;
+            keyEntity.contextReason = result.contextReason;
+            await this.keyRepo.save(keyEntity);
+          }
+
           await this.persistQualityResult(keyEntity.id, locale.id, result);
           results[locale.code] = {
             reviewState: 'checked',

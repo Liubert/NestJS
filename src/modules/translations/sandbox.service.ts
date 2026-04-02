@@ -34,7 +34,8 @@ export interface SandboxEntryRow {
   key: string;
   createdAt: Date;
   context: string | null;
-  contextRequired: boolean | null;
+  contextNeed: 'required' | 'useful' | 'none' | null;
+  contextReason: string | null;
   values: Record<string, string>;
   quality: Record<string, QualityInfo | null>;
 }
@@ -841,7 +842,15 @@ export class SandboxService {
         `;
       } else if (qualityLevel === 'needs_context') {
         qualityCondition = `
-          AND tk.context_required = true AND tk.context IS NULL
+          AND tk.context_need IN ('required', 'useful') AND tk.context IS NULL
+        `;
+      } else if (qualityLevel === 'context_required') {
+        qualityCondition = `
+          AND tk.context_need = 'required' AND tk.context IS NULL
+        `;
+      } else if (qualityLevel === 'context_useful') {
+        qualityCondition = `
+          AND tk.context_need = 'useful' AND tk.context IS NULL
         `;
       } else {
         params.push(qualityLevel);
@@ -919,10 +928,11 @@ export class SandboxService {
         key: string;
         created_at: Date;
         context: string | null;
-        context_required: boolean | null;
+        context_need: string | null;
+        context_reason: string | null;
       }[]
     >(
-      `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context, tk.context_required${qualitySelectExpr}
+      `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context, tk.context_need, tk.context_reason${qualitySelectExpr}
        FROM translation_keys tk
        WHERE ${baseWhere}
        ORDER BY ${qualityOrderCol || sortCol} ${sortDir}${nullsLast}
@@ -1011,7 +1021,8 @@ export class SandboxService {
       key: k.key,
       createdAt: k.created_at,
       context: k.context ?? null,
-      contextRequired: k.context_required ?? null,
+      contextNeed: (k.context_need as SandboxEntryRow['contextNeed']) ?? null,
+      contextReason: k.context_reason ?? null,
       values: valuesByKey.get(k.id) ?? {},
       quality: qualityByKey.get(k.id) ?? {},
     }));
@@ -1074,7 +1085,8 @@ export class SandboxService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       context: keyEntity.context,
-      contextRequired: keyEntity.contextRequired ?? null,
+      contextNeed: keyEntity.contextNeed ?? null,
+      contextReason: keyEntity.contextReason ?? null,
       values: resultValues,
       quality: {},
     };
@@ -1111,7 +1123,8 @@ export class SandboxService {
       const oldContext = keyEntity.context;
       keyEntity.context = dto.context ?? null;
       if (oldContext !== keyEntity.context) {
-        keyEntity.contextRequired = null;
+        keyEntity.contextNeed = null;
+        keyEntity.contextReason = null;
       }
       await this.keyRepo.save(keyEntity);
       if (oldContext !== keyEntity.context) {
@@ -1148,7 +1161,8 @@ export class SandboxService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       context: keyEntity.context,
-      contextRequired: keyEntity.contextRequired ?? null,
+      contextNeed: keyEntity.contextNeed ?? null,
+      contextReason: keyEntity.contextReason ?? null,
       values: resultValues,
       quality: {},
     };
@@ -1303,7 +1317,8 @@ export class SandboxService {
           const oldContext = keyEntity.context;
           keyEntity.context = entry.context ?? null;
           if (oldContext !== keyEntity.context) {
-            keyEntity.contextRequired = null;
+            keyEntity.contextNeed = null;
+        keyEntity.contextReason = null;
           }
           await this.keyRepo.save(keyEntity);
           // Context change triggers async quality re-evaluation
