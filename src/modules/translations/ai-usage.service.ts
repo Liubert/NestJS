@@ -29,7 +29,15 @@ export class AiUsageService {
     options?: { since?: Date },
   ): Promise<{
     totalTokens: number;
-    breakdown: { operation: string; totalTokens: number; callCount: number }[];
+    inputTokens: number;
+    outputTokens: number;
+    breakdown: {
+      operation: string;
+      totalTokens: number;
+      inputTokens: number;
+      outputTokens: number;
+      callCount: number;
+    }[];
   }> {
     const qb = this.repo
       .createQueryBuilder('log')
@@ -42,11 +50,15 @@ export class AiUsageService {
     const breakdown = await qb
       .select('log.operation', 'operation')
       .addSelect('SUM(log.total_tokens)', 'totalTokens')
+      .addSelect('SUM(log.input_tokens)', 'inputTokens')
+      .addSelect('SUM(log.output_tokens)', 'outputTokens')
       .addSelect('COUNT(*)::int', 'callCount')
       .groupBy('log.operation')
       .getRawMany<{
         operation: string;
         totalTokens: string;
+        inputTokens: string;
+        outputTokens: string;
         callCount: number;
       }>();
 
@@ -54,12 +66,24 @@ export class AiUsageService {
       (sum, row) => sum + Number(row.totalTokens),
       0,
     );
+    const inputTokens = breakdown.reduce(
+      (sum, row) => sum + Number(row.inputTokens),
+      0,
+    );
+    const outputTokens = breakdown.reduce(
+      (sum, row) => sum + Number(row.outputTokens),
+      0,
+    );
 
     return {
       totalTokens,
+      inputTokens,
+      outputTokens,
       breakdown: breakdown.map((row) => ({
         operation: row.operation,
         totalTokens: Number(row.totalTokens),
+        inputTokens: Number(row.inputTokens),
+        outputTokens: Number(row.outputTokens),
         callCount: Number(row.callCount),
       })),
     };

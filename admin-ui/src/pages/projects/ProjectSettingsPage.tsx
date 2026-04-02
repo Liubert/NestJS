@@ -74,13 +74,29 @@ const fetchMembers = async (slug: string): Promise<MemberRow[]> => {
 interface AiUsageBreakdown {
   operation: string;
   totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
   callCount: number;
 }
 
 interface AiUsageData {
   totalTokens: number;
+  inputTokens: number;
+  outputTokens: number;
   breakdown: AiUsageBreakdown[];
 }
+
+// Gemini 2.0 Flash pricing per 1M tokens
+const INPUT_PRICE_PER_M = 0.1; // $0.10 / 1M input tokens
+const OUTPUT_PRICE_PER_M = 0.4; // $0.40 / 1M output tokens
+
+const estimateCost = (input: number, output: number): string => {
+  const cost =
+    (input / 1_000_000) * INPUT_PRICE_PER_M +
+    (output / 1_000_000) * OUTPUT_PRICE_PER_M;
+  if (cost < 0.01) return `$${cost.toFixed(4)}`;
+  return `$${cost.toFixed(2)}`;
+};
 
 const OPERATION_LABELS: Record<string, string> = {
   translate: 'Translation',
@@ -117,20 +133,37 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
         <Text type="secondary">No AI usage recorded yet.</Text>
       ) : (
         <>
-          <div style={{ marginBottom: 12 }}>
-            <Text strong style={{ fontSize: 20 }}>
-              {formatTokens(data.totalTokens)}
-            </Text>
-            <Text type="secondary" style={{ marginLeft: 8 }}>
-              total tokens
-            </Text>
+          <div
+            style={{
+              marginBottom: 12,
+              display: 'flex',
+              gap: 24,
+              alignItems: 'baseline',
+            }}
+          >
+            <div>
+              <Text strong style={{ fontSize: 20 }}>
+                {formatTokens(data.totalTokens)}
+              </Text>
+              <Text type="secondary" style={{ marginLeft: 8 }}>
+                total tokens
+              </Text>
+            </div>
+            <div>
+              <Text strong style={{ fontSize: 20 }}>
+                {estimateCost(data.inputTokens, data.outputTokens)}
+              </Text>
+              <Text type="secondary" style={{ marginLeft: 8 }}>
+                estimated cost
+              </Text>
+            </div>
           </div>
           <Table<AiUsageBreakdown>
             rowKey="operation"
             dataSource={data.breakdown}
             size="small"
             pagination={false}
-            style={{ maxWidth: 500 }}
+            style={{ maxWidth: 600 }}
             columns={[
               {
                 title: 'Operation',
@@ -142,14 +175,21 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
                 title: 'Tokens',
                 dataIndex: 'totalTokens',
                 key: 'totalTokens',
-                width: 120,
+                width: 100,
                 render: (v: number) => formatTokens(v),
+              },
+              {
+                title: 'Cost',
+                key: 'cost',
+                width: 80,
+                render: (_: unknown, row: AiUsageBreakdown) =>
+                  estimateCost(row.inputTokens, row.outputTokens),
               },
               {
                 title: 'Calls',
                 dataIndex: 'callCount',
                 key: 'callCount',
-                width: 80,
+                width: 70,
               },
             ]}
           />
