@@ -20,17 +20,12 @@ type S3Config = {
   secretAccessKey: string;
 };
 
-type RabbitMqConfig = {
-  url: string;
-};
-
 export type BaseAppConfig = {
   port: number;
   env: Envs;
   db: PostgresConnectionOptions;
   auth: AuthConfig;
   s3: S3Config;
-  rabbitmq: RabbitMqConfig;
 };
 
 export function loadBaseConfig(): BaseAppConfig {
@@ -60,10 +55,6 @@ export function loadBaseConfig(): BaseAppConfig {
       bucket: process.env.AWS_S3_BUCKET!,
       accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-    },
-
-    rabbitmq: {
-      url: process.env.RABBITMQ_URL!,
     },
   };
 }

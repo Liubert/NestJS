@@ -1,24 +1,33 @@
-import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnApplicationBootstrap,
+  OnModuleDestroy,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { createHash } from 'crypto';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import {
-  QualityQueueService,
-  QualityBatchMessage,
-} from './quality-queue.service.js';
-import {
   CONTEXT_REQUIRED_CAP,
   CONTEXT_USEFUL_CAP,
   scoreToLevel,
 } from './quality-constants.js';
 
+const POLL_INTERVAL_MS = 30_000;
+const BATCH_SIZE = 5;
+const MAX_KEYS_PER_CYCLE = 50;
+
 @Injectable()
-export class QualityWorkerService implements OnApplicationBootstrap {
+export class QualityWorkerService
+  implements OnApplicationBootstrap, OnModuleDestroy
+{
   private readonly logger = new Logger(QualityWorkerService.name);
+  private timer: NodeJS.Timeout | null = null;
+  private processing = false;
 
   constructor(
     @InjectRepository(TranslationValueEntity)
@@ -28,27 +37,98 @@ export class QualityWorkerService implements OnApplicationBootstrap {
     @InjectRepository(LocaleEntity)
     private readonly localeRepo: Repository<LocaleEntity>,
     private readonly aiTranslateService: AiTranslateService,
-    private readonly qualityQueue: QualityQueueService,
+    private readonly dataSource: DataSource,
   ) {}
 
-  async onApplicationBootstrap(): Promise<void> {
-    await this.qualityQueue.consumeBatches((msg) => this.handleBatch(msg));
-    this.logger.log('Quality worker consuming batches');
+  onApplicationBootstrap(): void {
+    this.timer = setInterval(() => {
+      void this.pollAndProcess();
+    }, POLL_INTERVAL_MS);
+    this.logger.log('Quality worker polling started (every 30s)');
   }
 
-  private async handleBatch(msg: QualityBatchMessage): Promise<void> {
-    const { keyIds, projectId } = msg;
+  onModuleDestroy(): void {
+    if (this.timer) clearInterval(this.timer);
+  }
+
+  private async pollAndProcess(): Promise<void> {
+    if (this.processing) return;
+    this.processing = true;
+
+    try {
+      const rows = await this.dataSource.query<
+        { project_id: string; key_id: string }[]
+      >(
+        `SELECT DISTINCT ns.project_id, tv.key_id
+         FROM translation_values tv
+         JOIN translation_keys tk ON tk.id = tv.key_id
+         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
+         WHERE tv.quality_review_state IN ('not_checked', 'failed', 'skipped')
+           AND tv.value IS NOT NULL
+         LIMIT $1`,
+        [MAX_KEYS_PER_CYCLE],
+      );
+
+      if (!rows.length) {
+        this.logger.debug('No keys need quality check');
+        return;
+      }
+
+      this.logger.log(`Found ${rows.length} keys to check`);
+
+      // Group by project
+      const byProject = new Map<string, string[]>();
+      for (const row of rows) {
+        if (!byProject.has(row.project_id)) byProject.set(row.project_id, []);
+        byProject.get(row.project_id)!.push(row.key_id);
+      }
+
+      let totalProcessed = 0;
+
+      for (const [projectId, projectKeyIds] of byProject) {
+        for (let i = 0; i < projectKeyIds.length; i += BATCH_SIZE) {
+          const batch = projectKeyIds.slice(i, i + BATCH_SIZE);
+          try {
+            await this.processBatch(projectId, batch);
+            totalProcessed += batch.length;
+          } catch (e: unknown) {
+            this.logger.error(
+              `Batch failed for project ${projectId}: ${e instanceof Error ? e.message : String(e)}`,
+            );
+          }
+        }
+      }
+
+      if (totalProcessed > 0) {
+        this.logger.log(`Quality check: processed ${totalProcessed} keys`);
+      }
+    } catch (e: unknown) {
+      this.logger.error(
+        `Quality poll error: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    } finally {
+      this.processing = false;
+    }
+  }
+
+  private async processBatch(
+    projectId: string,
+    keyIds: string[],
+  ): Promise<void> {
     if (!keyIds.length) return;
 
-    // Mark as processing (only rows currently queued)
+    // Mark as processing
     await this.valueRepo
       .createQueryBuilder()
       .update()
       .set({ qualityReviewState: 'processing' })
-      .where('key_id IN (:...keyIds) AND quality_review_state = :state', {
-        keyIds,
-        state: 'queued',
-      })
+      .where(
+        'key_id IN (:...keyIds) AND quality_review_state IN (:...states)',
+        {
+          keyIds,
+          states: ['not_checked', 'failed', 'skipped'],
+        },
+      )
       .execute();
 
     // Load project locales
@@ -87,7 +167,7 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       valuesByKey.get(v.key_id)!.set(v.locale_id, v.value);
     }
 
-    // Build items for bulk quality check — now includes context
+    // Build items for bulk quality check
     const items: Array<{
       key: string;
       source: string | null;
@@ -194,7 +274,7 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         `Gemini failed for batch: ${e instanceof Error ? e.message : String(e)}`,
       );
       await this.setStateForKeys(keyIds, 'failed');
-      throw e;
+      return;
     }
 
     // Persist contextNeed/contextReason and apply context penalties

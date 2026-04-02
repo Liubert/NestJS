@@ -4,7 +4,6 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TerminusModule } from '@nestjs/terminus';
 
 import { AppController } from './app.controller';
-import { RabbitMQHealthIndicator } from './common/health/rabbitmq.health';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
 import appConfig, { AppConfig } from './config/app.config';
 
@@ -14,6 +13,7 @@ import { FilesModule } from './modules/files/files.module';
 import { TranslationsModule } from './modules/translations/translations.module';
 import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { QualityWorkerModule } from './modules/translations/quality-worker.module';
 
 @Module({
   imports: [
@@ -39,9 +39,10 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
     TranslationsModule,
     WebhooksModule,
     McpPromptsModule,
+    QualityWorkerModule,
   ],
   controllers: [AppController],
-  providers: [RabbitMQHealthIndicator],
+  providers: [],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {

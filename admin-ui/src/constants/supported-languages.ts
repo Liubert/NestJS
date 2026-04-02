@@ -32,7 +32,7 @@ export const SUPPORTED_LANGUAGES: SupportedLanguage[] = [
   { code: 'bg', name: 'Bulgaria', flag: '🇧🇬', aliases: ['bg-BG'] },
   { code: 'hr', name: 'Croatia', flag: '🇭🇷', aliases: ['hr-HR'] },
   { code: 'sl', name: 'Slovenia', flag: '🇸🇮', aliases: ['sl-SI'] },
-  { code: 'nb-NO', name: 'Norway', flag: '🇳🇴', aliases: ['no', 'nb', 'nn-NO'] },
+  { code: 'nb', name: 'Norway', flag: '🇳🇴', aliases: ['no', 'nb-NO', 'nn-NO'] },
   { code: 'sv', name: 'Sweden', flag: '🇸🇪', aliases: ['sv-SE'] },
   { code: 'da', name: 'Denmark', flag: '🇩🇰', aliases: ['da-DK'] },
   { code: 'fi', name: 'Finland', flag: '🇫🇮', aliases: ['fi-FI'] },

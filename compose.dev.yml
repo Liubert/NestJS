@@ -15,8 +15,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
     environment:
       NODE_ENV: development
       APP_NAME: ${APP_NAME}
@@ -29,8 +27,6 @@ services:
       DB_PASS: ${DB_PASS}
 
       JWT_SECRET: ${JWT_SECRET}
-
-      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
     volumes:
       - ./:/usr/src/app
       - /usr/src/app/node_modules
