@@ -1,12 +1,15 @@
-import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
+import { HealthCheck, HealthCheckService, TypeOrmHealthIndicator } from '@nestjs/terminus';
 import { AppService } from './app.service';
-import { DataSource } from 'typeorm';
+import { RabbitMQHealthIndicator } from './common/health/rabbitmq.health';
 
 @Controller()
 export class AppController {
   constructor(
     private readonly appService: AppService,
-    private readonly dataSource: DataSource,
+    private readonly health: HealthCheckService,
+    private readonly db: TypeOrmHealthIndicator,
+    private readonly rmq: RabbitMQHealthIndicator,
   ) {}
 
   @Get()
@@ -15,32 +18,11 @@ export class AppController {
   }
 
   @Get('health')
-  getLivenessStatus() {
-    return {
-      status: 'ok',
-      timestamp: new Date().toISOString(),
-      service: 'nest_js_api',
-    };
-  }
-
-  @Get('ready')
-  async getReadinessStatus() {
-    try {
-      await this.dataSource.query('SELECT 1');
-
-      return {
-        status: 'ready',
-        checks: {
-          db: 'up',
-        },
-      };
-    } catch {
-      throw new ServiceUnavailableException({
-        status: 'not_ready',
-        checks: {
-          db: this.dataSource.isInitialized ? 'up' : 'down',
-        },
-      });
-    }
+  @HealthCheck()
+  check() {
+    return this.health.check([
+      () => this.db.pingCheck('database', { timeout: 3000 }),
+      () => this.rmq.isHealthy('rabbitmq'),
+    ]);
   }
 }
