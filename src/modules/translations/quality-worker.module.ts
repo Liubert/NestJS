@@ -16,6 +16,8 @@ import { QualityWorkerService } from './quality-worker.service.js';
 import { QualityBackfillService } from './quality-backfill.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiConfigService } from './ai-config.service.js';
+import { AiUsageService } from './ai-usage.service.js';
+import { AiUsageLogEntity } from './entities/ai-usage-log.entity.js';
 
 @Module({
   imports: [
@@ -30,6 +32,7 @@ import { AiConfigService } from './ai-config.service.js';
       SandboxValueEntity,
       ProductionSnapshotEntity,
       AiConfigEntity,
+      AiUsageLogEntity,
       UserEntity,
     ]),
   ],
@@ -39,6 +42,7 @@ import { AiConfigService } from './ai-config.service.js';
     QualityBackfillService,
     AiTranslateService,
     AiConfigService,
+    AiUsageService,
   ],
 })
 export class QualityWorkerModule {}

@@ -14,7 +14,7 @@
     "start:dev": "nest start --watch -p tsconfig.build.json",
     "start:debug": "nest start --debug --watch",
     "start:prod": "node dist/main.js",
-    "start:worker:dev": "ts-node src/main.worker.ts",
+    "start:worker:dev": "nest build && node dist/main.worker.js",
     "start:worker:prod": "node dist/main.worker.js",
     "seed": "ts-node src/database/seed/run-seed.ts",
     "typeorm": "typeorm-ts-node-commonjs",
