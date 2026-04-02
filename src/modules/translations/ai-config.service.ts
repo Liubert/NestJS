@@ -73,8 +73,14 @@ Comment rules:
 - score below 80: comment must explain the main issue
 - keep comment practical and concise, up to 60 words
 
+Additionally, evaluate whether context about where/how this key is used would improve this evaluation:
+- "contextNeed": "required" if the source text is genuinely ambiguous — multiple meanings lead to different translations and a translator cannot confidently choose without context
+- "contextNeed": "useful" if the text is short/generic and business intent or usage location would improve confidence, even though a reasonable default exists
+- "contextNeed": "none" if the meaning is universally clear
+If contextNeed is "required" or "useful", add "contextReason" — a short plain-language explanation (1 sentence, max 30 words).
+
 Return ONLY valid JSON, no markdown, no extra text:
-{"score": <1-100>, "comment": "<string>"}`;
+{"score": <1-100>, "comment": "<string>", "contextNeed": "<required|useful|none>", "contextReason": "<string or null>"}`;
 
 export const DEFAULT_QUALITY_LANGUAGE_PROMPT = `\
 You are a strict software localization and language quality reviewer.
@@ -111,25 +117,49 @@ Comment rules:
 - score below 80: comment must explain the main issue
 - keep comment practical and concise, up to 60 words
 
+Additionally, evaluate whether context about where/how this key is used would improve this evaluation:
+- "contextNeed": "required" if the text is genuinely ambiguous — multiple meanings lead to different translations and a translator cannot confidently choose without context
+- "contextNeed": "useful" if the text is short/generic and business intent or usage location would improve confidence, even though a reasonable default exists
+- "contextNeed": "none" if the meaning is universally clear
+If contextNeed is "required" or "useful", add "contextReason" — a short plain-language explanation (1 sentence, max 30 words).
+
 Return ONLY valid JSON, no markdown, no extra text:
-{"score": <1-100>, "comment": "<string>"}`;
+{"score": <1-100>, "comment": "<string>", "contextNeed": "<required|useful|none>", "contextReason": "<string or null>"}`;
 
 export const DEFAULT_CONTEXT_DETECTION_PROMPT = `\
-Context awareness instructions for bulk quality evaluation:
+Context awareness instructions:
 
-For each translation key, determine whether the source text is ambiguous and would benefit from context for confident translation.
+For each translation key, evaluate whether context about where/how the key is used
+would improve translation confidence and quality evaluation.
 
-Set "contextRequired" to true if:
-- The source text has multiple valid meanings that could lead to different translations
-- Context about where/how the key is used would meaningfully improve translation confidence
-- Examples of ambiguous keys: "Train" (vehicle or exercise), "Save" (rescue or store), "Light" (illumination or weight), "Set" (collection or configure), "Run" (execute or jog)
+Set "contextNeed" to "required" if:
+- The source text has multiple valid meanings that lead to genuinely different translations
+- Without context, a translator cannot confidently choose the correct meaning
+- Examples: "Train" (vehicle vs exercise), "Save" (rescue vs store), "Light" (illumination vs weight)
 
-Set "contextRequired" to false if:
-- The meaning is clear without additional context
-- The text is a common UI term with an obvious meaning
-- Examples of clear keys: "Cancel", "OK", "Delete", "Email", "Password", "Settings", "Loading..."
+Set "contextNeed" to "useful" if:
+- The text is short or generic and business intent is unclear (e.g. "Process", "Review", "Apply")
+- The label could refer to a user action, a status, or a domain concept
+- Business users or future maintainers would benefit from knowing where this text appears
+- Context would improve confidence even though a reasonable default translation exists
+- Examples: "Submit", "Details", "Active", "Status", "View"
 
-If "context" is provided for a key, use it to determine the correct meaning and evaluate translations more precisely.
+Set "contextNeed" to "none" if:
+- The meaning is universally clear without additional context
+- Common UI term with obvious meaning
+- Examples: "Cancel", "OK", "Delete", "Email", "Password", "Settings", "Loading..."
+
+When contextNeed is "required" or "useful", provide "contextReason" — a short
+plain-language explanation (1 sentence, max 30 words) of why context helps.
+Examples of good reasons:
+- "This word has multiple meanings depending on the feature or screen"
+- "Short generic label — business intent unclear without knowing the screen"
+- "Could refer to a user action, a status, or a domain concept"
+
+Do NOT set contextNeed to "required" or "useful" just because a word is simple.
+Only flag when context genuinely improves correctness, clarity, or business understanding.
+
+If "context" is already provided for a key, use it to determine the correct meaning and evaluate translations more precisely.
 Do NOT lower scores for missing context — score purely on grammar and translation accuracy. Context penalties are applied separately by the system.`;
 
 // ─── Interpolation helper ─────────────────────────────────────────────────────

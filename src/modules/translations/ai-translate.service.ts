@@ -162,7 +162,7 @@ export class AiTranslateService {
 
   /**
    * Reviews all translations in a batch with a single Gemini call per chunk.
-   * Returns per-locale scores AND per-key contextRequired flags.
+   * Returns per-locale scores AND per-key context need info.
    * @param items    Each item has a key name, optional source/context, and a locale→translation map.
    * @param chunkSize Max keys per Gemini request (default 5).
    * @param chunkTimeoutMs Per-chunk Gemini timeout in ms (default 90s). Timed-out chunks are skipped.
@@ -185,7 +185,7 @@ export class AiTranslateService {
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
     >;
-    contextFlags: Record<string, boolean>;
+    contextInfo: Record<string, { need: 'required' | 'useful' | 'none'; reason: string | null }>;
   }> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
@@ -205,7 +205,7 @@ export class AiTranslateService {
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
     > = {};
-    const contextFlags: Record<string, boolean> = {};
+    const contextInfo: Record<string, { need: 'required' | 'useful' | 'none'; reason: string | null }> = {};
 
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
@@ -241,18 +241,28 @@ export class AiTranslateService {
         continue;
       }
 
-      // Parse response — handles new format with contextRequired + locales wrapper
+      // Parse response — handles format with contextNeed + locales wrapper
       for (const [key, value] of Object.entries(parsed)) {
         const keyData = value as Record<string, unknown>;
 
-        // Detect format: new (has "locales" key) vs old (flat locale map)
+        // Detect format: structured (has "locales" key) vs flat (locale map directly)
         const hasLocalesKey =
           keyData && typeof keyData === 'object' && 'locales' in keyData;
 
         if (hasLocalesKey) {
-          // New format: { contextRequired: bool, locales: { locale: { score, comment } } }
-          if (typeof keyData.contextRequired === 'boolean') {
-            contextFlags[key] = keyData.contextRequired;
+          // Structured: { contextNeed: string, contextReason: string, locales: { locale: { score, comment } } }
+          const need = keyData.contextNeed as string | undefined;
+          if (need === 'required' || need === 'useful' || need === 'none') {
+            contextInfo[key] = {
+              need,
+              reason: (typeof keyData.contextReason === 'string' ? keyData.contextReason : null),
+            };
+          } else if (typeof keyData.contextRequired === 'boolean') {
+            // Backward compat: old format with boolean contextRequired
+            contextInfo[key] = {
+              need: keyData.contextRequired ? 'required' : 'none',
+              reason: null,
+            };
           }
           const localeMap = (keyData.locales ?? {}) as Record<
             string,
@@ -309,7 +319,7 @@ export class AiTranslateService {
         .catch(() => {});
     }
 
-    return { results, contextFlags };
+    return { results, contextInfo };
   }
 
   private buildBulkQualityPrompt(
@@ -350,7 +360,8 @@ Comment rules:
 Return ONLY valid JSON with no markdown, no explanation, no extra keys:
 {
   "<key>": {
-    "contextRequired": <true or false>,
+    "contextNeed": "<required|useful|none>",
+    "contextReason": "<string or null>",
     "locales": {
       "<locale>": { "score": <number 1-100>, "comment": "<string>" }
     }
@@ -372,6 +383,8 @@ ${JSON.stringify(items, null, 2)}`;
     score: number;
     level: 'green' | 'yellow' | 'red';
     comment: string;
+    contextNeed: 'required' | 'useful' | 'none';
+    contextReason: string | null;
   }> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
@@ -408,10 +421,22 @@ ${JSON.stringify(items, null, 2)}`;
       .trim();
 
     try {
-      const parsed = JSON.parse(cleaned) as { score: number; comment: string };
+      const parsed = JSON.parse(cleaned) as {
+        score: number;
+        comment: string;
+        contextNeed?: string;
+        contextReason?: string;
+      };
       const score = Math.min(100, Math.max(1, Math.round(parsed.score)));
       const level = scoreToLevel(score);
-      const result = { score, level, comment: parsed.comment ?? '' };
+      const need = parsed.contextNeed;
+      const contextNeed: 'required' | 'useful' | 'none' =
+        need === 'required' || need === 'useful' ? need : 'none';
+      const contextReason =
+        contextNeed !== 'none' && typeof parsed.contextReason === 'string'
+          ? parsed.contextReason
+          : null;
+      const result = { score, level, comment: parsed.comment ?? '', contextNeed, contextReason };
 
       if (projectId) {
         const inputTokens = Math.ceil(prompt.length / 4);
