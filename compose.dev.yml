@@ -108,6 +108,10 @@ services:
     command: ["npm", "run", "seed"]
     profiles: ["dev-tools"]
 
+  admin-ui:
+    ports:
+      - "3010:80"
+
 networks:
   internal:
     internal: true
