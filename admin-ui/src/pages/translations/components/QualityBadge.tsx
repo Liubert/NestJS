@@ -29,6 +29,7 @@ export const QUALITY_COLOR: Record<string, string> = {
   yellow: '#faad14',
   red: '#ff4d4f',
   expected: '#1677ff',
+  failed: '#fa8c16', // orange — system error, not quality judgment
 };
 
 // ─── Quality Badge ────────────────────────────────────────────────────────────
@@ -53,7 +54,7 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
             : 'Queued for review'
         }
       >
-        <SyncOutlined spin style={{ color: '#8c8c8c', fontSize: 10 }} />
+        <SyncOutlined spin style={{ color: '#8c8c8c', fontSize: 12 }} />
       </Tooltip>
     );
   }
@@ -61,15 +62,9 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
   if (info.reviewState === 'failed') {
     return (
       <Tooltip title="Quality review failed — will retry">
-        <span
-          style={{
-            color: '#ff4d4f',
-            fontSize: 11,
-            fontWeight: 'bold',
-            cursor: 'help',
-          }}
-        >
-          !
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'help' }}>
+          <WarningOutlined style={{ color: '#fa8c16', fontSize: 12 }} />
+          <span style={{ fontSize: 12, color: '#fa8c16' }}>fail</span>
         </span>
       </Tooltip>
     );
@@ -78,16 +73,19 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
   if (info.reviewState === 'not_checked') {
     return (
       <Tooltip title="Not yet reviewed">
-        <span
-          style={{
-            display: 'inline-block',
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            backgroundColor: '#d9d9d9',
-            flexShrink: 0,
-          }}
-        />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              backgroundColor: '#d9d9d9',
+              flexShrink: 0,
+              display: 'inline-block',
+            }}
+          />
+          <span style={{ fontSize: 12, color: '#bbb' }}>—</span>
+        </span>
       </Tooltip>
     );
   }
@@ -124,7 +122,7 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
           }
         }}
         okText="Reset"
-        cancelText="Cancel"
+        cancelText="Keep expected"
       >
         {badge}
       </Popconfirm>
@@ -134,16 +132,19 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
   if (info.reviewState === 'skipped') {
     return (
       <Tooltip title="Quality check skipped — scored 100 by default">
-        <span
-          style={{
-            display: 'inline-block',
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            backgroundColor: '#1677ff',
-            flexShrink: 0,
-          }}
-        />
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+          <span
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              backgroundColor: '#1677ff',
+              flexShrink: 0,
+              display: 'inline-block',
+            }}
+          />
+          <span style={{ fontSize: 12, color: '#1677ff' }}>skip</span>
+        </span>
       </Tooltip>
     );
   }
@@ -156,15 +157,26 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
     >
       <span
         style={{
-          display: 'inline-block',
-          width: 10,
-          height: 10,
-          borderRadius: '50%',
-          backgroundColor: QUALITY_COLOR[info.level ?? ''] ?? '#bbb',
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 4,
           cursor: canInteract ? 'pointer' : 'help',
-          flexShrink: 0,
         }}
-      />
+      >
+        <span
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            backgroundColor: QUALITY_COLOR[info.level ?? ''] ?? '#bbb',
+            flexShrink: 0,
+            display: 'inline-block',
+          }}
+        />
+        <span style={{ fontSize: 12, color: QUALITY_COLOR[info.level ?? ''] ?? '#bbb' }}>
+          {info.score ?? '?'}
+        </span>
+      </span>
     </Tooltip>
   );
 
