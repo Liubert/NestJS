@@ -16,7 +16,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Deploy Hardening** - Deploys pass first attempt; health gates prevent silent failures (completed 2026-04-02)
 - [x] **Phase 3: Bug Fixes** - Quality state correctness, sandbox promotion context, input validation (completed 2026-04-02)
 - [x] **Phase 4: Dead Code Cleanup** - Every endpoint mapped; confirmed orphans removed (completed 2026-04-02)
-- [ ] **Phase 5: UI Polish** - Quality indicators color-coded; translations page readable and filterable
+- [x] **Phase 5: UI Polish** - Quality indicators color-coded; translations page readable and filterable (completed 2026-04-02)
 
 ## Phase Details
 
@@ -84,7 +84,7 @@ Plans:
 Plans:
 - [x] 05-01-PLAN.md — Extract TranslationsPage into sub-components (types, API, QualityBadge, columns, FilterBar, EntryEditModal)
 - [x] 05-02-PLAN.md — Quality badge visual upgrade (dot+score inline) and table column optimization
-- [ ] 05-03-PLAN.md — Filter/sort expansion with review-state filters and Sort dropdown
+- [x] 05-03-PLAN.md — Filter/sort expansion with review-state filters and Sort dropdown
 **UI hint**: yes
 
 ## Progress
@@ -98,4 +98,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Deploy Hardening | 2/2 | Complete   | 2026-04-02 |
 | 3. Bug Fixes | 2/2 | Complete   | 2026-04-02 |
 | 4. Dead Code Cleanup | 3/3 | Complete   | 2026-04-02 |
-| 5. UI Polish | 2/3 | In Progress|  |
+| 5. UI Polish | 3/3 | Complete   | 2026-04-02 |
