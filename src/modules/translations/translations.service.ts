@@ -721,8 +721,17 @@ export class TranslationsService {
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
     if (dto.context !== undefined) {
+      const oldContext = keyEntity.context;
       keyEntity.context = dto.context ?? null;
+      // Reset contextRequired so AI re-determines it with new context
+      if (oldContext !== keyEntity.context) {
+        keyEntity.contextRequired = null;
+      }
       await this.keyRepo.save(keyEntity);
+      // Context change triggers async quality re-evaluation
+      if (oldContext !== keyEntity.context) {
+        await this.resetQualityForKey(keyEntity.id);
+      }
     }
 
     const values = await this.upsertValues(
@@ -1035,6 +1044,25 @@ export class TranslationsService {
       .where(
         'key_id = :keyId AND locale_id = :localeId AND quality_review_state != :expectedState AND (quality_content_hash IS NULL OR quality_content_hash != :hash)',
         { keyId, localeId, hash, expectedState: 'expected' },
+      )
+      .execute();
+  }
+
+  /** Reset quality state for ALL locales of a key (triggers async re-evaluation). */
+  async resetQualityForKey(keyId: string): Promise<void> {
+    await this.valueRepo
+      .createQueryBuilder()
+      .update()
+      .set({
+        qualityReviewState: 'not_checked',
+        qualityScore: null,
+        qualityLevel: null,
+        qualityComment: null,
+        qualityCheckedAt: null,
+      })
+      .where(
+        'key_id = :keyId AND quality_review_state != :expectedState',
+        { keyId, expectedState: 'expected' },
       )
       .execute();
   }

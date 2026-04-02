@@ -1088,8 +1088,29 @@ export class SandboxService {
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
     if (dto.context !== undefined) {
+      const oldContext = keyEntity.context;
       keyEntity.context = dto.context ?? null;
+      if (oldContext !== keyEntity.context) {
+        keyEntity.contextRequired = null;
+      }
       await this.keyRepo.save(keyEntity);
+      if (oldContext !== keyEntity.context) {
+        await this.valueRepo
+          .createQueryBuilder()
+          .update()
+          .set({
+            qualityReviewState: 'not_checked',
+            qualityScore: null,
+            qualityLevel: null,
+            qualityComment: null,
+            qualityCheckedAt: null,
+          })
+          .where(
+            'key_id = :keyId AND quality_review_state != :expectedState',
+            { keyId: keyEntity.id, expectedState: 'expected' },
+          )
+          .execute();
+      }
     }
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
@@ -1259,8 +1280,30 @@ export class SandboxService {
       } else {
         // Update context if provided
         if (entry.context !== undefined) {
+          const oldContext = keyEntity.context;
           keyEntity.context = entry.context ?? null;
+          if (oldContext !== keyEntity.context) {
+            keyEntity.contextRequired = null;
+          }
           await this.keyRepo.save(keyEntity);
+          // Context change triggers async quality re-evaluation
+          if (oldContext !== keyEntity.context) {
+            await this.valueRepo
+              .createQueryBuilder()
+              .update()
+              .set({
+                qualityReviewState: 'not_checked',
+                qualityScore: null,
+                qualityLevel: null,
+                qualityComment: null,
+                qualityCheckedAt: null,
+              })
+              .where(
+                'key_id = :keyId AND quality_review_state != :expectedState',
+                { keyId: keyEntity.id, expectedState: 'expected' },
+              )
+              .execute();
+          }
         }
         updated++;
       }

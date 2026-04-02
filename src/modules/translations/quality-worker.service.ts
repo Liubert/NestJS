@@ -10,6 +10,10 @@ import {
   QualityQueueService,
   QualityBatchMessage,
 } from './quality-queue.service.js';
+import {
+  CONTEXT_MISSING_CAP,
+  scoreToLevel,
+} from './quality-constants.js';
 
 @Injectable()
 export class QualityWorkerService implements OnApplicationBootstrap {
@@ -55,7 +59,7 @@ export class QualityWorkerService implements OnApplicationBootstrap {
     const defaultLocale = projectLocales.find((l) => l.isDefault);
     const localeById = new Map(projectLocales.map((l) => [l.id, l]));
 
-    // Load key names
+    // Load key entities (including context and contextRequired)
     const keys = await this.keyRepo.findBy({ id: In(keyIds) });
     const keyById = new Map(keys.map((k) => [k.id, k]));
 
@@ -82,16 +86,17 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       valuesByKey.get(v.key_id)!.set(v.locale_id, v.value);
     }
 
-    // Build items for bulk quality check
+    // Build items for bulk quality check — now includes context
     const items: Array<{
       key: string;
       source: string | null;
+      context: string | null;
       translations: Record<string, string>;
     }> = [];
-    // Default locale items — language_quality only (no source comparison)
     const defaultItems: Array<{
       key: string;
       source: string | null;
+      context: string | null;
       translations: Record<string, string>;
     }> = [];
 
@@ -103,6 +108,7 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       const source = defaultLocale
         ? (valMap.get(defaultLocale.id) ?? null)
         : null;
+      const context = keyEntity.context;
       const translations: Record<string, string> = {};
       let defaultValue: string | undefined;
       for (const [localeId, value] of valMap.entries()) {
@@ -116,12 +122,13 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       }
 
       if (Object.keys(translations).length) {
-        items.push({ key: keyEntity.key, source, translations });
+        items.push({ key: keyEntity.key, source, context, translations });
       }
       if (defaultLocale && defaultValue) {
         defaultItems.push({
           key: keyEntity.key,
           source: null,
+          context,
           translations: { [defaultLocale.code]: defaultValue },
         });
       }
@@ -139,18 +146,21 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
     >;
+    let contextFlags: Record<string, boolean>;
 
     try {
-      const [mainResults, defaultResults] = await Promise.all([
+      const emptyResult = { results: {}, contextFlags: {} };
+      const [mainResult, defaultResult] = await Promise.all([
         items.length
-          ? this.aiTranslateService.bulkCheckQuality(items)
-          : Promise.resolve({}),
+          ? this.aiTranslateService.bulkCheckQuality(items, 5, 90_000, projectId)
+          : Promise.resolve(emptyResult),
         defaultItems.length
           ? this.aiTranslateService.bulkCheckQuality(defaultItems)
-          : Promise.resolve({}),
+          : Promise.resolve(emptyResult),
       ]);
-      results = { ...mainResults };
-      for (const [key, localeMap] of Object.entries(defaultResults)) {
+      results = { ...mainResult.results };
+      contextFlags = { ...mainResult.contextFlags, ...defaultResult.contextFlags };
+      for (const [key, localeMap] of Object.entries(defaultResult.results)) {
         results[key] = Object.assign({}, results[key] ?? {}, localeMap);
       }
     } catch (e: unknown) {
@@ -158,7 +168,33 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         `Gemini failed for batch: ${e instanceof Error ? e.message : String(e)}`,
       );
       await this.setStateForKeys(keyIds, 'failed');
-      throw e; // let queue retry
+      throw e;
+    }
+
+    // Apply context penalty and persist contextRequired flags
+    for (const keyId of keyIds) {
+      const keyEntity = keyById.get(keyId);
+      if (!keyEntity) continue;
+
+      const isContextRequired = contextFlags[keyEntity.key];
+      // Persist contextRequired if AI determined it
+      if (isContextRequired !== undefined && keyEntity.contextRequired !== isContextRequired) {
+        keyEntity.contextRequired = isContextRequired;
+        await this.keyRepo.save(keyEntity);
+      }
+
+      // Apply context penalty: cap scores at CONTEXT_MISSING_CAP if context required but missing
+      const keyResult = results[keyEntity.key];
+      if (isContextRequired && !keyEntity.context && keyResult) {
+        for (const [locale, r] of Object.entries(keyResult)) {
+          if (r.score > CONTEXT_MISSING_CAP) {
+            r.score = CONTEXT_MISSING_CAP;
+            r.level = scoreToLevel(CONTEXT_MISSING_CAP);
+            const contextNote = 'Context is required but missing — confidence reduced.';
+            r.comment = r.comment ? `${r.comment} ${contextNote}` : contextNote;
+          }
+        }
+      }
     }
 
     // Persist results per key×locale
@@ -169,7 +205,6 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       const keyResult = keyEntity ? results[keyEntity.key] : undefined;
 
       if (!keyResult) {
-        // This key's chunk timed out — mark as failed
         if (valMap) {
           for (const [localeId] of valMap.entries()) {
             await this.valueRepo.update(
@@ -204,7 +239,7 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         );
       }
 
-      // Mark any locales missing from results as failed (e.g. chunk timeout)
+      // Mark any locales missing from results as failed
       if (valMap) {
         for (const [localeId] of valMap.entries()) {
           if (!checkedLocaleIds.has(localeId)) {

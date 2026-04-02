@@ -88,29 +88,31 @@ export class AiTranslateService {
 
   /**
    * Reviews all translations in a batch with a single Gemini call per chunk.
-   * Dramatically more efficient than calling checkQuality() once per key×locale.
-   * @param items    Each item has a key name, optional source text, and a locale→translation map.
-   * @param chunkSize Max keys per Gemini request (default 5 — keeps prompts small and fast).
+   * Returns per-locale scores AND per-key contextRequired flags.
+   * @param items    Each item has a key name, optional source/context, and a locale→translation map.
+   * @param chunkSize Max keys per Gemini request (default 5).
    * @param chunkTimeoutMs Per-chunk Gemini timeout in ms (default 90s). Timed-out chunks are skipped.
    */
   async bulkCheckQuality(
     items: Array<{
       key: string;
       source: string | null;
+      context: string | null;
       translations: Record<string, string>;
     }>,
     chunkSize = 5,
     chunkTimeoutMs = 90_000,
     projectId?: string,
-  ): Promise<
-    Record<
+  ): Promise<{
+    results: Record<
       string,
       Record<
         string,
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
-    >
-  > {
+    >;
+    contextFlags: Record<string, boolean>;
+  }> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -129,6 +131,7 @@ export class AiTranslateService {
         { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
       >
     > = {};
+    const contextFlags: Record<string, boolean> = {};
 
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
@@ -145,7 +148,7 @@ export class AiTranslateService {
         raw = await Promise.race([geminiCall, timeout]);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (msg === 'chunk_timeout') continue; // skip this chunk, mark those keys as failed
+        if (msg === 'chunk_timeout') continue;
         throw new BadGatewayException(`Gemini API error: ${msg}`);
       }
 
@@ -154,23 +157,43 @@ export class AiTranslateService {
         .replace(/\s*```$/, '')
         .trim();
 
-      let parsed: Record<
-        string,
-        Record<string, { score: number; comment: string }>
-      >;
+      let parsed: Record<string, unknown>;
       try {
-        parsed = JSON.parse(cleaned) as typeof parsed;
+        parsed = JSON.parse(cleaned) as Record<string, unknown>;
       } catch {
-        // chunk failed — skip, those keys get no results
         continue;
       }
 
-      for (const [key, localeMap] of Object.entries(parsed)) {
-        results[key] = {};
-        for (const [locale, r] of Object.entries(localeMap)) {
-          const score = Math.min(100, Math.max(1, Math.round(r.score)));
-          const level = scoreToLevel(score);
-          results[key][locale] = { score, level, comment: r.comment ?? '' };
+      // Parse response — handles new format with contextRequired + locales wrapper
+      for (const [key, value] of Object.entries(parsed)) {
+        const keyData = value as Record<string, unknown>;
+
+        // Detect format: new (has "locales" key) vs old (flat locale map)
+        const hasLocalesKey = keyData && typeof keyData === 'object' && 'locales' in keyData;
+
+        if (hasLocalesKey) {
+          // New format: { contextRequired: bool, locales: { locale: { score, comment } } }
+          if (typeof keyData.contextRequired === 'boolean') {
+            contextFlags[key] = keyData.contextRequired;
+          }
+          const localeMap = (keyData.locales ?? {}) as Record<string, { score: number; comment: string }>;
+          results[key] = {};
+          for (const [locale, r] of Object.entries(localeMap)) {
+            if (r && typeof r.score === 'number') {
+              const score = Math.min(100, Math.max(1, Math.round(r.score)));
+              results[key][locale] = { score, level: scoreToLevel(score), comment: r.comment ?? '' };
+            }
+          }
+        } else {
+          // Fallback: old flat format { locale: { score, comment } }
+          results[key] = {};
+          for (const [locale, r] of Object.entries(keyData)) {
+            const localeResult = r as { score?: number; comment?: string };
+            if (localeResult && typeof localeResult.score === 'number') {
+              const score = Math.min(100, Math.max(1, Math.round(localeResult.score)));
+              results[key][locale] = { score, level: scoreToLevel(score), comment: localeResult.comment ?? '' };
+            }
+          }
         }
       }
     }
@@ -194,13 +217,14 @@ export class AiTranslateService {
         .catch(() => {});
     }
 
-    return results;
+    return { results, contextFlags };
   }
 
   private buildBulkQualityPrompt(
     items: Array<{
       key: string;
       source: string | null;
+      context: string | null;
       translations: Record<string, string>;
     }>,
   ): string {
@@ -210,6 +234,13 @@ IMPORTANT — Ambiguity and multiple meanings:
 - Many English words have multiple valid meanings. If "source" is present, consider ALL reasonable meanings before judging accuracy.
 - If the translation is correct for ANY valid interpretation that makes sense in a software/product UI, treat it as accurate.
 - Only flag errors when the translation genuinely cannot correspond to any valid interpretation of the source.
+- If "context" is present, use it to determine the correct meaning and evaluate more precisely.
+
+Context awareness:
+- For each key, determine whether the source text is ambiguous and would benefit from context for confident translation.
+- Set "contextRequired" to true if context would meaningfully improve translation confidence (e.g., ambiguous words like "train", "moon", "light", "save").
+- Set "contextRequired" to false if the meaning is clear without context (e.g., "Cancel", "OK", "Delete", "Email").
+- Do NOT lower scores for missing context — score purely on grammar and translation accuracy. Context penalties are applied separately.
 
 Score each translation on a 1–100 scale:
 - 95–100: Excellent — accurate, natural, production-ready
@@ -219,9 +250,20 @@ Score each translation on a 1–100 scale:
 
 If "source" is present, compare translation accuracy to it. If "source" is null, evaluate language quality alone.
 
+Comment rules:
+- score 95–100: comment should be empty string
+- score 80–94: comment must explain what could still be improved
+- score below 80: comment must explain the main issue
+- keep comment practical and concise, up to 60 words
+
 Return ONLY valid JSON with no markdown, no explanation, no extra keys:
 {
-  "<key>": { "<locale>": { "score": <number 1-100>, "comment": "<brief note or empty string>" } }
+  "<key>": {
+    "contextRequired": <true or false>,
+    "locales": {
+      "<locale>": { "score": <number 1-100>, "comment": "<string>" }
+    }
+  }
 }
 
 Translations to review:

@@ -66,7 +66,7 @@ Comment rules:
 - score 95–100: comment should be empty string
 - score 80–94: comment must explain what could still be improved
 - score below 80: comment must explain the main issue
-- keep comment practical and concise, up to 30 words
+- keep comment practical and concise, up to 60 words
 
 Return ONLY valid JSON, no markdown, no extra text:
 {"score": <1-100>, "comment": "<string>"}`;
@@ -101,7 +101,7 @@ Comment rules:
 - score 95–100: comment should be empty string
 - score 80–94: comment must explain what could still be improved
 - score below 80: comment must explain the main issue
-- keep comment practical and concise, up to 30 words
+- keep comment practical and concise, up to 60 words
 
 Return ONLY valid JSON, no markdown, no extra text:
 {"score": <1-100>, "comment": "<string>"}`;
