@@ -16,8 +16,8 @@ Requirements for stabilization milestone. Each maps to roadmap phases.
 
 ### Test Coverage
 
-- [ ] **TEST-01**: Jest downgraded to 29.7.0 with ts-jest 29.4.9 for stable test infrastructure
-- [ ] **TEST-02**: Integration tests for translations CRUD with real PostgreSQL via Testcontainers
+- [x] **TEST-01**: Jest downgraded to 29.7.0 with ts-jest 29.4.9 for stable test infrastructure
+- [x] **TEST-02**: Integration tests for translations CRUD with real PostgreSQL via Testcontainers
 
 ### Bug Fixes
 
@@ -81,8 +81,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| TEST-01 | Phase 1 | Pending |
-| TEST-02 | Phase 1 | Pending |
+| TEST-01 | Phase 1 | Complete |
+| TEST-02 | Phase 1 | Complete |
 | DEPLOY-01 | Phase 2 | Pending |
 | DEPLOY-02 | Phase 2 | Pending |
 | DEPLOY-03 | Phase 2 | Pending |

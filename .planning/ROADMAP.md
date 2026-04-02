@@ -12,7 +12,7 @@ The TMS is working but unstable. This milestone hardens it into something teams 
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Test Infrastructure** - Jest 29 + Testcontainers working; first real integration tests catch regressions
+- [x] **Phase 1: Test Infrastructure** - Jest 29 + Testcontainers working; first real integration tests catch regressions (completed 2026-04-02)
 - [ ] **Phase 2: Deploy Hardening** - Deploys pass first attempt; health gates prevent silent failures
 - [ ] **Phase 3: Bug Fixes** - Quality state correctness, sandbox promotion context, input validation
 - [ ] **Phase 4: Dead Code Cleanup** - Every endpoint mapped; confirmed orphans removed
@@ -30,7 +30,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. A translation CRUD operation verified by an integration test fails that test when the underlying behavior is broken
 **Plans**: 1 plan
 Plans:
-- [ ] 01-01-PLAN.md — Jest 29 downgrade + Testcontainers integration tests
+- [x] 01-01-PLAN.md — Jest 29 downgrade + Testcontainers integration tests
 
 ### Phase 2: Deploy Hardening
 **Goal**: Deploys pass on the first attempt and the pipeline catches unhealthy services before reporting success
@@ -81,7 +81,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Test Infrastructure | 0/1 | Not started | - |
+| 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
 | 2. Deploy Hardening | 0/? | Not started | - |
 | 3. Bug Fixes | 0/? | Not started | - |
 | 4. Dead Code Cleanup | 0/? | Not started | - |
