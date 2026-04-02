@@ -80,7 +80,8 @@ interface Entry {
   key: string;
   createdAt: string;
   context: string | null;
-  contextRequired: boolean | null;
+  contextNeed: 'required' | 'useful' | 'none' | null;
+  contextReason: string | null;
   values: Record<string, string>;
   quality: Record<string, QualityInfo | null>;
 }
@@ -784,12 +785,28 @@ const EditModal: React.FC<EditModalProps> = ({
           label={
             <Space size={4}>
               Context{' '}
-              {entry?.contextRequired && !entry?.context && (
-                <Tag color="warning" style={{ fontSize: 11 }}>
-                  Required
-                </Tag>
+              {entry?.contextNeed === 'required' && !entry?.context && (
+                <Tooltip title={entry?.contextReason}>
+                  <Tag color="error" style={{ fontSize: 11 }}>
+                    Required
+                  </Tag>
+                </Tooltip>
+              )}
+              {entry?.contextNeed === 'useful' && !entry?.context && (
+                <Tooltip title={entry?.contextReason}>
+                  <Tag color="processing" style={{ fontSize: 11 }}>
+                    Suggested
+                  </Tag>
+                </Tooltip>
               )}
             </Space>
+          }
+          extra={
+            entry?.contextReason &&
+            !entry?.context &&
+            entry?.contextNeed !== 'none'
+              ? entry.contextReason
+              : undefined
           }
         >
           <Input.TextArea
@@ -1312,9 +1329,20 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
               />
             </Tooltip>
           )}
-          {record.contextRequired && !record.context && (
-            <Tooltip title="Context required but missing — quality scores may be capped">
+          {record.contextNeed === 'required' && !record.context && (
+            <Tooltip
+              title={`Context required — ${record.contextReason ?? 'ambiguous term'}. Quality scores capped.`}
+            >
               <WarningOutlined
+                style={{ color: '#ff4d4f', fontSize: 12, cursor: 'help' }}
+              />
+            </Tooltip>
+          )}
+          {record.contextNeed === 'useful' && !record.context && (
+            <Tooltip
+              title={`Context suggested — ${record.contextReason ?? 'would improve quality'}`}
+            >
+              <InfoCircleOutlined
                 style={{ color: '#faad14', fontSize: 12, cursor: 'help' }}
               />
             </Tooltip>
