@@ -55,7 +55,7 @@ Plans:
   3. Promoting a sandbox namespace to production carries `contextNeed`, `contextReason`, and `context` fields alongside the translation values
 **Plans**: 2 plans
 Plans:
-- [ ] 03-01-PLAN.md — Quality state 'skipped' + timeout fix (BUG-01, BUG-02)
+- [x] 03-01-PLAN.md — Quality state 'skipped' + timeout fix (BUG-01, BUG-02)
 - [ ] 03-02-PLAN.md — Sandbox context isolation and promote fix (BUG-03)
 
 ### Phase 4: Dead Code Cleanup
@@ -88,6 +88,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
 | 2. Deploy Hardening | 2/2 | Complete   | 2026-04-02 |
-| 3. Bug Fixes | 0/2 | Not started | - |
+| 3. Bug Fixes | 1/2 | In Progress|  |
 | 4. Dead Code Cleanup | 0/? | Not started | - |
 | 5. UI Polish | 0/? | Not started | - |
