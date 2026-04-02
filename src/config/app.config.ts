@@ -50,7 +50,8 @@ export function loadBaseConfig(): BaseAppConfig {
       password: process.env.DB_PASS!,
       database: process.env.DB_NAME!,
       namingStrategy: new SnakeNamingStrategy(),
-      synchronize: false,
+      // Use synchronize in test env so Testcontainers schema is auto-created from entities
+      synchronize: process.env.NODE_ENV === 'test',
       logging: true,
     },
 
