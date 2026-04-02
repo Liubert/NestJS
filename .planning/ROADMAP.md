@@ -28,7 +28,9 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. `npm test` runs without warnings about ts-jest/Jest version incompatibility
   2. Integration tests execute against a real PostgreSQL instance (via Testcontainers) without mocking TypeORM
   3. A translation CRUD operation verified by an integration test fails that test when the underlying behavior is broken
-**Plans**: TBD
+**Plans**: 1 plan
+Plans:
+- [ ] 01-01-PLAN.md — Jest 29 downgrade + Testcontainers integration tests
 
 ### Phase 2: Deploy Hardening
 **Goal**: Deploys pass on the first attempt and the pipeline catches unhealthy services before reporting success
@@ -79,7 +81,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Test Infrastructure | 0/? | Not started | - |
+| 1. Test Infrastructure | 0/1 | Not started | - |
 | 2. Deploy Hardening | 0/? | Not started | - |
 | 3. Bug Fixes | 0/? | Not started | - |
 | 4. Dead Code Cleanup | 0/? | Not started | - |
