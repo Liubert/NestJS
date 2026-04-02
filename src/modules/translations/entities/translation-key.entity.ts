@@ -25,8 +25,11 @@ export class TranslationKeyEntity {
   @Column({ type: 'text' })
   key!: string;
 
-  @Column({ type: 'varchar', length: 200, nullable: true, default: null })
+  @Column({ type: 'varchar', length: 500, nullable: true, default: null })
   context!: string | null;
+
+  @Column({ name: 'context_required', type: 'boolean', nullable: true, default: null })
+  contextRequired!: boolean | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;

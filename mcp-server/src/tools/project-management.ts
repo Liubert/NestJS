@@ -309,7 +309,7 @@ export function registerProjectManagementTools(server: McpServer): void {
       contexts: z
         .record(z.string(), z.string())
         .optional()
-        .describe('Optional key -> context map. Context is a short description (max 200 chars) of where/how each key is used. Example: { "button.save": "Save button in expense form footer" }'),
+        .describe('Optional key -> context map. Context is a short description (max 500 chars) of where/how each key is used. Example: { "button.save": "Save button in expense form footer" }'),
       useBatchEndpoint: z
         .boolean()
         .default(true)

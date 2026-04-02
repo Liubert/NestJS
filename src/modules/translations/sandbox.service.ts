@@ -34,6 +34,7 @@ export interface SandboxEntryRow {
   key: string;
   createdAt: Date;
   context: string | null;
+  contextRequired: boolean | null;
   values: Record<string, string>;
   quality: Record<string, QualityInfo | null>;
 }
@@ -899,9 +900,9 @@ export class SandboxService {
     const qualityOrderCol = sortBy === 'qualityScore' ? '_qs' : '';
 
     const keys = await this.dataSource.query<
-      { id: string; key: string; created_at: Date; context: string | null }[]
+      { id: string; key: string; created_at: Date; context: string | null; context_required: boolean | null }[]
     >(
-      `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context${qualitySelectExpr}
+      `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context, tk.context_required${qualitySelectExpr}
        FROM translation_keys tk
        WHERE ${baseWhere}
        ORDER BY ${qualityOrderCol || sortCol} ${sortDir}${nullsLast}
@@ -990,6 +991,7 @@ export class SandboxService {
       key: k.key,
       createdAt: k.created_at,
       context: k.context ?? null,
+      contextRequired: k.context_required ?? null,
       values: valuesByKey.get(k.id) ?? {},
       quality: qualityByKey.get(k.id) ?? {},
     }));
@@ -1052,6 +1054,7 @@ export class SandboxService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       context: keyEntity.context,
+      contextRequired: keyEntity.contextRequired ?? null,
       values: resultValues,
       quality: {},
     };
@@ -1104,6 +1107,7 @@ export class SandboxService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       context: keyEntity.context,
+      contextRequired: keyEntity.contextRequired ?? null,
       values: resultValues,
       quality: {},
     };

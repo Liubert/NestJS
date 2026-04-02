@@ -59,6 +59,7 @@ export interface EntryRow {
   key: string;
   createdAt: Date;
   context: string | null;
+  contextRequired: boolean | null;
   values: Record<string, string>;
   quality: Record<string, QualityInfo | null>;
 }
@@ -633,6 +634,7 @@ export class TranslationsService {
       key: k.key,
       createdAt: k.createdAt,
       context: k.context ?? null,
+      contextRequired: k.contextRequired ?? null,
       values: valuesByKey.get(k.id) ?? {},
       quality: qualityByKey.get(k.id) ?? {},
     }));
@@ -691,6 +693,7 @@ export class TranslationsService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       context: keyEntity.context,
+      contextRequired: keyEntity.contextRequired ?? null,
       values,
       quality: {},
     };
@@ -740,6 +743,7 @@ export class TranslationsService {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
       context: keyEntity.context,
+      contextRequired: keyEntity.contextRequired ?? null,
       values,
       quality: {},
     };

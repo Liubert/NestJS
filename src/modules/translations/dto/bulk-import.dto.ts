@@ -35,7 +35,7 @@ export class BulkImportEntryDto {
   })
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(500)
   context?: string;
 }
 

@@ -101,9 +101,9 @@ export function registerSandboxWriteTools(server: McpServer): void {
         ),
       context: z
         .string()
-        .max(200)
+        .max(500)
         .optional()
-        .describe("Short context about where/how this key is used (max 200 chars / ~30 words). Helps translators and AI produce better translations."),
+        .describe("Short context about where/how this key is used (max 500 chars). Helps translators and AI produce better translations."),
     },
     async ({ projectSlug, namespace, key, values, context }) => {
       // Validate locale codes and check sandbox state in parallel.

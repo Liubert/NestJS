@@ -11,10 +11,10 @@ export class UpdateEntryDto {
 
   @ApiPropertyOptional({
     example: 'Button label on the settings page',
-    description: 'Short context describing where/how the key is used (max 200 chars)',
+    description: 'Short context describing where/how the key is used (max 500 chars)',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(500)
   context?: string;
 }
