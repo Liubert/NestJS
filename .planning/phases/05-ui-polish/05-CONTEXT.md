@@ -6,7 +6,7 @@
 <domain>
 ## Phase Boundary
 
-Improve the translations page readability and make quality state visually clear. No backend/API changes — frontend only. Covers quality indicators, filtering/sorting by quality, table layout optimization, and component extraction from the monolithic TranslationsPage.
+Improve the translations page readability and make quality state visually clear. Primarily frontend work. Minimal backend changes are allowed where needed to support new filter parameters (review state filter, expected filter bugfix). Covers quality indicators, filtering/sorting by quality, table layout optimization, and component extraction from the monolithic TranslationsPage.
 
 </domain>
 
@@ -34,6 +34,9 @@ Improve the translations page readability and make quality state visually clear.
 - **D-12:** Extracted components go in `admin-ui/src/pages/translations/components/` subfolder. Files: QualityBadge.tsx, FilterBar.tsx, EntryEditModal.tsx, columns.tsx.
 - **D-13:** Do component extraction FIRST (before visual changes) so subsequent changes are isolated to the right file.
 
+### Backend scope
+- **D-14:** Minimal backend changes are allowed for: (1) adding `reviewState` query param to `ListEntriesQueryDto` and wiring it in `translations.service.ts` and `sandbox.service.ts`, (2) fixing the broken `expected` value in the `qualityLevel` `@IsIn` validator. No other backend changes.
+
 ### Claude's Discretion
 - Exact pixel values for spacing and font sizes
 - How to implement ellipsis + tooltip pattern (CSS vs Ant Design Typography.Text ellipsis)
@@ -53,9 +56,12 @@ Improve the translations page readability and make quality state visually clear.
 - `admin-ui/src/api/client.ts` — Axios client with interceptors, base URL config
 - `admin-ui/src/constants/supported-languages.ts` — Flag emoji mapping used in locale columns
 
-### Backend API (read-only reference, no changes)
+### Backend API (minimal changes per D-14)
 - `src/modules/translations/controllers/translations.controller.ts` — Endpoints for entries, quality check. Supports `qualityLevel` and `sortBy` query params.
 - `src/modules/translations/controllers/sandbox.controller.ts` — Sandbox entry endpoints, same query params.
+- `src/modules/translations/dto/list-entries-query.dto.ts` — DTO for entry list query; adding `reviewState` param and fixing `expected` in `qualityLevel` validator.
+- `src/modules/translations/translations.service.ts` — Adding `reviewState` filter to `listEntries` method.
+- `src/modules/translations/sandbox.service.ts` — Adding `reviewState` filter to `listSandboxEntries` method.
 
 ### Requirements
 - `.planning/REQUIREMENTS.md` UI-01, UI-02, UI-03 — Quality indicators, readability, filtering requirements

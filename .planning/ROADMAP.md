@@ -73,11 +73,11 @@ Plans:
 - [x] 04-03-PLAN.md — Gap closure: remove dead FilesService methods, correct inventory
 
 ### Phase 5: UI Polish
-**Goal**: The translations page is readable and quality state is visually clear without functional changes to the backend
+**Goal**: The translations page is readable and quality state is visually clear (minimal backend changes allowed for filter support per D-14)
 **Depends on**: Phase 3
 **Requirements**: UI-01, UI-02, UI-03
 **Success Criteria** (what must be TRUE):
-  1. Quality state indicators are visually distinct: green (checked), blue (skipped), red (failed), gray (pending)
+  1. Quality state indicators are visually distinct: green (checked), blue (skipped), orange (failed), gray (pending)
   2. A user can filter the translations list by quality score without scrolling through unrelated entries
   3. The translations page layout is readable at normal screen width without horizontal scrolling or cramped columns
 **Plans**: 3 plans
