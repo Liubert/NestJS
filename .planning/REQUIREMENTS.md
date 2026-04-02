@@ -23,7 +23,7 @@ Requirements for stabilization milestone. Each maps to roadmap phases.
 
 - [x] **BUG-01**: Quality Check "skipped" is a distinct state — score=100, blue indicator, "skipped" status in UI
 - [x] **BUG-02**: Quality Check "failed" state persisted in DB — enables retry workflows and DLQ visibility
-- [ ] **BUG-03**: Sandbox promote migrates key-level fields (contextNeed, contextReason, context) alongside translation values
+- [x] **BUG-03**: Sandbox promote migrates key-level fields (contextNeed, contextReason, context) alongside translation values
 
 ### Dead Code Cleanup
 
@@ -89,7 +89,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEPLOY-04 | Phase 2 | Pending |
 | BUG-01 | Phase 3 | Complete |
 | BUG-02 | Phase 3 | Complete |
-| BUG-03 | Phase 3 | Pending |
+| BUG-03 | Phase 3 | Complete |
 | CLEAN-01 | Phase 4 | Pending |
 | CLEAN-02 | Phase 4 | Pending |
 | UI-01 | Phase 5 | Pending |
