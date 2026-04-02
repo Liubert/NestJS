@@ -84,4 +84,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-02 after Phase 1 completion — test infrastructure established*
+*Last updated: 2026-04-02 after Phase 2 completion — deploy hardening (health endpoint, Docker healthchecks, CI verification)*
