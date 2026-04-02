@@ -32,4 +32,12 @@ export class CheckQualityDto {
   @IsOptional()
   @IsIn(['translation_quality', 'language_quality'])
   mode?: 'translation_quality' | 'language_quality';
+
+  @ApiPropertyOptional({
+    example: 'my-project',
+    description: 'Project slug for AI usage tracking',
+  })
+  @IsOptional()
+  @IsString()
+  projectSlug?: string;
 }

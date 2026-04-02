@@ -155,7 +155,7 @@ export class QualityWorkerService implements OnApplicationBootstrap {
           ? this.aiTranslateService.bulkCheckQuality(items, 5, 90_000, projectId)
           : Promise.resolve(emptyResult),
         defaultItems.length
-          ? this.aiTranslateService.bulkCheckQuality(defaultItems)
+          ? this.aiTranslateService.bulkCheckQuality(defaultItems, 5, 90_000, projectId)
           : Promise.resolve(emptyResult),
       ]);
       results = { ...mainResult.results };

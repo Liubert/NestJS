@@ -157,8 +157,8 @@ const deleteEntry = async (slug: string, ns: string, key: string) => {
   );
 };
 
-const aiTranslate = async (text: string): Promise<Record<string, string>> => {
-  const res = await apiClient.post('/translations/ai-translate', { text });
+const aiTranslate = async (text: string, projectSlug?: string): Promise<Record<string, string>> => {
+  const res = await apiClient.post('/translations/ai-translate', { text, projectSlug });
   return res.data;
 };
 
@@ -167,9 +167,10 @@ const checkQuality = async (
   translation: string,
   locale: string,
   mode: 'translation_quality' | 'language_quality' = 'translation_quality',
+  projectSlug?: string,
 ): Promise<QualityResult> => {
   const res = await apiClient.post('/translations/ai-quality-check', {
-    source, translation, locale, mode,
+    source, translation, locale, mode, projectSlug,
   });
   return res.data;
 };
@@ -474,7 +475,7 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
     if (!enText.trim()) { message.warning('Enter English text first'); return; }
     setAiLoadingLocale('all');
     try {
-      const result = await aiTranslate(enText);
+      const result = await aiTranslate(enText, projectSlug);
       const patch: Record<string, string> = {};
       for (const locale of AI_LOCALES) {
         if (result[locale] !== undefined) patch[locale] = result[locale];
@@ -495,7 +496,7 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
     if (!enText.trim()) { message.warning('Enter English text first'); return; }
     setAiLoadingLocale(locale);
     try {
-      const result = await aiTranslate(enText);
+      const result = await aiTranslate(enText, projectSlug);
       if (result[locale] !== undefined) {
         form.setFieldsValue({ [locale]: result[locale] });
         setQualityResults((prev) => {
@@ -530,6 +531,7 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
             vals[locale],
             locale,
             isDefault ? 'language_quality' : 'translation_quality',
+            projectSlug,
           ).then((r) => [locale, r] as const);
         }),
       );
@@ -556,6 +558,7 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
         vals[locale],
         locale,
         isDefault ? 'language_quality' : 'translation_quality',
+        projectSlug,
       );
       setQualityResults((prev) => ({ ...prev, [locale]: result }));
     } catch {

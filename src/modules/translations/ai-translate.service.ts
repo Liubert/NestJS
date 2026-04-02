@@ -89,6 +89,7 @@ export class AiTranslateService {
   /**
    * Translate text to specific target locales (subset of all locales).
    * Used by auto-translate worker to translate only missing locales.
+   * @param projectId Optional project ID for usage tracking
    */
   async translateForLocales(
     text: string,
@@ -141,7 +142,7 @@ export class AiTranslateService {
       await this.aiUsageService
         .logUsage({
           projectId,
-          operation: 'translate',
+          operation: 'auto_translate',
           inputTokens,
           outputTokens,
           model: aiCfg.model,
