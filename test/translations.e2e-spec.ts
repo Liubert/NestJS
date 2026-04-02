@@ -88,7 +88,9 @@ describe('Translations CRUD (e2e)', () => {
     // Public endpoint: GET /translations/:projectSlug/:namespace/:locale
     // Returns flat Record<string, string>: { greeting: 'Hello', ... }
     const res = await request(app.getHttpServer())
-      .get(`/translations/${TEST_PROJECT_SLUG}/${TEST_NAMESPACE}/${TEST_LOCALE}`)
+      .get(
+        `/translations/${TEST_PROJECT_SLUG}/${TEST_NAMESPACE}/${TEST_LOCALE}`,
+      )
       .expect(200);
 
     expect(res.body).toHaveProperty('greeting', 'Hello');
