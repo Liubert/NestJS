@@ -87,6 +87,73 @@ export class AiTranslateService {
   }
 
   /**
+   * Translate text to specific target locales (subset of all locales).
+   * Used by auto-translate worker to translate only missing locales.
+   */
+  async translateForLocales(
+    text: string,
+    targetLocales: Record<string, string>,
+    projectId?: string,
+  ): Promise<Record<string, string>> {
+    const apiKey = this.config.get<string>('GEMINI_API_KEY');
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'GEMINI_API_KEY is not configured on this server',
+      );
+    }
+
+    const aiCfg = await this.aiConfig.getConfig();
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: aiCfg.model });
+
+    const languages = Object.entries(targetLocales)
+      .map(([code, name]) => `${name} (${code})`)
+      .join(', ');
+
+    const prompt = interpolate(aiCfg.translatePrompt, { text, languages });
+
+    let raw: string;
+    try {
+      const result = await model.generateContent(prompt);
+      raw = result.response.text().trim();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadGatewayException(`Gemini API error: ${msg}`);
+    }
+
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim();
+
+    let parsed: Record<string, string>;
+    try {
+      parsed = JSON.parse(cleaned) as Record<string, string>;
+    } catch {
+      throw new BadGatewayException(
+        `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,
+      );
+    }
+
+    if (projectId) {
+      const inputTokens = Math.ceil(prompt.length / 4);
+      const outputTokens = Math.ceil(raw.length / 4);
+      await this.aiUsageService
+        .logUsage({
+          projectId,
+          operation: 'translate',
+          inputTokens,
+          outputTokens,
+          model: aiCfg.model,
+          metadata: { textLength: text.length, localeCount: Object.keys(parsed).length },
+        })
+        .catch(() => {});
+    }
+
+    return parsed;
+  }
+
+  /**
    * Reviews all translations in a batch with a single Gemini call per chunk.
    * Returns per-locale scores AND per-key contextRequired flags.
    * @param items    Each item has a key name, optional source/context, and a locale→translation map.
