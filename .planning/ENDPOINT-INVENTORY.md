@@ -2,7 +2,7 @@
 
 **Audit date:** 2026-04-02
 **Total routes:** 60
-**Active:** 55 | **Orphan:** 3 | **Flagged:** 1 (import guard fixed in 04-02)
+**Active:** 55 | **Orphan:** 0 (all removed) | **Flagged:** 1 (forgot-password Phase 1 temporary)
 
 ---
 
@@ -79,8 +79,8 @@ Audit of all backend controllers reveals 60 routes across 10 controller files. T
 | 61 | POST | `/users` | UsersController | Admin UI: UsersPage (admin create user) | active |
 | 62 | PATCH | `/users/:id` | UsersController | Admin UI: (self-update, not surfaced in current UI) | active |
 | 63 | DELETE | `/users/:id` | UsersController | Admin UI: UsersPage | active |
-| 64 | POST | `/files/presign` | FilesController | None found | orphan |
-| 65 | POST | `/files/complete` | FilesController | None found | orphan |
+| 64 | POST | `/files/presign` | FilesController (deleted) | None found | removed |
+| 65 | POST | `/files/complete` | FilesController (deleted) | None found | removed |
 | 66 | GET | `/translations/projects/:slug/webhooks` | WebhooksController | MCP: `list_webhooks` | active |
 | 67 | POST | `/translations/projects/:slug/webhooks` | WebhooksController | MCP: `create_webhook` | active |
 | 68 | GET | `/translations/projects/:slug/webhooks/supported-events` | WebhooksController | MCP: `list_webhook_events` (uses hard-coded list, does NOT call backend) | orphan |
@@ -194,17 +194,16 @@ The endpoint currently returns the raw reset token in the HTTP response body ins
 
 ## Modules Without Active Consumers
 
-### `files/` module — No endpoint consumers
-
-Per D-02, entire modules are not deleted — only individual endpoints within. However, this module has **zero active consumers** across all 2 endpoints.
+### `files/` module — Partial cleanup (endpoints removed, service retained)
 
 **Module:** `src/modules/files/`
-**Endpoints:** `POST /files/presign`, `POST /files/complete` (both orphan)
-**Assessment:** The entire module appears to be a dead implementation stub. It was likely intended for an S3-based file upload feature that was never wired into the Admin UI or MCP server.
+**Endpoints:** Both orphan endpoints (`POST /files/presign`, `POST /files/complete`) were removed in Plan 02 (commit `42cd1ca`). FilesController was deleted.
+**Service status:** `FilesService` is an ACTIVE indirect dependency — `UsersService.updateUser()` calls `FilesService.getViewUrl()` to resolve avatar URLs. `FilesModule` remains in `app.module.ts` imports (line 38) and `users.module.ts` imports because of this dependency.
+**Dead code cleaned (Plan 03):** `presignUpload()`, `completeUpload()`, `buildKeyForAvatar()`, `extensionFromContentType()` methods removed from FilesService. `PresignUploadDto` and `CompleteUploadDto` deleted.
+**Remaining live methods:** `findFileRecordsByIds()`, `getViewUrl()`, `getAvatarUrlForUser()`
+**AWS SDK:** `@aws-sdk/client-s3` and `@aws-sdk/s3-request-presigner` are still used by `S3StorageService` (called by the live methods above).
 
-If both orphan endpoints are removed, `FilesModule` would be empty and can be removed from `app.module.ts`. The AWS SDK packages (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`) would become unused.
-
-**Action required:** Flag for Plan 02 (orphan removal). Do NOT remove the module autonomously — verify AWS SDK usage first and confirm no other module references `FilesService`.
+**Conclusion:** FilesModule is NOT a zero-consumer dead module. It is a live module with its orphan endpoints removed and dead service methods cleaned up.
 
 ---
 
@@ -219,3 +218,13 @@ Total routes counted in table: 77 rows (including 2 additional webhook orphans d
 - **Flagged:** 2 (`POST /translations/import` — missing auth guard, `POST /auth/forgot-password` — Phase 1 partial feature)
 
 > Note: The summary header at top of file uses the initial estimate. The corrected count above is authoritative.
+
+---
+
+## Corrections Log
+
+**2026-04-02 (Plan 03 gap closure):**
+- FilesModule is NOT removed from app.module.ts — it is a live dependency of UsersModule (UsersService calls FilesService.getViewUrl()). Prior SUMMARY 04-02 overclaimed "FilesModule removed entirely" — this was inaccurate.
+- Dead methods (presignUpload, completeUpload) and their DTOs removed from FilesService in Plan 03.
+- Updated "Modules Without Active Consumers" section to reflect accurate status.
+- Orphan endpoint rows 64-65 status updated to "removed".
