@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ColumnsType } from 'antd/es/table';
-import { Space, Tooltip, Tag, Button, Popconfirm } from 'antd';
+import { Space, Tooltip, Tag, Button, Popconfirm, Typography } from 'antd';
 import {
   EditOutlined,
   DeleteOutlined,
@@ -10,6 +10,8 @@ import {
 import QualityBadge, { QUALITY_COLOR } from './QualityBadge';
 import type { Entry } from './types';
 import { getFlagForCode } from '../../../constants/supported-languages';
+
+const { Text } = Typography;
 
 // ─── Column Factory ───────────────────────────────────────────────────────────
 
@@ -31,15 +33,16 @@ export function buildColumns(
       dataIndex: 'key',
       key: 'key',
       sorter: true,
-      width: 240,
+      width: 200,
       fixed: 'left',
       render: (text: string, record: Entry) => (
         <Space size={6}>
-          <Tooltip title={text}>
-            <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
-              {text}
-            </span>
-          </Tooltip>
+          <Text
+            style={{ fontFamily: 'monospace', fontSize: 12, maxWidth: 160, display: 'block' }}
+            ellipsis={{ tooltip: text }}
+          >
+            {text}
+          </Text>
           {record.context && (
             <Tooltip title={record.context}>
               <InfoCircleOutlined
@@ -76,7 +79,7 @@ export function buildColumns(
         </Tag>
       ),
       key: locale,
-      width: 180,
+      width: 150,
       render: (_: unknown, record: Entry) => {
         const val = record.values[locale];
         return (
@@ -91,17 +94,12 @@ export function buildColumns(
               onUpdate={onQualityUpdate}
             />
             {val ? (
-              <Tooltip title={val}>
-                <span
-                  style={{
-                    display: 'block',
-                    wordBreak: 'break-word',
-                    whiteSpace: 'normal',
-                  }}
-                >
-                  {val}
-                </span>
-              </Tooltip>
+              <Text
+                style={{ maxWidth: 110, display: 'block', fontSize: 12 }}
+                ellipsis={{ tooltip: val }}
+              >
+                {val}
+              </Text>
             ) : (
               <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>
             )}
@@ -166,8 +164,9 @@ export function buildColumns(
             title={deleteConfirmTitle ?? 'Delete this key?'}
             description={deleteConfirmDescription}
             onConfirm={() => onDelete(record.key)}
-            okText="Delete"
+            okText="Delete Entry"
             okButtonProps={{ danger: true }}
+            cancelText="Keep"
           >
             <Button type="text" size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
