@@ -212,6 +212,7 @@ export class AutoTranslateWorkerService
     const translations = await this.aiTranslateService.translateForLocales(
       sourceText,
       targetLocales,
+      projectId,
     );
 
     // Write results to sandbox_values

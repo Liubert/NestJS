@@ -161,11 +161,19 @@ export class TranslationsController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Check translation quality using AI' })
   async checkQuality(@Body() dto: CheckQualityDto) {
+    let projectId: string | undefined;
+    if (dto.projectSlug) {
+      const project = await this.translationsService.getProjectBySlug(
+        dto.projectSlug,
+      );
+      projectId = project.id;
+    }
     return this.aiTranslateService.checkQuality(
       dto.source,
       dto.translation,
       dto.locale,
       dto.mode,
+      projectId,
     );
   }
 

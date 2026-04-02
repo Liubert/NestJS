@@ -87,6 +87,78 @@ export class AiTranslateService {
   }
 
   /**
+   * Translate text into specific target locales (used by auto-translate worker).
+   * @param text Source text to translate
+   * @param targetLocales Map of locale code → language name, e.g. { uk: 'Ukrainian' }
+   * @param projectId Optional project ID for usage tracking
+   */
+  async translateForLocales(
+    text: string,
+    targetLocales: Record<string, string>,
+    projectId?: string,
+  ): Promise<Record<string, string>> {
+    const apiKey = this.config.get<string>('GEMINI_API_KEY');
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'GEMINI_API_KEY is not configured on this server',
+      );
+    }
+
+    const aiCfg = await this.aiConfig.getConfig();
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: aiCfg.model });
+
+    const languages = Object.entries(targetLocales)
+      .map(([code, name]) => `${name} (${code})`)
+      .join(', ');
+
+    const prompt = interpolate(aiCfg.translatePrompt, { text, languages });
+
+    let raw: string;
+    try {
+      const result = await model.generateContent(prompt);
+      raw = result.response.text().trim();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadGatewayException(`Gemini API error: ${msg}`);
+    }
+
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim();
+
+    let parsed: Record<string, string>;
+    try {
+      parsed = JSON.parse(cleaned) as Record<string, string>;
+    } catch {
+      throw new BadGatewayException(
+        `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,
+      );
+    }
+
+    if (projectId) {
+      const inputTokens = Math.ceil(prompt.length / 4);
+      const outputTokens = Math.ceil(raw.length / 4);
+      await this.aiUsageService
+        .logUsage({
+          projectId,
+          operation: 'auto_translate',
+          inputTokens,
+          outputTokens,
+          model: aiCfg.model,
+          metadata: {
+            textLength: text.length,
+            localeCount: Object.keys(parsed).length,
+          },
+        })
+        .catch(() => {});
+    }
+
+    return parsed;
+  }
+
+  /**
    * Reviews all translations in a batch with a single Gemini call per chunk.
    * Dramatically more efficient than calling checkQuality() once per key×locale.
    * @param items    Each item has a key name, optional source text, and a locale→translation map.

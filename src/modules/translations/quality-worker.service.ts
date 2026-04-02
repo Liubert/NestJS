@@ -143,10 +143,10 @@ export class QualityWorkerService implements OnApplicationBootstrap {
     try {
       const [mainResults, defaultResults] = await Promise.all([
         items.length
-          ? this.aiTranslateService.bulkCheckQuality(items)
+          ? this.aiTranslateService.bulkCheckQuality(items, undefined, undefined, projectId)
           : Promise.resolve({}),
         defaultItems.length
-          ? this.aiTranslateService.bulkCheckQuality(defaultItems)
+          ? this.aiTranslateService.bulkCheckQuality(defaultItems, undefined, undefined, projectId)
           : Promise.resolve({}),
       ]);
       results = { ...mainResults };
