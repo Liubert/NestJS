@@ -7,11 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHmac } from 'crypto';
-import {
-  WebhookEntity,
-  WebhookEvent,
-  WEBHOOK_EVENTS,
-} from './entities/webhook.entity.js';
+import { WebhookEntity, WebhookEvent } from './entities/webhook.entity.js';
 import { CreateWebhookDto } from './dto/create-webhook.dto.js';
 import { UpdateWebhookDto } from './dto/update-webhook.dto.js';
 
@@ -113,10 +109,6 @@ export class WebhooksService implements OnModuleDestroy {
       clearTimeout(batch.timer);
       this.batches.delete(id);
     }
-  }
-
-  getSupportedEvents(): readonly string[] {
-    return WEBHOOK_EVENTS;
   }
 
   // --- Event dispatch -------------------------------------------------------

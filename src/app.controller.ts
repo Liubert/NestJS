@@ -1,21 +1,18 @@
 import { Controller, Get } from '@nestjs/common';
-import { HealthCheck, HealthCheckService, TypeOrmHealthIndicator } from '@nestjs/terminus';
-import { AppService } from './app.service';
+import {
+  HealthCheck,
+  HealthCheckService,
+  TypeOrmHealthIndicator,
+} from '@nestjs/terminus';
 import { RabbitMQHealthIndicator } from './common/health/rabbitmq.health';
 
 @Controller()
 export class AppController {
   constructor(
-    private readonly appService: AppService,
     private readonly health: HealthCheckService,
     private readonly db: TypeOrmHealthIndicator,
     private readonly rmq: RabbitMQHealthIndicator,
   ) {}
-
-  @Get()
-  getAboutPage(): string {
-    return this.appService.getAboutPageHtml();
-  }
 
   @Get('health')
   @HealthCheck()

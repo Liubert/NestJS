@@ -58,27 +58,6 @@ export class WebhooksController {
     return this.webhooksService.create(project.id, dto);
   }
 
-  @Get('supported-events')
-  @ApiOperation({ summary: 'Get list of supported webhook events' })
-  getEvents() {
-    return { events: this.webhooksService.getSupportedEvents() };
-  }
-
-  @Get(':id')
-  @ApiOperation({ summary: 'Get webhook details' })
-  async getOne(
-    @Param('slug') slug: string,
-    @Param('id') id: string,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    const project = await this.translationsService.getProjectDetails(
-      slug,
-      user.userId,
-      user.role,
-    );
-    return this.webhooksService.findOne(id, project.id);
-  }
-
   @Patch(':id')
   @ApiOperation({ summary: 'Update a webhook' })
   async update(
