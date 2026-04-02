@@ -3,12 +3,10 @@ import {
   Table,
   Typography,
   Space,
-  Input,
   Select,
   Button,
   Modal,
   Checkbox,
-  Form,
   message,
   Tooltip,
   Popconfirm,
@@ -21,18 +19,10 @@ import {
   Empty,
 } from 'antd';
 import {
-  SearchOutlined,
-  EditOutlined,
-  DeleteOutlined,
-  PlusOutlined,
-  ThunderboltOutlined,
-  SafetyCertificateOutlined,
   ArrowRightOutlined,
   RollbackOutlined,
   SyncOutlined,
   CheckCircleOutlined,
-  InfoCircleOutlined,
-  WarningOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -40,367 +30,45 @@ import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import apiClient from '../../api/client';
 import { getFlagForCode } from '../../constants/supported-languages';
 
+// ─── Extracted Components ─────────────────────────────────────────────────────
+import type {
+  Project,
+  ProjectDetails,
+  PaginatedEntries,
+  SandboxStatus,
+  DiffResult,
+  DiffEntry,
+  Snapshot,
+  KeyDiff,
+  KeyDiffRow,
+  Entry,
+  EntriesTableProps,
+} from './components/types';
+import {
+  fetchProjects,
+  fetchProjectDetails,
+  fetchEntries,
+  createEntry,
+  updateEntry,
+  deleteEntry,
+  fetchSandboxStatus,
+  fetchSandboxDiff,
+  fetchSnapshots,
+  fetchSandboxEntries,
+  createSandboxEntry,
+  updateSandboxEntry,
+  deleteSandboxEntry,
+  revertSandboxKey,
+  promoteSelective,
+} from './components/api';
+import { QUALITY_COLOR } from './components/QualityBadge';
+import { buildColumns } from './components/columns';
+import FilterBar from './components/FilterBar';
+import EntryEditModal from './components/EntryEditModal';
+
 const { Title, Text } = Typography;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-interface Project {
-  id: string;
-  slug: string;
-  name: string;
-}
-
-interface LocaleInfo {
-  code: string;
-  isDefault: boolean;
-}
-
-interface ProjectDetails {
-  slug: string;
-  name: string;
-  locales: LocaleInfo[];
-  namespaces: string[];
-}
-
-interface QualityInfo {
-  reviewState:
-    | 'not_checked'
-    | 'queued'
-    | 'processing'
-    | 'checked'
-    | 'expected'
-    | 'failed'
-    | 'skipped';
-  score: number | null;
-  level: 'green' | 'yellow' | 'red' | 'expected' | null;
-  comment: string | null;
-  checkedAt: string | null;
-}
-
-interface Entry {
-  key: string;
-  createdAt: string;
-  context: string | null;
-  contextNeed: 'required' | 'useful' | 'none' | null;
-  contextReason: string | null;
-  values: Record<string, string>;
-  quality: Record<string, QualityInfo | null>;
-}
-
-interface PaginatedEntries {
-  data: Entry[];
-  meta: { page: number; limit: number; total: number; totalPages: number };
-}
-
-interface SandboxStatus {
-  initialized: boolean;
-  initializedAt: string | null;
-  hasChanges: boolean;
-  snapshotCount: number;
-}
-
-interface DiffEntry {
-  namespace: string;
-  key: string;
-  locale: string;
-  status: 'added' | 'changed' | 'deleted';
-  productionValue: string | null;
-  sandboxValue: string | null;
-}
-
-interface DiffResult {
-  total: number;
-  added: number;
-  changed: number;
-  deleted: number;
-  entries: DiffEntry[];
-}
-
-interface Snapshot {
-  id: string;
-  label: string | null;
-  createdAt: string;
-  entryCount: number;
-}
-
-interface QualityResult {
-  score: number;
-  level: 'green' | 'yellow' | 'red' | 'expected';
-  comment: string;
-}
-
-// Key-level diff (multiple locale diffs collapsed into one)
-interface KeyDiff {
-  namespace: string;
-  key: string;
-  status: 'added' | 'changed' | 'deleted';
-  locales: string[];
-}
-
-// Key-level diff row for the review modal — one row per key, carries all locale entries
-interface KeyDiffRow {
-  id: string;
-  namespace: string;
-  key: string;
-  status: 'added' | 'changed' | 'deleted';
-  localeEntries: DiffEntry[];
-}
-
-// ─── API ──────────────────────────────────────────────────────────────────────
-
-const fetchProjects = async (): Promise<Project[]> => {
-  const res = await apiClient.get('/translations/projects?limit=200');
-  return res.data.data;
-};
-
-const fetchProjectDetails = async (slug: string): Promise<ProjectDetails> => {
-  const res = await apiClient.get(`/translations/projects/${slug}`);
-  return res.data;
-};
-
-const fetchEntries = async (
-  slug: string,
-  ns: string,
-  page: number,
-  limit: number,
-  search: string,
-  sortBy: string,
-  sortOrder: string,
-  qualityLevel?: string,
-): Promise<PaginatedEntries> => {
-  const params: Record<string, string | number> = {
-    page,
-    limit,
-    sortBy,
-    sortOrder,
-  };
-  if (search.length >= 2) params.search = search;
-  if (qualityLevel) params.qualityLevel = qualityLevel;
-  const res = await apiClient.get(
-    `/translations/projects/${slug}/namespaces/${ns}/entries`,
-    { params },
-  );
-  return res.data;
-};
-
-const createEntry = async (
-  slug: string,
-  ns: string,
-  payload: { key: string; values: Record<string, string>; context?: string },
-) => {
-  const res = await apiClient.post(
-    `/translations/projects/${slug}/namespaces/${ns}/entries`,
-    payload,
-  );
-  return res.data;
-};
-
-const updateEntry = async (
-  slug: string,
-  ns: string,
-  key: string,
-  values: Record<string, string>,
-  context?: string,
-) => {
-  const res = await apiClient.patch(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
-    { values, ...(context !== undefined ? { context } : {}) },
-  );
-  return res.data;
-};
-
-const deleteEntry = async (slug: string, ns: string, key: string) => {
-  await apiClient.delete(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
-  );
-};
-
-const aiTranslate = async (
-  text: string,
-  projectSlug?: string,
-): Promise<Record<string, string>> => {
-  const res = await apiClient.post('/translations/ai-translate', {
-    text,
-    projectSlug,
-  });
-  return res.data;
-};
-
-const checkQuality = async (
-  source: string,
-  translation: string,
-  locale: string,
-  mode: 'translation_quality' | 'language_quality' = 'translation_quality',
-  projectSlug?: string,
-): Promise<QualityResult> => {
-  const res = await apiClient.post('/translations/ai-quality-check', {
-    source,
-    translation,
-    locale,
-    mode,
-    projectSlug,
-  });
-  return res.data;
-};
-
-const fetchSandboxStatus = async (slug: string): Promise<SandboxStatus> => {
-  const res = await apiClient.get(
-    `/translations/projects/${slug}/sandbox/status`,
-  );
-  return res.data;
-};
-
-const fetchSandboxDiff = async (slug: string): Promise<DiffResult> => {
-  const res = await apiClient.get(
-    `/translations/projects/${slug}/sandbox/diff`,
-  );
-  return res.data;
-};
-
-const fetchSnapshots = async (slug: string): Promise<Snapshot[]> => {
-  const res = await apiClient.get(
-    `/translations/projects/${slug}/sandbox/snapshots`,
-  );
-  return res.data;
-};
-
-const fetchSandboxEntries = async (
-  slug: string,
-  ns: string,
-  page: number,
-  limit: number,
-  search: string,
-  sortBy: string,
-  sortOrder: string,
-  qualityLevel?: string,
-): Promise<PaginatedEntries> => {
-  const params: Record<string, string | number> = {
-    page,
-    limit,
-    sortBy,
-    sortOrder,
-  };
-  if (search.length >= 2) params.search = search;
-  if (qualityLevel) params.qualityLevel = qualityLevel;
-  const res = await apiClient.get(
-    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries`,
-    { params },
-  );
-  return res.data;
-};
-
-const createSandboxEntry = async (
-  slug: string,
-  ns: string,
-  payload: { key: string; values: Record<string, string>; context?: string },
-) => {
-  const res = await apiClient.post(
-    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries`,
-    payload,
-  );
-  return res.data;
-};
-
-const updateSandboxEntry = async (
-  slug: string,
-  ns: string,
-  key: string,
-  values: Record<string, string>,
-  context?: string,
-) => {
-  const res = await apiClient.patch(
-    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
-    { values, ...(context !== undefined ? { context } : {}) },
-  );
-  return res.data;
-};
-
-const deleteSandboxEntry = async (slug: string, ns: string, key: string) => {
-  await apiClient.delete(
-    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
-  );
-};
-
-const revertSandboxKey = async (slug: string, ns: string, key: string) => {
-  await apiClient.post(
-    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}/revert`,
-  );
-};
-
-const markExpected = async (
-  slug: string,
-  ns: string,
-  key: string,
-  locale: string,
-): Promise<QualityInfo> => {
-  const res = await apiClient.post<QualityInfo>(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
-  );
-  return res.data;
-};
-
-const unmarkExpected = async (
-  slug: string,
-  ns: string,
-  key: string,
-  locale: string,
-): Promise<void> => {
-  await apiClient.delete(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
-  );
-};
-
-const markSandboxExpected = async (
-  slug: string,
-  ns: string,
-  key: string,
-  locale: string,
-): Promise<QualityInfo> => {
-  const res = await apiClient.post<QualityInfo>(
-    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
-  );
-  return res.data;
-};
-
-const unmarkSandboxExpected = async (
-  slug: string,
-  ns: string,
-  key: string,
-  locale: string,
-): Promise<void> => {
-  await apiClient.delete(
-    `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
-  );
-};
-
-const promoteSelective = async (
-  slug: string,
-  keys: { namespace: string; key: string }[],
-): Promise<{ snapshotId: string; promoted: number }> => {
-  const res = await apiClient.post(
-    `/translations/projects/${slug}/sandbox/promote-selective`,
-    { keys },
-  );
-  return res.data;
-};
-
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const AI_LOCALES = ['uk', 'nb-NO', 'sv', 'da-DK'];
-
-const QUALITY_CONFIG = {
-  green: { color: 'success', label: 'Good' },
-  yellow: { color: 'warning', label: 'Review' },
-  red: { color: 'error', label: 'Poor' },
-  expected: { color: 'processing', label: 'Expected' },
-} as const;
-
-const QUALITY_COLOR: Record<string, string> = {
-  green: '#52c41a',
-  yellow: '#faad14',
-  red: '#ff4d4f',
-  expected: '#1677ff',
-};
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const ROW_BG: Record<string, string> = {
   added: '#f6ffed',
@@ -408,652 +76,7 @@ const ROW_BG: Record<string, string> = {
   deleted: '#fff1f0',
 };
 
-// ─── Quality Badge ───────────────────────────────────────────────────────────
-
-interface QualityBadgeProps {
-  info: QualityInfo | null | undefined;
-  slug?: string;
-  namespace?: string;
-  entryKey?: string;
-  locale?: string;
-  isSandbox?: boolean;
-  onUpdate?: () => void;
-}
-
-const QualityBadge: React.FC<QualityBadgeProps> = ({
-  info,
-  slug,
-  namespace,
-  entryKey,
-  locale,
-  isSandbox,
-  onUpdate,
-}) => {
-  if (!info) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
-
-  if (info.reviewState === 'queued' || info.reviewState === 'processing') {
-    return (
-      <Tooltip
-        title={
-          info.reviewState === 'processing'
-            ? 'Reviewing...'
-            : 'Queued for review'
-        }
-      >
-        <SyncOutlined spin style={{ color: '#8c8c8c', fontSize: 10 }} />
-      </Tooltip>
-    );
-  }
-
-  if (info.reviewState === 'failed') {
-    return (
-      <Tooltip title="Quality review failed — will retry">
-        <span
-          style={{
-            color: '#ff4d4f',
-            fontSize: 11,
-            fontWeight: 'bold',
-            cursor: 'help',
-          }}
-        >
-          !
-        </span>
-      </Tooltip>
-    );
-  }
-
-  if (info.reviewState === 'not_checked') {
-    return (
-      <Tooltip title="Not yet reviewed">
-        <span
-          style={{
-            display: 'inline-block',
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            backgroundColor: '#d9d9d9',
-            flexShrink: 0,
-          }}
-        />
-      </Tooltip>
-    );
-  }
-
-  if (info.reviewState === 'expected') {
-    const canInteract = slug && namespace && entryKey && locale;
-    const badge = (
-      <Tooltip title="Manually accepted — score: 100/100">
-        <CheckCircleOutlined
-          style={{
-            color: '#1677ff',
-            fontSize: 12,
-            cursor: canInteract ? 'pointer' : 'help',
-          }}
-        />
-      </Tooltip>
-    );
-
-    if (!canInteract) return badge;
-
-    return (
-      <Popconfirm
-        title="Unmark expected?"
-        description="This will reset validation status. The item will be revalidated."
-        onConfirm={async () => {
-          try {
-            if (isSandbox)
-              await unmarkSandboxExpected(slug, namespace, entryKey, locale);
-            else await unmarkExpected(slug, namespace, entryKey, locale);
-            message.success('Unmarked');
-            onUpdate?.();
-          } catch {
-            message.error('Failed to unmark');
-          }
-        }}
-        okText="Reset"
-        cancelText="Cancel"
-      >
-        {badge}
-      </Popconfirm>
-    );
-  }
-
-  if (info.reviewState === 'skipped') {
-    return (
-      <Tooltip title="Quality check skipped — scored 100 by default">
-        <span
-          style={{
-            display: 'inline-block',
-            width: 10,
-            height: 10,
-            borderRadius: '50%',
-            backgroundColor: '#1677ff',
-            flexShrink: 0,
-          }}
-        />
-      </Tooltip>
-    );
-  }
-
-  // checked
-  const canInteract = slug && namespace && entryKey && locale;
-  const badge = (
-    <Tooltip
-      title={`Score: ${info.score ?? '?'}/100${info.comment ? ` — ${info.comment}` : ''}`}
-    >
-      <span
-        style={{
-          display: 'inline-block',
-          width: 10,
-          height: 10,
-          borderRadius: '50%',
-          backgroundColor: QUALITY_COLOR[info.level ?? ''] ?? '#bbb',
-          cursor: canInteract ? 'pointer' : 'help',
-          flexShrink: 0,
-        }}
-      />
-    </Tooltip>
-  );
-
-  if (!canInteract) return badge;
-
-  return (
-    <Popconfirm
-      title="Mark as expected?"
-      description="This translation will be accepted and skip future validation."
-      onConfirm={async () => {
-        try {
-          if (isSandbox)
-            await markSandboxExpected(slug, namespace, entryKey, locale);
-          else await markExpected(slug, namespace, entryKey, locale);
-          message.success('Marked as expected');
-          onUpdate?.();
-        } catch {
-          message.error('Failed to mark as expected');
-        }
-      }}
-      okText="Accept"
-      cancelText="Cancel"
-    >
-      {badge}
-    </Popconfirm>
-  );
-};
-
-// ─── Edit Modal ──────────────────────────────────────────────────────────────
-
-interface EditModalProps {
-  open: boolean;
-  entry: Entry | null;
-  locales: string[];
-  isNew: boolean;
-  onClose: () => void;
-  onSave: (
-    key: string,
-    values: Record<string, string>,
-    context?: string,
-  ) => void;
-  saving: boolean;
-  projectSlug?: string;
-  namespace?: string;
-  isSandbox?: boolean;
-  onQualityUpdate?: () => void;
-}
-
-const EditModal: React.FC<EditModalProps> = ({
-  open,
-  entry,
-  locales,
-  isNew,
-  onClose,
-  onSave,
-  saving,
-  projectSlug,
-  namespace,
-  isSandbox,
-  onQualityUpdate,
-}) => {
-  const [form] = Form.useForm();
-  const [aiLoadingLocale, setAiLoadingLocale] = useState<string | null>(null); // null | 'all' | locale
-  const [qualityLoadingLocale, setQualityLoadingLocale] = useState<
-    string | null
-  >(null); // null | 'all' | locale
-  const [qualityResults, setQualityResults] = useState<
-    Record<string, QualityResult>
-  >({});
-  const [expectedLoading, setExpectedLoading] = useState<string | null>(null);
-
-  React.useEffect(() => {
-    if (open) {
-      setQualityResults({});
-      setAiLoadingLocale(null);
-      setQualityLoadingLocale(null);
-      if (entry) {
-        form.setFieldsValue({
-          key: entry.key,
-          context: entry.context ?? '',
-          ...entry.values,
-        });
-      } else {
-        form.resetFields();
-      }
-    }
-  }, [open, entry, form]);
-
-  const handleOk = () => {
-    form.validateFields().then((vals) => {
-      const { key: formKey, context: formContext, ...rest } = vals;
-      const key = isNew ? formKey : (entry?.key ?? '');
-      const values: Record<string, string> = {};
-      for (const locale of locales) values[locale] = rest[locale] ?? '';
-      onSave(key, values, formContext);
-    });
-  };
-
-  // ── AI Translate (all locales) ──
-  const handleAiGenerateAll = async () => {
-    const enText: string = form.getFieldValue('en') ?? '';
-    if (!enText.trim()) {
-      message.warning('Enter English text first');
-      return;
-    }
-    setAiLoadingLocale('all');
-    try {
-      const result = await aiTranslate(enText, projectSlug);
-      const patch: Record<string, string> = {};
-      for (const locale of AI_LOCALES) {
-        if (result[locale] !== undefined) patch[locale] = result[locale];
-      }
-      form.setFieldsValue(patch);
-      setQualityResults({});
-      message.success('Translations generated');
-    } catch {
-      message.error('AI translation failed. Check that GEMINI_API_KEY is set.');
-    } finally {
-      setAiLoadingLocale(null);
-    }
-  };
-
-  // ── AI Translate (single locale) ──
-  const handleAiGenerateOne = async (locale: string) => {
-    const enText: string = form.getFieldValue('en') ?? '';
-    if (!enText.trim()) {
-      message.warning('Enter English text first');
-      return;
-    }
-    setAiLoadingLocale(locale);
-    try {
-      const result = await aiTranslate(enText, projectSlug);
-      if (result[locale] !== undefined) {
-        form.setFieldsValue({ [locale]: result[locale] });
-        setQualityResults((prev) => {
-          const next = { ...prev };
-          delete next[locale];
-          return next;
-        });
-        message.success(`${locale} translated`);
-      }
-    } catch {
-      message.error('AI translation failed.');
-    } finally {
-      setAiLoadingLocale(null);
-    }
-  };
-
-  // ── Quality Check (all locales) ──
-  const handleCheckQualityAll = async () => {
-    const vals = form.getFieldsValue();
-    const enText: string = vals['en'] ?? '';
-    if (!enText.trim()) {
-      message.warning('English (source) text is required');
-      return;
-    }
-    const allQualityLocales = locales.filter((l) => vals[l]?.trim());
-    if (!allQualityLocales.length) {
-      message.warning('No values to check');
-      return;
-    }
-    setQualityLoadingLocale('all');
-    setQualityResults({});
-    try {
-      const results = await Promise.all(
-        allQualityLocales.map((locale) => {
-          const isDefault = locale === 'en';
-          return checkQuality(
-            enText,
-            vals[locale],
-            locale,
-            isDefault ? 'language_quality' : 'translation_quality',
-            projectSlug,
-          ).then((r) => [locale, r] as const);
-        }),
-      );
-      setQualityResults(Object.fromEntries(results));
-    } catch {
-      message.error('Quality check failed. Check that GEMINI_API_KEY is set.');
-    } finally {
-      setQualityLoadingLocale(null);
-    }
-  };
-
-  // ── Quality Check (single locale) ──
-  const handleCheckQualityOne = async (locale: string) => {
-    const vals = form.getFieldsValue();
-    const enText: string = vals['en'] ?? '';
-    if (!enText.trim()) {
-      message.warning('English (source) text is required');
-      return;
-    }
-    const text = vals[locale]?.trim();
-    if (!text) {
-      message.warning(`No value for ${locale}`);
-      return;
-    }
-    setQualityLoadingLocale(locale);
-    try {
-      const isDefault = locale === 'en';
-      const result = await checkQuality(
-        enText,
-        vals[locale],
-        locale,
-        isDefault ? 'language_quality' : 'translation_quality',
-        projectSlug,
-      );
-      setQualityResults((prev) => ({ ...prev, [locale]: result }));
-    } catch {
-      message.error(`Quality check failed for ${locale}.`);
-    } finally {
-      setQualityLoadingLocale(null);
-    }
-  };
-
-  const hasEnLocale = locales.includes('en');
-  const hasAiLocales = AI_LOCALES.some((l) => locales.includes(l));
-  const isAiLoading = aiLoadingLocale !== null;
-  const isQualityLoading = qualityLoadingLocale !== null;
-
-  return (
-    <Modal
-      open={open}
-      title={isNew ? 'Add translation key' : `Edit: ${entry?.key}`}
-      onCancel={onClose}
-      onOk={handleOk}
-      confirmLoading={saving}
-      width={640}
-      destroyOnHidden
-    >
-      <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
-        {isNew && (
-          <Form.Item
-            name="key"
-            label="Key"
-            rules={[
-              { required: true, message: 'Key is required' },
-              {
-                pattern: /^[a-zA-Z0-9._-]+$/,
-                message: 'Only letters, digits, dots, underscores, dashes',
-              },
-            ]}
-          >
-            <Input placeholder="e.g. accessControl" />
-          </Form.Item>
-        )}
-        <Form.Item
-          name="context"
-          label={
-            <Space size={4}>
-              Context{' '}
-              {entry?.contextNeed === 'required' && !entry?.context && (
-                <Tooltip title={entry?.contextReason}>
-                  <Tag color="error" style={{ fontSize: 11 }}>
-                    Required
-                  </Tag>
-                </Tooltip>
-              )}
-              {entry?.contextNeed === 'useful' && !entry?.context && (
-                <Tooltip title={entry?.contextReason}>
-                  <Tag color="processing" style={{ fontSize: 11 }}>
-                    Suggested
-                  </Tag>
-                </Tooltip>
-              )}
-            </Space>
-          }
-          extra={
-            entry?.contextReason &&
-            !entry?.context &&
-            entry?.contextNeed !== 'none'
-              ? entry.contextReason
-              : undefined
-          }
-        >
-          <Input.TextArea
-            placeholder="Describe where this key is used (e.g. 'Save button in expense form footer')"
-            maxLength={500}
-            showCount
-            rows={2}
-          />
-        </Form.Item>
-        {locales.map((locale) => {
-          const qr = qualityResults[locale];
-          const storedQuality = entry?.quality?.[locale];
-          const isEnRow = locale === 'en';
-          const isAiLocale = AI_LOCALES.includes(locale);
-          const canToggleExpected = !isNew && projectSlug && namespace && entry;
-
-          const handleToggleExpected = async () => {
-            if (!canToggleExpected) return;
-            setExpectedLoading(locale);
-            try {
-              if (storedQuality?.reviewState === 'expected') {
-                if (isSandbox)
-                  await unmarkSandboxExpected(
-                    projectSlug,
-                    namespace,
-                    entry.key,
-                    locale,
-                  );
-                else
-                  await unmarkExpected(
-                    projectSlug,
-                    namespace,
-                    entry.key,
-                    locale,
-                  );
-                message.success('Unmarked as expected');
-              } else {
-                if (isSandbox)
-                  await markSandboxExpected(
-                    projectSlug,
-                    namespace,
-                    entry.key,
-                    locale,
-                  );
-                else
-                  await markExpected(projectSlug, namespace, entry.key, locale);
-                message.success('Marked as expected');
-              }
-              onQualityUpdate?.();
-            } catch {
-              message.error('Failed to update expected status');
-            } finally {
-              setExpectedLoading(null);
-            }
-          };
-
-          const labelContent = (
-            <Space size={4} wrap>
-              <span>
-                {getFlagForCode(locale)} {locale}
-              </span>
-              {/* Stored quality state badge */}
-              {!isNew &&
-                storedQuality &&
-                storedQuality.reviewState === 'checked' &&
-                storedQuality.level && (
-                  <Tooltip
-                    title={`Stored: ${storedQuality.score}/100${storedQuality.comment ? ` — ${storedQuality.comment}` : ''}`}
-                  >
-                    <Tag
-                      color={
-                        QUALITY_CONFIG[storedQuality.level]?.color ?? 'default'
-                      }
-                      style={{ fontSize: 11, margin: 0 }}
-                    >
-                      {QUALITY_CONFIG[storedQuality.level]?.label ??
-                        storedQuality.level}{' '}
-                      · {storedQuality.score}
-                    </Tag>
-                  </Tooltip>
-                )}
-              {!isNew && storedQuality?.reviewState === 'expected' && (
-                <Tag color="processing" style={{ fontSize: 11, margin: 0 }}>
-                  <CheckCircleOutlined /> Expected
-                </Tag>
-              )}
-              {!isNew && storedQuality?.reviewState === 'processing' && (
-                <Tag style={{ fontSize: 11, margin: 0 }}>
-                  <SyncOutlined spin /> Reviewing...
-                </Tag>
-              )}
-              {/* Expected toggle button */}
-              {canToggleExpected &&
-                !isEnRow &&
-                storedQuality &&
-                storedQuality.reviewState !== 'not_checked' &&
-                storedQuality.reviewState !== 'processing' && (
-                  <Tooltip
-                    title={
-                      storedQuality.reviewState === 'expected'
-                        ? 'Remove manual acceptance'
-                        : 'Accept — skip future validation'
-                    }
-                  >
-                    <Button
-                      size="small"
-                      type={
-                        storedQuality.reviewState === 'expected'
-                          ? 'primary'
-                          : 'dashed'
-                      }
-                      icon={<CheckCircleOutlined />}
-                      loading={expectedLoading === locale}
-                      onClick={handleToggleExpected}
-                      style={{
-                        fontSize: 11,
-                        padding: '0 6px',
-                        height: 22,
-                        ...(storedQuality.reviewState === 'expected'
-                          ? { background: '#1677ff' }
-                          : {}),
-                      }}
-                    >
-                      {storedQuality.reviewState === 'expected'
-                        ? 'Accepted'
-                        : 'Accept'}
-                    </Button>
-                  </Tooltip>
-                )}
-              {/* English row: global buttons */}
-              {isEnRow && hasAiLocales && (
-                <Button
-                  size="small"
-                  icon={<ThunderboltOutlined />}
-                  loading={aiLoadingLocale === 'all'}
-                  disabled={isAiLoading || !hasEnLocale}
-                  onClick={handleAiGenerateAll}
-                  type="dashed"
-                >
-                  Translate All
-                </Button>
-              )}
-              {isEnRow && (
-                <Button
-                  size="small"
-                  icon={<SafetyCertificateOutlined />}
-                  loading={qualityLoadingLocale === 'all'}
-                  disabled={isQualityLoading}
-                  onClick={handleCheckQualityAll}
-                  type="dashed"
-                >
-                  Check All
-                </Button>
-              )}
-              {/* Per-locale translate button for AI locales */}
-              {!isEnRow && isAiLocale && (
-                <Tooltip title={`Translate ${locale}`}>
-                  <Button
-                    size="small"
-                    icon={<ThunderboltOutlined />}
-                    loading={aiLoadingLocale === locale}
-                    disabled={isAiLoading || !hasEnLocale}
-                    onClick={() => handleAiGenerateOne(locale)}
-                    type="text"
-                    style={{ color: '#1677ff', padding: '0 4px' }}
-                  />
-                </Tooltip>
-              )}
-              {/* Per-locale quality check button for all locales */}
-              {!isEnRow && (
-                <Tooltip title={`Check quality for ${locale}`}>
-                  <Button
-                    size="small"
-                    icon={<SafetyCertificateOutlined />}
-                    loading={qualityLoadingLocale === locale}
-                    disabled={isQualityLoading}
-                    onClick={() => handleCheckQualityOne(locale)}
-                    type="text"
-                    style={{ color: '#8c8c8c', padding: '0 4px' }}
-                  />
-                </Tooltip>
-              )}
-              {/* Quality result badge */}
-              {qr && (
-                <Tooltip title={qr.comment ?? undefined}>
-                  <Tag color={QUALITY_CONFIG[qr.level].color}>
-                    {QUALITY_CONFIG[qr.level].label} · {qr.score}/100
-                  </Tag>
-                </Tooltip>
-              )}
-            </Space>
-          );
-
-          return (
-            <Form.Item key={locale} name={locale} label={labelContent}>
-              <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} />
-            </Form.Item>
-          );
-        })}
-        {Object.keys(qualityResults).length > 0 && (
-          <div style={{ marginTop: 8 }}>
-            {Object.entries(qualityResults).map(([locale, r]) => (
-              <Alert
-                key={locale}
-                type={
-                  r.level === 'red'
-                    ? 'error'
-                    : r.level === 'yellow'
-                      ? 'warning'
-                      : 'info'
-                }
-                message={
-                  <>
-                    <Tag>{locale}</Tag>
-                    {r.comment || 'Looks good'}
-                  </>
-                }
-                style={{ marginBottom: 6 }}
-                showIcon
-              />
-            ))}
-          </div>
-        )}
-      </Form>
-    </Modal>
-  );
-};
-
-// ─── Diff helpers ────────────────────────────────────────────────────────────
+// ─── Diff helpers ─────────────────────────────────────────────────────────────
 
 function buildKeyDiffs(entries: DiffEntry[]): KeyDiff[] {
   const map = new Map<string, KeyDiff>();
@@ -1083,6 +106,8 @@ function buildKeyDiffRows(entries: DiffEntry[]): KeyDiffRow[] {
         key: e.key,
         status: e.status,
         localeEntries: [],
+        minQualityScore: null,
+        worstQualityLevel: null,
       });
     }
     const row = map.get(id)!;
@@ -1092,6 +117,20 @@ function buildKeyDiffRows(entries: DiffEntry[]): KeyDiffRow[] {
       (e.status === 'deleted' && row.status === 'changed')
     ) {
       row.status = e.status;
+    }
+    // Track quality aggregates
+    if (e.quality?.score != null) {
+      if (row.minQualityScore === null || e.quality.score < row.minQualityScore) {
+        row.minQualityScore = e.quality.score;
+      }
+    }
+    if (e.quality?.level) {
+      const levelPriority: Record<string, number> = { red: 3, yellow: 2, green: 1, expected: 0 };
+      const currentPriority = row.worstQualityLevel ? (levelPriority[row.worstQualityLevel] ?? 0) : -1;
+      const newPriority = levelPriority[e.quality.level] ?? 0;
+      if (newPriority > currentPriority) {
+        row.worstQualityLevel = e.quality.level;
+      }
     }
   }
   return Array.from(map.values());
@@ -1115,48 +154,7 @@ function buildKeyStatusLookup(
   return m;
 }
 
-// ─── Shared Entries Table ────────────────────────────────────────────────────
-
-interface EntriesTableProps {
-  projectSlug: string;
-  queryKeyPrefix: string;
-  fetchFn: (
-    slug: string,
-    ns: string,
-    page: number,
-    limit: number,
-    search: string,
-    sortBy: string,
-    sortOrder: string,
-    qualityLevel?: string,
-  ) => Promise<PaginatedEntries>;
-  createFn: (
-    slug: string,
-    ns: string,
-    payload: { key: string; values: Record<string, string>; context?: string },
-  ) => Promise<unknown>;
-  updateFn: (
-    slug: string,
-    ns: string,
-    key: string,
-    values: Record<string, string>,
-    context?: string,
-  ) => Promise<unknown>;
-  deleteFn: (slug: string, ns: string, key: string) => Promise<void>;
-  enabled?: boolean;
-  onMutationSuccess?: () => void;
-  // Sandbox customization
-  getRowProps?: (
-    record: Entry,
-    namespace: string,
-  ) => React.HTMLAttributes<HTMLElement>;
-  renderKeyExtra?: (key: string, namespace: string) => React.ReactNode;
-  clientFilter?: (record: Entry, namespace: string) => boolean;
-  isSandbox?: boolean;
-  deleteConfirmTitle?: string;
-  deleteConfirmDescription?: string;
-  extraControls?: React.ReactNode;
-}
+// ─── Shared Entries Table ─────────────────────────────────────────────────────
 
 const EntriesTable: React.FC<EntriesTableProps> = ({
   projectSlug,
@@ -1325,234 +323,55 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
     }
   };
 
-  const columns: ColumnsType<Entry> = [
-    {
-      title: 'Key',
-      dataIndex: 'key',
-      key: 'key',
-      sorter: true,
-      width: 240,
-      fixed: 'left',
-      render: (text: string, record: Entry) => (
-        <Space size={6}>
-          <Tooltip title={text}>
-            <span style={{ fontFamily: 'monospace', fontSize: 12 }}>
-              {text}
-            </span>
-          </Tooltip>
-          {record.context && (
-            <Tooltip title={record.context}>
-              <InfoCircleOutlined
-                style={{ color: '#1677ff', fontSize: 12, cursor: 'help' }}
-              />
-            </Tooltip>
-          )}
-          {record.contextNeed === 'required' && !record.context && (
-            <Tooltip
-              title={`Context required — ${record.contextReason ?? 'ambiguous term'}. Quality scores capped.`}
-            >
-              <WarningOutlined
-                style={{ color: '#ff4d4f', fontSize: 12, cursor: 'help' }}
-              />
-            </Tooltip>
-          )}
-          {record.contextNeed === 'useful' && !record.context && (
-            <Tooltip
-              title={`Context suggested — ${record.contextReason ?? 'would improve quality'}`}
-            >
-              <InfoCircleOutlined
-                style={{ color: '#faad14', fontSize: 12, cursor: 'help' }}
-              />
-            </Tooltip>
-          )}
-          {renderKeyExtra?.(text, namespace)}
-        </Space>
+  const columns = useMemo(
+    () =>
+      buildColumns(
+        locales,
+        projectSlug,
+        namespace,
+        isSandbox,
+        invalidate,
+        (entry) => {
+          setEditEntry(entry);
+          setIsNewEntry(false);
+          setEditModalOpen(true);
+        },
+        (key) => deleteMutation.mutate(key),
+        renderKeyExtra,
+        deleteConfirmTitle,
+        deleteConfirmDescription,
       ),
-    },
-    ...locales.map((locale) => ({
-      title: (
-        <Tag color="blue">
-          {getFlagForCode(locale)} {locale}
-        </Tag>
-      ),
-      key: locale,
-      width: 180,
-      render: (_: unknown, record: Entry) => {
-        const val = record.values[locale];
-        return (
-          <Space size={4} align="start">
-            <QualityBadge
-              info={record.quality?.[locale]}
-              slug={projectSlug}
-              namespace={namespace}
-              entryKey={record.key}
-              locale={locale}
-              isSandbox={isSandbox}
-              onUpdate={invalidate}
-            />
-            {val ? (
-              <Tooltip title={val}>
-                <span
-                  style={{
-                    display: 'block',
-                    wordBreak: 'break-word',
-                    whiteSpace: 'normal',
-                  }}
-                >
-                  {val}
-                </span>
-              </Tooltip>
-            ) : (
-              <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>
-            )}
-          </Space>
-        );
-      },
-    })),
-    {
-      title: (
-        <Tooltip title="Minimum quality score across all locales (sort to find worst translations)">
-          Quality
-        </Tooltip>
-      ),
-      key: 'qualityScore',
-      dataIndex: 'qualityScore',
-      sorter: true,
-      width: 90,
-      render: (_: unknown, record: Entry) => {
-        const scores = locales
-          .map((l) => record.quality?.[l]?.score)
-          .filter((s): s is number => s != null);
-        if (!scores.length)
-          return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
-        const minScore = Math.min(...scores);
-        const levels = locales
-          .map((l) => record.quality?.[l]?.level)
-          .filter(Boolean);
-        const level = levels.includes('red')
-          ? 'red'
-          : levels.includes('yellow')
-            ? 'yellow'
-            : levels.includes('expected')
-              ? 'expected'
-              : 'green';
-        return (
-          <span
-            style={{
-              color: QUALITY_COLOR[level] ?? '#bbb',
-              fontWeight: 600,
-              fontSize: 12,
-            }}
-          >
-            {minScore}
-          </span>
-        );
-      },
-    },
-    {
-      title: '',
-      key: 'actions',
-      width: 80,
-      fixed: 'right',
-      render: (_: unknown, record: Entry) => (
-        <Space size={4}>
-          <Button
-            type="text"
-            size="small"
-            icon={<EditOutlined />}
-            onClick={() => {
-              setEditEntry(record);
-              setIsNewEntry(false);
-              setEditModalOpen(true);
-            }}
-          />
-          <Popconfirm
-            title={deleteConfirmTitle}
-            description={deleteConfirmDescription}
-            onConfirm={() => deleteMutation.mutate(record.key)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [locales, projectSlug, namespace, isSandbox, invalidate, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription],
+  );
 
   return (
     <>
-      <Row gutter={12} style={{ marginBottom: 14 }}>
-        <Col>
-          <Select
-            placeholder="Namespace"
-            value={namespace || undefined}
-            onChange={(val) => {
-              setNamespace(val);
-              setPage(1);
-              setSearchInput('');
-              setSearch('');
-            }}
-            style={{ width: 220 }}
-            disabled={!projectDetails}
-            options={(projectDetails?.namespaces ?? []).map((ns: string) => ({
-              value: ns,
-              label: ns,
-            }))}
-          />
-        </Col>
-        <Col flex="auto">
-          <Input
-            placeholder="Search by key or value..."
-            prefix={<SearchOutlined />}
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onPressEnter={handleSearch}
-            onBlur={handleSearch}
-            allowClear
-            onClear={() => {
-              setSearchInput('');
-              setSearch('');
-              setPage(1);
-            }}
-            style={{ maxWidth: 360 }}
-          />
-        </Col>
-        <Col>
-          <Select
-            value={qualityLevel || ''}
-            onChange={(val) => {
-              setQualityLevel(val);
-              setPage(1);
-            }}
-            style={{ width: 150 }}
-            options={[
-              { value: '', label: 'All qualities' },
-              { value: 'green', label: 'Green' },
-              { value: 'yellow', label: 'Yellow' },
-              { value: 'red', label: 'Red' },
-              { value: 'expected', label: 'Expected' },
-              { value: 'unchecked', label: 'Not checked' },
-              { value: 'needs_context', label: 'Needs Context' },
-            ]}
-          />
-        </Col>
-        <Col>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            disabled={!namespace}
-            onClick={() => {
-              setEditEntry(null);
-              setIsNewEntry(true);
-              setEditModalOpen(true);
-            }}
-          >
-            Add key
-          </Button>
-        </Col>
-        {extraControls}
-      </Row>
+      <FilterBar
+        namespace={namespace}
+        namespaces={projectDetails?.namespaces ?? []}
+        onNamespaceChange={(val) => {
+          setNamespace(val);
+          setPage(1);
+          setSearchInput('');
+          setSearch('');
+        }}
+        searchInput={searchInput}
+        onSearchInputChange={setSearchInput}
+        onSearch={handleSearch}
+        qualityLevel={qualityLevel}
+        onQualityLevelChange={(val) => {
+          setQualityLevel(val);
+          setPage(1);
+        }}
+        onAddKey={() => {
+          setEditEntry(null);
+          setIsNewEntry(true);
+          setEditModalOpen(true);
+        }}
+        disabled={!projectDetails}
+        extraControls={extraControls}
+      />
 
       <Table<Entry>
         rowKey="key"
@@ -1581,7 +400,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         }
       />
 
-      <EditModal
+      <EntryEditModal
         open={editModalOpen}
         entry={editEntry}
         locales={locales}
@@ -1601,7 +420,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   );
 };
 
-// ─── Sandbox Tab ─────────────────────────────────────────────────────────────
+// ─── Sandbox Tab ──────────────────────────────────────────────────────────────
 
 interface SandboxTabProps {
   projectSlug: string;
@@ -2409,7 +1228,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   );
 };
 
-// ─── Production Tab ──────────────────────────────────────────────────────────
+// ─── Production Tab ───────────────────────────────────────────────────────────
 
 interface ProductionTabProps {
   projectSlug: string;
@@ -2531,7 +1350,7 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
   );
 };
 
-// ─── Main Page ───────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TranslationsPage: React.FC = () => {
   const [projectSlug, setProjectSlug] = useState(
