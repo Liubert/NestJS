@@ -53,7 +53,10 @@ Plans:
   1. A translation key that was skipped in quality check shows a blue indicator and "skipped" status (not green or missing) in the Admin UI
   2. A quality check chunk that times out leaves affected keys in "failed" state (not silently unchecked), visible for retry
   3. Promoting a sandbox namespace to production carries `contextNeed`, `contextReason`, and `context` fields alongside the translation values
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 03-01-PLAN.md — Quality state 'skipped' + timeout fix (BUG-01, BUG-02)
+- [ ] 03-02-PLAN.md — Sandbox context isolation and promote fix (BUG-03)
 
 ### Phase 4: Dead Code Cleanup
 **Goal**: Every API endpoint is mapped to a known consumer; confirmed orphans are removed
@@ -85,6 +88,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
 | 2. Deploy Hardening | 2/2 | Complete   | 2026-04-02 |
-| 3. Bug Fixes | 0/? | Not started | - |
+| 3. Bug Fixes | 0/2 | Not started | - |
 | 4. Dead Code Cleanup | 0/? | Not started | - |
 | 5. UI Polish | 0/? | Not started | - |
