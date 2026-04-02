@@ -854,6 +854,7 @@ export class SandboxService {
       sortBy,
       sortOrder,
       qualityLevel,
+      reviewState,
       missingLocale,
     } = query;
     const params: unknown[] = [project.id, ns.id];
@@ -899,6 +900,13 @@ export class SandboxService {
         qualityCondition = `
           AND tk.context_need = 'useful' AND tk.context IS NULL
         `;
+      } else if (qualityLevel === 'expected') {
+        qualityCondition = `
+          AND EXISTS (
+            SELECT 1 FROM translation_values tv3
+            WHERE tv3.key_id = tk.id AND tv3.quality_level = 'expected'
+          )
+        `;
       } else {
         params.push(qualityLevel);
         const qi = params.length;
@@ -909,6 +917,18 @@ export class SandboxService {
           )
         `;
       }
+    }
+
+    let reviewStateCondition = '';
+    if (reviewState) {
+      params.push(reviewState);
+      const rsi = params.length;
+      reviewStateCondition = `
+        AND EXISTS (
+          SELECT 1 FROM translation_values tv4
+          WHERE tv4.key_id = tk.id AND tv4.quality_review_state = $${rsi}
+        )
+      `;
     }
 
     let missingLocaleCondition = '';
@@ -943,7 +963,7 @@ export class SandboxService {
       )
     `;
 
-    const baseWhere = `tk.namespace_id = $2 ${visibilityWhere} ${searchCondition} ${qualityCondition} ${missingLocaleCondition}`;
+    const baseWhere = `tk.namespace_id = $2 ${visibilityWhere} ${searchCondition} ${qualityCondition} ${reviewStateCondition} ${missingLocaleCondition}`;
 
     const [{ count }] = await this.dataSource.query<{ count: string }[]>(
       `SELECT COUNT(DISTINCT tk.id) AS count FROM translation_keys tk WHERE ${baseWhere}`,

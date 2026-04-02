@@ -545,6 +545,7 @@ export class TranslationsService {
       sortBy,
       sortOrder,
       qualityLevel,
+      reviewState,
       missingLocale,
     } = query;
 
@@ -595,11 +596,20 @@ export class TranslationsService {
           WHERE tv3.key_id = tk.id AND tv3.value IS NOT NULL AND tv3.quality_level IS NULL
         )`);
       } else if (qualityLevel === 'needs_context') {
-        qb.andWhere("tk.context_need IN ('required', 'useful') AND tk.context IS NULL");
+        qb.andWhere(
+          "tk.context_need IN ('required', 'useful') AND tk.context IS NULL",
+        );
       } else if (qualityLevel === 'context_required') {
         qb.andWhere("tk.context_need = 'required' AND tk.context IS NULL");
       } else if (qualityLevel === 'context_useful') {
         qb.andWhere("tk.context_need = 'useful' AND tk.context IS NULL");
+      } else if (qualityLevel === 'expected') {
+        qb.andWhere(
+          `EXISTS (
+            SELECT 1 FROM translation_values tv3
+            WHERE tv3.key_id = tk.id AND tv3.quality_level = 'expected'
+          )`,
+        );
       } else {
         qb.andWhere(
           `EXISTS (
@@ -609,6 +619,16 @@ export class TranslationsService {
           { qualityLevel },
         );
       }
+    }
+
+    if (reviewState) {
+      qb.andWhere(
+        `EXISTS (
+          SELECT 1 FROM translation_values tv4
+          WHERE tv4.key_id = tk.id AND tv4.quality_review_state = :reviewState
+        )`,
+        { reviewState },
+      );
     }
 
     if (missingLocale) {
@@ -754,7 +774,9 @@ export class TranslationsService {
       options.qualityLevels.includes('needs_context') ||
       !options.qualityLevels.length
     ) {
-      conditions.push(`(tk.context_need IN ('required', 'useful') AND tk.context IS NULL)`);
+      conditions.push(
+        `(tk.context_need IN ('required', 'useful') AND tk.context IS NULL)`,
+      );
     }
 
     const whereClause = conditions.length
