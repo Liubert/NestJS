@@ -82,7 +82,7 @@ Plans:
   3. The translations page layout is readable at normal screen width without horizontal scrolling or cramped columns
 **Plans**: 3 plans
 Plans:
-- [ ] 05-01-PLAN.md — Extract TranslationsPage into sub-components (types, API, QualityBadge, columns, FilterBar, EntryEditModal)
+- [x] 05-01-PLAN.md — Extract TranslationsPage into sub-components (types, API, QualityBadge, columns, FilterBar, EntryEditModal)
 - [ ] 05-02-PLAN.md — Quality badge visual upgrade (dot+score inline) and table column optimization
 - [ ] 05-03-PLAN.md — Filter/sort expansion with review-state filters and Sort dropdown
 **UI hint**: yes
@@ -98,4 +98,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Deploy Hardening | 2/2 | Complete   | 2026-04-02 |
 | 3. Bug Fixes | 2/2 | Complete   | 2026-04-02 |
 | 4. Dead Code Cleanup | 3/3 | Complete   | 2026-04-02 |
-| 5. UI Polish | 0/3 | Not started | - |
+| 5. UI Polish | 1/3 | In Progress|  |

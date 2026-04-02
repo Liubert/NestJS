@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Phase 5 context gathered
-last_updated: "2026-04-02T18:28:17.815Z"
+stopped_at: Completed 05-01-PLAN.md
+last_updated: "2026-04-02T19:38:27.278Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
   completed_phases: 4
-  total_plans: 8
-  completed_plans: 8
+  total_plans: 11
+  completed_plans: 9
   percent: 0
 ---
 
@@ -21,12 +21,12 @@ progress:
 See: .planning/PROJECT.md (updated 2026-04-02)
 
 **Core value:** Translations are reliably stored, served, and editable — teams can use the system daily without workarounds or broken workflows.
-**Current focus:** Phase 04 — dead-code-cleanup
+**Current focus:** Phase 05 — ui-polish
 
 ## Current Position
 
-Phase: 5
-Plan: Not started
+Phase: 05 (ui-polish) — EXECUTING
+Plan: 2 of 3
 Status: Ready to execute
 Last activity: 2026-04-02
 
@@ -60,6 +60,8 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04-dead-code-cleanup P01 | 35 | 1 tasks | 1 files |
 | Phase 04-dead-code-cleanup P02 | 15 | 2 tasks | 4 files |
 | Phase 04-dead-code-cleanup P03 | 8 | 2 tasks | 6 files |
+| Phase 05-ui-polish P01 | 525626 | 2 tasks | 7 files |
+| Phase 05-ui-polish P01 | 25 | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -88,6 +90,8 @@ Recent decisions affecting current work:
 - [Phase 04-dead-code-cleanup]: FilesModule removed entirely: all 2 endpoints were orphans with no consumers
 - [Phase 04-dead-code-cleanup]: FileVisibility enum moved to file-record.entity.ts — enums belong with the entity, not in deleted DTO files
 - [Phase 04-dead-code-cleanup]: ENDPOINT-INVENTORY.md corrected: FilesModule is a live indirect dependency of UsersModule (getViewUrl for avatars), SUMMARY 04-02 overclaimed module removed entirely
+- [Phase 05-ui-polish]: Shared types in components/types.ts — single source of truth; avoids type duplication across extracted components
+- [Phase 05-ui-polish]: buildColumns wrapped in useMemo in EntriesTable — prevents Ant Design Table re-rendering all rows on every render
 
 ### Pending Todos
 
@@ -100,6 +104,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T18:28:17.806Z
-Stopped at: Phase 5 context gathered
-Resume file: .planning/phases/05-ui-polish/05-CONTEXT.md
+Last session: 2026-04-02T19:38:23.179Z
+Stopped at: Completed 05-01-PLAN.md
+Resume file: None
