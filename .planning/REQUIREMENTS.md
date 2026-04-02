@@ -32,8 +32,8 @@ Requirements for stabilization milestone. Each maps to roadmap phases.
 
 ### UI Polish
 
-- [ ] **UI-01**: Quality state indicators color-coded (green=checked, blue=skipped, red=failed, gray=pending)
-- [ ] **UI-02**: Translations page readability improved (layout, spacing, typography)
+- [x] **UI-01**: Quality state indicators color-coded (green=checked, blue=skipped, red=failed, gray=pending)
+- [x] **UI-02**: Translations page readability improved (layout, spacing, typography)
 - [ ] **UI-03**: Translations filterable/sortable by quality score
 
 ## v2 Requirements
@@ -92,8 +92,8 @@ Which phases cover which requirements. Updated during roadmap creation.
 | BUG-03 | Phase 3 | Complete |
 | CLEAN-01 | Phase 4 | Complete |
 | CLEAN-02 | Phase 4 | Complete |
-| UI-01 | Phase 5 | Pending |
-| UI-02 | Phase 5 | Pending |
+| UI-01 | Phase 5 | Complete |
+| UI-02 | Phase 5 | Complete |
 | UI-03 | Phase 5 | Pending |
 
 **Coverage:**

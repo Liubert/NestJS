@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 05-01-PLAN.md
-last_updated: "2026-04-02T19:38:27.278Z"
+stopped_at: Completed 05-02-PLAN.md
+last_updated: "2026-04-02T19:42:30.224Z"
 last_activity: 2026-04-02
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 11
-  completed_plans: 9
+  completed_plans: 10
   percent: 0
 ---
 
@@ -26,7 +26,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 ## Current Position
 
 Phase: 05 (ui-polish) — EXECUTING
-Plan: 2 of 3
+Plan: 3 of 3
 Status: Ready to execute
 Last activity: 2026-04-02
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 04-dead-code-cleanup P03 | 8 | 2 tasks | 6 files |
 | Phase 05-ui-polish P01 | 525626 | 2 tasks | 7 files |
 | Phase 05-ui-polish P01 | 25 | 2 tasks | 7 files |
+| Phase 05-ui-polish P02 | 8 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -92,6 +93,8 @@ Recent decisions affecting current work:
 - [Phase 04-dead-code-cleanup]: ENDPOINT-INVENTORY.md corrected: FilesModule is a live indirect dependency of UsersModule (getViewUrl for avatars), SUMMARY 04-02 overclaimed module removed entirely
 - [Phase 05-ui-polish]: Shared types in components/types.ts — single source of truth; avoids type duplication across extracted components
 - [Phase 05-ui-polish]: buildColumns wrapped in useMemo in EntriesTable — prevents Ant Design Table re-rendering all rows on every render
+- [Phase 05-ui-polish]: Failed state uses orange (#fa8c16) with WarningOutlined to distinguish system errors from quality judgments (red reserved for poor quality)
+- [Phase 05-ui-polish]: Typography.Text ellipsis replaces manual wordBreak/whiteSpace styles for table locale columns — built-in tooltip included
 
 ### Pending Todos
 
@@ -104,6 +107,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-04-02T19:38:23.179Z
-Stopped at: Completed 05-01-PLAN.md
+Last session: 2026-04-02T19:42:30.214Z
+Stopped at: Completed 05-02-PLAN.md
 Resume file: None
