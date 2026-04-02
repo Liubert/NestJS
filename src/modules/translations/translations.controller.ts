@@ -55,6 +55,20 @@ export class TranslationsController {
     private readonly aiUsageService: AiUsageService,
   ) {}
 
+  // ─── AI Usage (must be before wildcard routes) ────────────────────────────
+
+  @Get('projects/:slug/ai-usage')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get AI token usage for a project' })
+  async getAiUsage(
+    @Param('slug') slug: string,
+    @CurrentUser() _user: CurrentUserType,
+  ) {
+    const project = await this.translationsService.getProjectBySlug(slug);
+    return this.aiUsageService.getProjectUsage(project.id);
+  }
+
   // ─── Public (Locize-compatible) ───────────────────────────────────────────
 
   @Get(':projectSlug/locales')
@@ -221,17 +235,6 @@ export class TranslationsController {
     );
   }
 
-  @Get('projects/:slug/ai-usage')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get AI token usage for a project' })
-  async getAiUsage(
-    @Param('slug') slug: string,
-    @CurrentUser() _user: CurrentUserType,
-  ) {
-    const project = await this.translationsService.getProjectBySlug(slug);
-    return this.aiUsageService.getProjectUsage(project.id);
-  }
 
   @Delete('projects/:slug')
   @HttpCode(HttpStatus.NO_CONTENT)
