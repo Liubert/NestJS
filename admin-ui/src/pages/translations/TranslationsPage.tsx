@@ -69,7 +69,8 @@ interface QualityInfo {
     | 'processing'
     | 'checked'
     | 'expected'
-    | 'failed';
+    | 'failed'
+    | 'skipped';
   score: number | null;
   level: 'green' | 'yellow' | 'red' | 'expected' | null;
   comment: string | null;
@@ -514,6 +515,23 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
       >
         {badge}
       </Popconfirm>
+    );
+  }
+
+  if (info.reviewState === 'skipped') {
+    return (
+      <Tooltip title="Quality check skipped — scored 100 by default">
+        <span
+          style={{
+            display: 'inline-block',
+            width: 10,
+            height: 10,
+            borderRadius: '50%',
+            backgroundColor: '#1677ff',
+            flexShrink: 0,
+          }}
+        />
+      </Tooltip>
     );
   }
 
