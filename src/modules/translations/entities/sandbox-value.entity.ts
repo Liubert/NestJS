@@ -89,4 +89,18 @@ export class SandboxValueEntity {
     | 'failed'
     | 'expected'
     | 'skipped';
+
+  @Column({ type: 'varchar', length: 500, nullable: true })
+  context!: string | null;
+
+  @Column({ name: 'context_need', type: 'varchar', length: 10, nullable: true })
+  contextNeed!: 'required' | 'useful' | 'none' | null;
+
+  @Column({
+    name: 'context_reason',
+    type: 'varchar',
+    length: 300,
+    nullable: true,
+  })
+  contextReason!: string | null;
 }
