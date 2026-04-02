@@ -140,8 +140,10 @@ export interface FilterBarProps {
   searchInput: string;
   onSearchInputChange: (val: string) => void;
   onSearch: () => void;
-  qualityLevel: string;
-  onQualityLevelChange: (val: string) => void;
+  qualityFilter: string;
+  onQualityFilterChange: (val: string) => void;
+  sortBy: 'key' | 'createdAt' | 'qualityScore';
+  onSortByChange: (val: 'key' | 'createdAt' | 'qualityScore') => void;
   onAddKey: () => void;
   disabled: boolean;
   extraControls?: React.ReactNode;
@@ -159,6 +161,7 @@ export interface EntriesTableProps {
     sortBy: string,
     sortOrder: string,
     qualityLevel?: string,
+    reviewState?: string,
   ) => Promise<PaginatedEntries>;
   createFn: (
     slug: string,

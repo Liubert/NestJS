@@ -191,6 +191,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   );
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [qualityLevel, setQualityLevel] = useState('');
+  const [reviewState, setReviewState] = useState('');
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [isNewEntry, setIsNewEntry] = useState(false);
@@ -229,6 +230,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         sortBy,
         sortOrder,
         qualityLevel,
+        reviewState,
       ],
       queryFn: () =>
         fetchFn(
@@ -240,6 +242,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           sortBy,
           sortOrder,
           qualityLevel || undefined,
+          reviewState || undefined,
         ),
       enabled: !!projectSlug && !!namespace && enabled,
     });
@@ -359,9 +362,29 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         searchInput={searchInput}
         onSearchInputChange={setSearchInput}
         onSearch={handleSearch}
-        qualityLevel={qualityLevel}
-        onQualityLevelChange={(val) => {
-          setQualityLevel(val);
+        qualityFilter={
+          qualityLevel
+            ? `level:${qualityLevel}`
+            : reviewState
+              ? `state:${reviewState}`
+              : ''
+        }
+        onQualityFilterChange={(val) => {
+          if (val.startsWith('level:')) {
+            setQualityLevel(val.slice(6));
+            setReviewState('');
+          } else if (val.startsWith('state:')) {
+            setQualityLevel('');
+            setReviewState(val.slice(6));
+          } else {
+            setQualityLevel('');
+            setReviewState('');
+          }
+          setPage(1);
+        }}
+        sortBy={sortBy}
+        onSortByChange={(val) => {
+          setSortBy(val);
           setPage(1);
         }}
         onAddKey={() => {

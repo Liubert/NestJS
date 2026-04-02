@@ -33,6 +33,7 @@ export const fetchEntries = async (
   sortBy: string,
   sortOrder: string,
   qualityLevel?: string,
+  reviewState?: string,
 ): Promise<PaginatedEntries> => {
   const params: Record<string, string | number> = {
     page,
@@ -42,6 +43,7 @@ export const fetchEntries = async (
   };
   if (search.length >= 2) params.search = search;
   if (qualityLevel) params.qualityLevel = qualityLevel;
+  if (reviewState) params.reviewState = reviewState;
   const res = await apiClient.get(
     `/translations/projects/${slug}/namespaces/${ns}/entries`,
     { params },
@@ -145,6 +147,7 @@ export const fetchSandboxEntries = async (
   sortBy: string,
   sortOrder: string,
   qualityLevel?: string,
+  reviewState?: string,
 ): Promise<PaginatedEntries> => {
   const params: Record<string, string | number> = {
     page,
@@ -154,6 +157,7 @@ export const fetchSandboxEntries = async (
   };
   if (search.length >= 2) params.search = search;
   if (qualityLevel) params.qualityLevel = qualityLevel;
+  if (reviewState) params.reviewState = reviewState;
   const res = await apiClient.get(
     `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries`,
     { params },

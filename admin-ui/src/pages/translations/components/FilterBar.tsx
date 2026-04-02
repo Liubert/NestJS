@@ -5,6 +5,19 @@ import type { FilterBarProps } from './types';
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
 
+const QUALITY_FILTER_OPTIONS = [
+  { value: '', label: 'All' },
+  { value: 'level:green', label: 'Good (80-100)' },
+  { value: 'level:yellow', label: 'Review (50-80)' },
+  { value: 'level:red', label: 'Poor (0-50)' },
+  { value: 'level:unchecked', label: 'Not checked' },
+  { value: 'level:needs_context', label: 'Needs Context' },
+  { value: 'state:skipped', label: 'Skipped' },
+  { value: 'state:expected', label: 'Expected' },
+  { value: 'state:failed', label: 'Failed' },
+  { value: 'state:not_checked', label: 'Pending' },
+];
+
 const FilterBar: React.FC<FilterBarProps> = ({
   namespace,
   namespaces,
@@ -12,8 +25,10 @@ const FilterBar: React.FC<FilterBarProps> = ({
   searchInput,
   onSearchInputChange,
   onSearch,
-  qualityLevel,
-  onQualityLevelChange,
+  qualityFilter,
+  onQualityFilterChange,
+  sortBy,
+  onSortByChange,
   onAddKey,
   disabled,
   extraControls,
@@ -51,17 +66,22 @@ const FilterBar: React.FC<FilterBarProps> = ({
       </Col>
       <Col>
         <Select
-          value={qualityLevel || ''}
-          onChange={onQualityLevelChange}
-          style={{ width: 150 }}
+          value={qualityFilter || ''}
+          onChange={onQualityFilterChange}
+          style={{ width: 180 }}
+          placeholder="Filter by quality"
+          options={QUALITY_FILTER_OPTIONS}
+        />
+      </Col>
+      <Col>
+        <Select
+          value={sortBy}
+          onChange={onSortByChange}
+          style={{ width: 160 }}
           options={[
-            { value: '', label: 'All qualities' },
-            { value: 'green', label: 'Green' },
-            { value: 'yellow', label: 'Yellow' },
-            { value: 'red', label: 'Red' },
-            { value: 'expected', label: 'Expected' },
-            { value: 'unchecked', label: 'Not checked' },
-            { value: 'needs_context', label: 'Needs Context' },
+            { value: 'key', label: 'Sort: Key' },
+            { value: 'createdAt', label: 'Sort: Created' },
+            { value: 'qualityScore', label: 'Sort: Quality' },
           ]}
         />
       </Col>
