@@ -35,13 +35,15 @@ Plans:
 ### Phase 2: Deploy Hardening
 **Goal**: Deploys pass on the first attempt and the pipeline catches unhealthy services before reporting success
 **Depends on**: Phase 1
-**Requirements**: DEPLOY-01, DEPLOY-02, DEPLOY-03, DEPLOY-04
+**Requirements**: DEPLOY-01, DEPLOY-02, DEPLOY-03
 **Success Criteria** (what must be TRUE):
   1. `GET /health` returns 200 with DB and RabbitMQ status indicators
   2. `docker compose up -d` waits for Postgres and RabbitMQ to be healthy before starting the API container
   3. CI pipeline reports failure (not success) when a service is crash-looping after deploy
-  4. Uptime Kuma dashboard shows all four services on port 3011, with alerts configured
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 02-01-PLAN.md — Terminus health endpoint + Docker Compose API healthcheck
+- [ ] 02-02-PLAN.md — CI post-deploy verification with admin-ui check and diagnostics
 
 ### Phase 3: Bug Fixes
 **Goal**: Known product bugs are corrected — quality states are accurate, sandbox promotion preserves all context fields
@@ -82,7 +84,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
-| 2. Deploy Hardening | 0/? | Not started | - |
+| 2. Deploy Hardening | 0/2 | Planning complete | - |
 | 3. Bug Fixes | 0/? | Not started | - |
 | 4. Dead Code Cleanup | 0/? | Not started | - |
 | 5. UI Polish | 0/? | Not started | - |
