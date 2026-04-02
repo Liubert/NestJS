@@ -42,7 +42,7 @@ Plans:
   3. CI pipeline reports failure (not success) when a service is crash-looping after deploy
 **Plans**: 2 plans
 Plans:
-- [ ] 02-01-PLAN.md — Terminus health endpoint + Docker Compose API healthcheck
+- [x] 02-01-PLAN.md — Terminus health endpoint + Docker Compose API healthcheck
 - [ ] 02-02-PLAN.md — CI post-deploy verification with admin-ui check and diagnostics
 
 ### Phase 3: Bug Fixes
@@ -84,7 +84,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
-| 2. Deploy Hardening | 0/2 | Planning complete | - |
+| 2. Deploy Hardening | 1/2 | In Progress|  |
 | 3. Bug Fixes | 0/? | Not started | - |
 | 4. Dead Code Cleanup | 0/? | Not started | - |
 | 5. UI Polish | 0/? | Not started | - |
