@@ -130,6 +130,8 @@ export class TranslationsController {
 
   @Post('import')
   @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @UseInterceptors(FileInterceptor('file'))
   @ApiConsumes('multipart/form-data')
   @ApiOperation({ summary: 'Import translations from a ZIP file' })
