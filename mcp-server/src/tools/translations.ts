@@ -15,7 +15,8 @@ interface TranslationEntry {
   key: string;
   values: Record<string, string>;
   context: string | null;
-  contextRequired: boolean | null;
+  contextNeed: 'required' | 'useful' | 'none' | null;
+  contextReason: string | null;
   quality: Record<string, QualityInfo | null>;
   createdAt: string;
 }
@@ -35,7 +36,7 @@ export function registerTranslationTools(server: McpServer): void {
       "Supports pagination, full-text search, and quality/context filtering.",
       "Use missingLocale to find keys missing a value for a specific locale.",
       "Use qualityLevel to filter by worst quality level across locales.",
-      "Use contextRequired to find keys that need context for confident evaluation.",
+      "Use qualityLevel 'needs_context' to find keys where context is required or useful but missing.",
     ].join(" "),
     {
       projectSlug: z.string().describe("Project slug"),
@@ -56,9 +57,9 @@ export function registerTranslationTools(server: McpServer): void {
           "Use this to find gaps after adding a new locale.",
         ),
       qualityLevel: z
-        .enum(["green", "yellow", "red", "unchecked", "needs_context"])
+        .enum(["green", "yellow", "red", "unchecked", "needs_context", "context_required", "context_useful"])
         .optional()
-        .describe("Filter by quality level. 'needs_context' returns keys where context is required but missing."),
+        .describe("Filter by quality level. 'needs_context' = context required or useful but missing. 'context_required' / 'context_useful' filter separately."),
       sortBy: z.enum(["key", "createdAt", "qualityScore"]).default("key").describe("Sort field"),
       sortOrder: z.enum(["asc", "desc"]).default("asc").describe("Sort direction"),
     },
@@ -93,8 +94,11 @@ export function registerTranslationTools(server: McpServer): void {
           // Context line
           if (entry.context) {
             parts.push(`  [context] ${entry.context}`);
-          } else if (entry.contextRequired) {
-            parts.push(`  ⚠ Context required but missing`);
+          }
+          if (!entry.context && entry.contextNeed === 'required') {
+            parts.push(`  ⚠ Context required — ${entry.contextReason ?? 'ambiguous term'}`);
+          } else if (!entry.context && entry.contextNeed === 'useful') {
+            parts.push(`  💡 Context suggested — ${entry.contextReason ?? 'would improve translation quality'}`);
           }
 
           // Values with quality info
@@ -141,7 +145,7 @@ export function registerTranslationTools(server: McpServer): void {
       qualityLevels: z
         .string()
         .default("yellow,red")
-        .describe("Comma-separated quality levels to include (default: 'yellow,red'). Options: green, yellow, red, unchecked, needs_context."),
+        .describe("Comma-separated quality levels to include (default: 'yellow,red'). Options: green, yellow, red, unchecked, needs_context, context_required, context_useful."),
       includeUnchecked: z
         .boolean()
         .default(false)
@@ -171,10 +175,12 @@ export function registerTranslationTools(server: McpServer): void {
           if (entry.context) {
             parts.push(`  [context] ${entry.context}`);
           }
-          if (entry.contextRequired && !entry.context) {
-            parts.push(`  ⚠ CONTEXT REQUIRED but missing — add context to improve quality scores`);
-          } else if (entry.contextRequired === false) {
-            parts.push(`  [context not required]`);
+          if (!entry.context && entry.contextNeed === 'required') {
+            parts.push(`  ⚠ CONTEXT REQUIRED — ${entry.contextReason ?? 'ambiguous term'}. Add context to improve quality scores.`);
+          } else if (!entry.context && entry.contextNeed === 'useful') {
+            parts.push(`  💡 CONTEXT SUGGESTED — ${entry.contextReason ?? 'would improve translation quality'}. Consider adding context.`);
+          } else if (entry.contextNeed === 'none') {
+            parts.push(`  [context not needed]`);
           }
 
           // Values + quality per locale

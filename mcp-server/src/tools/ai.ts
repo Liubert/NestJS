@@ -70,7 +70,13 @@ export function registerAiTools(server: McpServer): void {
     },
     async ({ projectSlug, source, translation, locale, mode, context }) => {
       try {
-        const result = await apiPost<{ score: number; level: string; comment: string }>(
+        const result = await apiPost<{
+          score: number;
+          level: string;
+          comment: string;
+          contextNeed?: string;
+          contextReason?: string | null;
+        }>(
           "/translations/ai-quality-check",
           { source, translation, locale, mode, projectSlug, ...(context ? { context } : {}) },
         );
@@ -83,6 +89,9 @@ export function registerAiTools(server: McpServer): void {
           `  Score: ${result.score}/100 (${result.level})`,
           `  Comment: ${result.comment}`,
         ];
+        if (result.contextNeed && result.contextNeed !== 'none') {
+          lines.push(`  Context: ${result.contextNeed}${result.contextReason ? ` — ${result.contextReason}` : ''}`);
+        }
         return textResult(lines.join("\n"));
       } catch (error) {
         return errorResult(error);

@@ -519,7 +519,45 @@ The new key must not already exist. This is a sandbox operation reflected in dif
 
 ### Context field
 
-`set_translation` and `bulk_import` support an optional `context` parameter (max 200 chars) describing where/how a key is used. This helps translators and AI produce better translations.
+Translation keys support a `context` field (max 500 chars) describing where/how a key is used. Context directly impacts translation quality scoring and AI evaluation confidence.
+
+#### When to add context
+
+**Always add context for:**
+- Ambiguous words with multiple meanings ("Save", "Train", "Set", "Light", "Run")
+- Short/generic labels where business intent matters ("Process", "Review", "Apply", "Status")
+- Domain-specific terms ("Approve", "Submit", "Escalate", "Assign")
+- Labels that could refer to an action, a status, or a concept ("Active", "Complete", "Open")
+
+**Skip context for:**
+- Universally obvious terms ("Cancel", "OK", "Delete", "Email", "Password", "Settings")
+- Keys where the key name itself provides enough context ("login.email_placeholder")
+- Long, self-explanatory sentences
+
+#### Good context examples
+- "Save button in expense approval form" — disambiguates "Save"
+- "Status label: whether a report has been reviewed by a manager"
+- "Navigation tab for the user's pending applications"
+- "Column header in invoice list table"
+
+#### Bad context examples
+- "A button" — too vague, adds nothing
+- "This is the cancel button on the settings page that cancels..." — too verbose
+- "Translation key" — restates the obvious
+
+#### Impact on quality scoring
+
+The AI evaluates context need at three levels:
+- **required**: key is genuinely ambiguous — quality score capped at 89 without context
+- **useful**: context would improve clarity — quality score capped at 94 without context
+- **none**: meaning is clear without context — no penalty
+
+When `list_translations` or `get_translations_needing_attention` shows "Context required" or "Context suggested", proactively add context using `set_translation` with the `context` parameter.
+
+Use `qualityLevel: "needs_context"` to find all keys where context is required or useful but missing.
+Use `qualityLevel: "context_required"` or `qualityLevel: "context_useful"` to filter separately.
+
+#### Usage examples
 
 **set_translation:**
 ```
