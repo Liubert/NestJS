@@ -15,7 +15,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Test Infrastructure** - Jest 29 + Testcontainers working; first real integration tests catch regressions (completed 2026-04-02)
 - [x] **Phase 2: Deploy Hardening** - Deploys pass first attempt; health gates prevent silent failures (completed 2026-04-02)
 - [x] **Phase 3: Bug Fixes** - Quality state correctness, sandbox promotion context, input validation (completed 2026-04-02)
-- [ ] **Phase 4: Dead Code Cleanup** - Every endpoint mapped; confirmed orphans removed
+- [x] **Phase 4: Dead Code Cleanup** - Every endpoint mapped; confirmed orphans removed (completed 2026-04-02)
 - [ ] **Phase 5: UI Polish** - Quality indicators color-coded; translations page readable and filterable
 
 ## Phase Details
@@ -69,7 +69,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 04-01-PLAN.md — Audit all endpoints and produce route-to-consumer inventory
-- [ ] 04-02-PLAN.md — Remove orphaned endpoints with cascading cleanup
+- [x] 04-02-PLAN.md — Remove orphaned endpoints with cascading cleanup
 
 ### Phase 5: UI Polish
 **Goal**: The translations page is readable and quality state is visually clear without functional changes to the backend
@@ -92,5 +92,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
 | 2. Deploy Hardening | 2/2 | Complete   | 2026-04-02 |
 | 3. Bug Fixes | 2/2 | Complete   | 2026-04-02 |
-| 4. Dead Code Cleanup | 0/2 | Planned | - |
+| 4. Dead Code Cleanup | 2/2 | Complete   | 2026-04-02 |
 | 5. UI Polish | 0/? | Not started | - |

@@ -2,7 +2,7 @@
 
 **Audit date:** 2026-04-02
 **Total routes:** 60
-**Active:** 55 | **Orphan:** 3 | **Flagged:** 2
+**Active:** 55 | **Orphan:** 3 | **Flagged:** 1 (import guard fixed in 04-02)
 
 ---
 
@@ -21,7 +21,7 @@ Audit of all backend controllers reveals 60 routes across 10 controller files. T
 | 3 | GET | `/translations/:projectSlug/locales` | TranslationsController | MCP: `get_project_details` (indirectly via `/translations/projects/:slug`), Public API clients | active |
 | 4 | GET | `/translations/:projectSlug/namespaces` | TranslationsController | Public API clients | active |
 | 5 | GET | `/translations/:projectSlug/:namespace/:locale` | TranslationsController | Public API (Locize-compatible) + `?env=sandbox` for dev; MCP `export_namespace`, `compare_local_vs_server`, `validate_keys`, `get_namespace_coverage` | active |
-| 6 | POST | `/translations/import` | TranslationsController | Admin UI: TranslationsPage (ZIP import button) | flagged |
+| 6 | POST | `/translations/import` | TranslationsController | Admin UI: TranslationsPage (ZIP import button) | active |
 | 7 | POST | `/translations/ai-translate` | TranslationsController | Admin UI: TranslationsPage; MCP: `ai_translate` | active |
 | 8 | POST | `/translations/ai-quality-check` | TranslationsController | Admin UI: TranslationsPage; MCP: `ai_quality_check` | active |
 | 9 | GET | `/translations/projects` | TranslationsController | Admin UI: ProjectsPage, TranslationsPage; MCP: `list_projects`, `assess_integration_state` | active |
