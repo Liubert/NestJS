@@ -28,8 +28,8 @@ Translations are reliably stored, served, and editable — teams can use the sys
 - [ ] Stable deployment pipeline — deploys pass on first attempt without manual retries
 - ✓ Base test coverage to catch regressions — Validated in Phase 1: Test Infrastructure
 - [ ] Fix Quality Check skip bug — "skipped" must be a distinct state (score=100, blue indicator)
-- [ ] Endpoint audit — verify every endpoint is connected to MCP or frontend, remove or fix orphans
-- [ ] Clean up unfinished/partially-reverted features — finish or remove completely
+- ✓ Endpoint audit — verify every endpoint is connected to MCP or frontend, remove or fix orphans — Validated in Phase 4: Dead Code Cleanup
+- ✓ Clean up unfinished/partially-reverted features — finish or remove completely — Validated in Phase 4: Dead Code Cleanup
 - [ ] UI polish for translations page — improve readability and UX without new functionality
 
 ### Out of Scope
