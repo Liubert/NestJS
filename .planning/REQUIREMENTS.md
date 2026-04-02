@@ -11,7 +11,7 @@ Requirements for stabilization milestone. Each maps to roadmap phases.
 
 - [x] **DEPLOY-01**: All Docker Compose services have healthchecks (API, Postgres, RabbitMQ)
 - [x] **DEPLOY-02**: API exposes `/health` endpoint via @nestjs/terminus checking DB and RabbitMQ connectivity
-- [ ] **DEPLOY-03**: CI pipeline verifies service health after deploy before reporting success
+- [x] **DEPLOY-03**: CI pipeline verifies service health after deploy before reporting success
 - [ ] **DEPLOY-04**: Uptime Kuma monitors all services with alerts on downtime (port 3011)
 
 ### Test Coverage
@@ -85,7 +85,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TEST-02 | Phase 1 | Complete |
 | DEPLOY-01 | Phase 2 | Complete |
 | DEPLOY-02 | Phase 2 | Complete |
-| DEPLOY-03 | Phase 2 | Pending |
+| DEPLOY-03 | Phase 2 | Complete |
 | DEPLOY-04 | Phase 2 | Pending |
 | BUG-01 | Phase 3 | Pending |
 | BUG-02 | Phase 3 | Pending |

@@ -13,7 +13,7 @@ The TMS is working but unstable. This milestone hardens it into something teams 
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Test Infrastructure** - Jest 29 + Testcontainers working; first real integration tests catch regressions (completed 2026-04-02)
-- [ ] **Phase 2: Deploy Hardening** - Deploys pass first attempt; health gates prevent silent failures
+- [x] **Phase 2: Deploy Hardening** - Deploys pass first attempt; health gates prevent silent failures (completed 2026-04-02)
 - [ ] **Phase 3: Bug Fixes** - Quality state correctness, sandbox promotion context, input validation
 - [ ] **Phase 4: Dead Code Cleanup** - Every endpoint mapped; confirmed orphans removed
 - [ ] **Phase 5: UI Polish** - Quality indicators color-coded; translations page readable and filterable
@@ -43,7 +43,7 @@ Plans:
 **Plans**: 2 plans
 Plans:
 - [x] 02-01-PLAN.md — Terminus health endpoint + Docker Compose API healthcheck
-- [ ] 02-02-PLAN.md — CI post-deploy verification with admin-ui check and diagnostics
+- [x] 02-02-PLAN.md — CI post-deploy verification with admin-ui check and diagnostics
 
 ### Phase 3: Bug Fixes
 **Goal**: Known product bugs are corrected — quality states are accurate, sandbox promotion preserves all context fields
@@ -84,7 +84,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
-| 2. Deploy Hardening | 1/2 | In Progress|  |
+| 2. Deploy Hardening | 2/2 | Complete   | 2026-04-02 |
 | 3. Bug Fixes | 0/? | Not started | - |
 | 4. Dead Code Cleanup | 0/? | Not started | - |
 | 5. UI Polish | 0/? | Not started | - |
