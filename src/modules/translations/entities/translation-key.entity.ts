@@ -29,12 +29,22 @@ export class TranslationKeyEntity {
   context!: string | null;
 
   @Column({
-    name: 'context_required',
-    type: 'boolean',
+    name: 'context_need',
+    type: 'varchar',
+    length: 10,
     nullable: true,
     default: null,
   })
-  contextRequired!: boolean | null;
+  contextNeed!: 'required' | 'useful' | 'none' | null;
+
+  @Column({
+    name: 'context_reason',
+    type: 'varchar',
+    length: 300,
+    nullable: true,
+    default: null,
+  })
+  contextReason!: string | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
