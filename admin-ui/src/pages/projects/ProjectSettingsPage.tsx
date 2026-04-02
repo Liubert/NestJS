@@ -1,20 +1,43 @@
 import React, { useState } from 'react';
 import {
-  Typography, Button, Tag, Space, Divider, Spin, Modal, Form, Input, Switch,
-  Popconfirm, message, Breadcrumb, Table, Alert,
+  Typography,
+  Button,
+  Tag,
+  Space,
+  Divider,
+  Spin,
+  Modal,
+  Form,
+  Input,
+  Switch,
+  Select,
+  Popconfirm,
+  message,
+  Breadcrumb,
+  Table,
+  Alert,
 } from 'antd';
 import {
-  PlusOutlined, DeleteOutlined, TranslationOutlined,
+  PlusOutlined,
+  DeleteOutlined,
+  TranslationOutlined,
+  EditOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import apiClient from '../../api/client';
+import {
+  SUPPORTED_LANGUAGES,
+  LANGUAGE_BY_CODE,
+  getFlagForCode,
+} from '../../constants/supported-languages';
 
 const { Title, Text } = Typography;
 
 interface LocaleEntry {
   code: string;
   isDefault: boolean;
+  aliases: string[];
 }
 
 interface ProjectDetails {
@@ -75,7 +98,9 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
   const { data, isLoading } = useQuery<AiUsageData>({
     queryKey: ['ai-usage', slug],
     queryFn: async () => {
-      const res = await apiClient.get(`/translations/projects/${slug}/ai-usage`);
+      const res = await apiClient.get(
+        `/translations/projects/${slug}/ai-usage`,
+      );
       return res.data;
     },
     enabled: !!slug,
@@ -83,7 +108,9 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
 
   return (
     <div style={{ marginBottom: 32 }}>
-      <Title level={5} style={{ margin: 0, marginBottom: 12 }}>AI Token Usage</Title>
+      <Title level={5} style={{ margin: 0, marginBottom: 12 }}>
+        AI Token Usage
+      </Title>
       {isLoading ? (
         <Spin size="small" />
       ) : !data || data.totalTokens === 0 ? (
@@ -91,8 +118,12 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
       ) : (
         <>
           <div style={{ marginBottom: 12 }}>
-            <Text strong style={{ fontSize: 20 }}>{formatTokens(data.totalTokens)}</Text>
-            <Text type="secondary" style={{ marginLeft: 8 }}>total tokens</Text>
+            <Text strong style={{ fontSize: 20 }}>
+              {formatTokens(data.totalTokens)}
+            </Text>
+            <Text type="secondary" style={{ marginLeft: 8 }}>
+              total tokens
+            </Text>
           </div>
           <Table<AiUsageBreakdown>
             rowKey="operation"
@@ -102,15 +133,23 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
             style={{ maxWidth: 500 }}
             columns={[
               {
-                title: 'Operation', dataIndex: 'operation', key: 'operation',
+                title: 'Operation',
+                dataIndex: 'operation',
+                key: 'operation',
                 render: (op: string) => OPERATION_LABELS[op] ?? op,
               },
               {
-                title: 'Tokens', dataIndex: 'totalTokens', key: 'totalTokens', width: 120,
+                title: 'Tokens',
+                dataIndex: 'totalTokens',
+                key: 'totalTokens',
+                width: 120,
                 render: (v: number) => formatTokens(v),
               },
               {
-                title: 'Calls', dataIndex: 'callCount', key: 'callCount', width: 80,
+                title: 'Calls',
+                dataIndex: 'callCount',
+                key: 'callCount',
+                width: 80,
               },
             ]}
           />
@@ -129,9 +168,15 @@ const ProjectSettingsPage: React.FC = () => {
   const [localeForm] = Form.useForm();
   const [nsForm] = Form.useForm();
   const [memberForm] = Form.useForm();
+  const [editLocaleForm] = Form.useForm();
+  const [editNsForm] = Form.useForm();
   const [localeModalOpen, setLocaleModalOpen] = useState(false);
   const [nsModalOpen, setNsModalOpen] = useState(false);
   const [memberModalOpen, setMemberModalOpen] = useState(false);
+  const [editLocaleModalOpen, setEditLocaleModalOpen] = useState(false);
+  const [editLocaleCode, setEditLocaleCode] = useState('');
+  const [editNsModalOpen, setEditNsModalOpen] = useState(false);
+  const [editNsSlug, setEditNsSlug] = useState('');
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', slug],
@@ -155,45 +200,103 @@ const ProjectSettingsPage: React.FC = () => {
   };
 
   const addLocaleMutation = useMutation({
-    mutationFn: (code: string) =>
-      apiClient.post(`/translations/projects/${slug}/locales`, { code }),
-    onSuccess: () => { message.success('Locale added'); invalidateProject(); setLocaleModalOpen(false); localeForm.resetFields(); },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error adding locale'),
+    mutationFn: (vals: { code: string; aliases?: string[] }) =>
+      apiClient.post(`/translations/projects/${slug}/locales`, vals),
+    onSuccess: () => {
+      message.success('Locale added');
+      invalidateProject();
+      setLocaleModalOpen(false);
+      localeForm.resetFields();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error adding locale'),
+  });
+
+  const updateLocaleMutation = useMutation({
+    mutationFn: ({ code, aliases }: { code: string; aliases: string[] }) =>
+      apiClient.patch(`/translations/projects/${slug}/locales/${code}`, {
+        aliases,
+      }),
+    onSuccess: () => {
+      message.success('Locale updated');
+      invalidateProject();
+      setEditLocaleModalOpen(false);
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error updating locale'),
+  });
+
+  const updateNsMutation = useMutation({
+    mutationFn: ({ oldSlug, newSlug }: { oldSlug: string; newSlug: string }) =>
+      apiClient.patch(`/translations/projects/${slug}/namespaces/${oldSlug}`, {
+        slug: newSlug,
+      }),
+    onSuccess: () => {
+      message.success('Namespace renamed');
+      invalidateProject();
+      setEditNsModalOpen(false);
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error renaming namespace'),
   });
 
   const removeLocaleMutation = useMutation({
     mutationFn: (code: string) =>
       apiClient.delete(`/translations/projects/${slug}/locales/${code}`),
-    onSuccess: () => { message.success('Locale removed'); invalidateProject(); },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error removing locale'),
+    onSuccess: () => {
+      message.success('Locale removed');
+      invalidateProject();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error removing locale'),
   });
 
   const addNsMutation = useMutation({
     mutationFn: (ns: string) =>
       apiClient.post(`/translations/projects/${slug}/namespaces`, { slug: ns }),
-    onSuccess: () => { message.success('Namespace added'); invalidateProject(); setNsModalOpen(false); nsForm.resetFields(); },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error adding namespace'),
+    onSuccess: () => {
+      message.success('Namespace added');
+      invalidateProject();
+      setNsModalOpen(false);
+      nsForm.resetFields();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error adding namespace'),
   });
 
   const removeNsMutation = useMutation({
     mutationFn: (ns: string) =>
       apiClient.delete(`/translations/projects/${slug}/namespaces/${ns}`),
-    onSuccess: () => { message.success('Namespace removed'); invalidateProject(); },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error removing namespace'),
+    onSuccess: () => {
+      message.success('Namespace removed');
+      invalidateProject();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error removing namespace'),
   });
 
   const addMemberMutation = useMutation({
     mutationFn: (email: string) =>
       apiClient.post(`/translations/projects/${slug}/members`, { email }),
-    onSuccess: () => { message.success('Member added'); invalidateMembers(); setMemberModalOpen(false); memberForm.resetFields(); },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error adding member'),
+    onSuccess: () => {
+      message.success('Member added');
+      invalidateMembers();
+      setMemberModalOpen(false);
+      memberForm.resetFields();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error adding member'),
   });
 
   const removeMemberMutation = useMutation({
     mutationFn: (userId: string) =>
       apiClient.delete(`/translations/projects/${slug}/members/${userId}`),
-    onSuccess: () => { message.success('Member removed'); invalidateMembers(); },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error removing member'),
+    onSuccess: () => {
+      message.success('Member removed');
+      invalidateMembers();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error removing member'),
   });
 
   if (isLoading) return <Spin />;
@@ -250,30 +353,58 @@ const ProjectSettingsPage: React.FC = () => {
         ]}
       />
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 24,
+        }}
+      >
         <Title level={3} style={{ margin: 0 }}>
           {p.name}{' '}
           <Text type="secondary" style={{ fontSize: 14, fontWeight: 'normal' }}>
             /{p.slug}
           </Text>
         </Title>
-        <Button icon={<TranslationOutlined />} onClick={() => navigate('/translations')}>
+        <Button
+          icon={<TranslationOutlined />}
+          onClick={() => navigate('/translations')}
+        >
           Open in Translations
         </Button>
       </div>
 
       {/* ── Auto-Translation ── */}
       <div style={{ marginBottom: 32 }}>
-        <Title level={5} style={{ margin: 0, marginBottom: 12 }}>Auto-Translation</Title>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
+        <Title level={5} style={{ margin: 0, marginBottom: 12 }}>
+          Auto-Translation
+        </Title>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 8,
+          }}
+        >
           <Switch
             checked={project?.autoTranslateEnabled ?? false}
             onChange={async (checked) => {
               try {
-                await apiClient.patch(`/translations/projects/${slug}/sandbox/settings`, { autoTranslateEnabled: checked });
+                await apiClient.patch(
+                  `/translations/projects/${slug}/sandbox/settings`,
+                  { autoTranslateEnabled: checked },
+                );
                 qc.invalidateQueries({ queryKey: ['project', slug] });
-                message.success(checked ? 'Auto-translation enabled' : 'Auto-translation disabled');
-              } catch { message.error('Failed to update setting'); }
+                message.success(
+                  checked
+                    ? 'Auto-translation enabled'
+                    : 'Auto-translation disabled',
+                );
+              } catch {
+                message.error('Failed to update setting');
+              }
             }}
           />
           <Text strong>
@@ -295,31 +426,71 @@ const ProjectSettingsPage: React.FC = () => {
 
       {/* ── Locales ── */}
       <div style={{ marginBottom: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <Title level={5} style={{ margin: 0 }}>Locales</Title>
-          <Button size="small" icon={<PlusOutlined />} onClick={() => setLocaleModalOpen(true)}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Title level={5} style={{ margin: 0 }}>
+            Locales
+          </Title>
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => setLocaleModalOpen(true)}
+          >
             Add locale
           </Button>
         </div>
         <Space wrap>
           {p.locales.length === 0 && (
-            <Text type="secondary">No locales yet — add at least one to start translating</Text>
+            <Text type="secondary">
+              No locales yet — add at least one to start translating
+            </Text>
           )}
-          {p.locales.map(({ code, isDefault }) => (
-            <Tag key={code} color="blue" style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-              {code}{isDefault ? ' (default)' : ''}
-              {!isDefault && (
-                <Popconfirm
-                  title={`Remove locale "${code}"? Existing translation values will be deleted.`}
-                  onConfirm={() => removeLocaleMutation.mutate(code)}
-                  okText="Remove"
-                  okButtonProps={{ danger: true }}
-                >
-                  <DeleteOutlined style={{ cursor: 'pointer', fontSize: 10 }} />
-                </Popconfirm>
-              )}
-            </Tag>
-          ))}
+          {p.locales.map(({ code, isDefault, aliases }) => {
+            const flag = getFlagForCode(code);
+            const lang = LANGUAGE_BY_CODE[code];
+            return (
+              <Tag
+                key={code}
+                color="blue"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+              >
+                {flag && <span>{flag}</span>}
+                {lang ? `${lang.name} (${code})` : code}
+                {isDefault ? ' — default' : ''}
+                {aliases?.length > 0 && (
+                  <Text type="secondary" style={{ fontSize: 11 }}>
+                    [{aliases.join(', ')}]
+                  </Text>
+                )}
+                <EditOutlined
+                  style={{ cursor: 'pointer', fontSize: 10 }}
+                  onClick={() => {
+                    setEditLocaleCode(code);
+                    editLocaleForm.setFieldsValue({ aliases: aliases || [] });
+                    setEditLocaleModalOpen(true);
+                  }}
+                />
+                {!isDefault && (
+                  <Popconfirm
+                    title={`Remove locale "${code}"? Existing translation values will be deleted.`}
+                    onConfirm={() => removeLocaleMutation.mutate(code)}
+                    okText="Remove"
+                    okButtonProps={{ danger: true }}
+                  >
+                    <DeleteOutlined
+                      style={{ cursor: 'pointer', fontSize: 10 }}
+                    />
+                  </Popconfirm>
+                )}
+              </Tag>
+            );
+          })}
         </Space>
       </div>
 
@@ -327,17 +498,43 @@ const ProjectSettingsPage: React.FC = () => {
 
       {/* ── Namespaces ── */}
       <div style={{ marginBottom: 32 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <Title level={5} style={{ margin: 0 }}>Namespaces</Title>
-          <Button size="small" icon={<PlusOutlined />} onClick={() => setNsModalOpen(true)}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Title level={5} style={{ margin: 0 }}>
+            Namespaces
+          </Title>
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => setNsModalOpen(true)}
+          >
             Add namespace
           </Button>
         </div>
         <Space wrap>
-          {p.namespaces.length === 0 && <Text type="secondary">No namespaces yet</Text>}
+          {p.namespaces.length === 0 && (
+            <Text type="secondary">No namespaces yet</Text>
+          )}
           {p.namespaces.map((ns) => (
-            <Tag key={ns} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+            <Tag
+              key={ns}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            >
               {ns}
+              <EditOutlined
+                style={{ cursor: 'pointer', fontSize: 10 }}
+                onClick={() => {
+                  setEditNsSlug(ns);
+                  editNsForm.setFieldsValue({ slug: ns });
+                  setEditNsModalOpen(true);
+                }}
+              />
               <Popconfirm
                 title={`Remove namespace "${ns}" and all its translation keys?`}
                 onConfirm={() => removeNsMutation.mutate(ns)}
@@ -355,9 +552,22 @@ const ProjectSettingsPage: React.FC = () => {
 
       {/* ── Members ── */}
       <div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
-          <Title level={5} style={{ margin: 0 }}>Members</Title>
-          <Button size="small" icon={<PlusOutlined />} onClick={() => setMemberModalOpen(true)}>
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 12,
+            marginBottom: 12,
+          }}
+        >
+          <Title level={5} style={{ margin: 0 }}>
+            Members
+          </Title>
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => setMemberModalOpen(true)}
+          >
             Add member
           </Button>
         </div>
@@ -375,22 +585,84 @@ const ProjectSettingsPage: React.FC = () => {
       <Modal
         open={localeModalOpen}
         title="Add locale"
-        onCancel={() => { setLocaleModalOpen(false); localeForm.resetFields(); }}
-        onOk={() => localeForm.validateFields().then((v) => addLocaleMutation.mutate(v.code))}
+        onCancel={() => {
+          setLocaleModalOpen(false);
+          localeForm.resetFields();
+        }}
+        onOk={() =>
+          localeForm.validateFields().then((v) => {
+            const lang = LANGUAGE_BY_CODE[v.code];
+            addLocaleMutation.mutate({
+              code: v.code,
+              aliases: v.aliases ?? lang?.aliases ?? [],
+            });
+          })
+        }
         confirmLoading={addLocaleMutation.isPending}
         destroyOnHidden
       >
         <Form form={localeForm} layout="vertical" style={{ marginTop: 16 }}>
           <Form.Item
             name="code"
-            label="Locale code"
-            extra="e.g. en, uk, nb-NO, sv, da-DK"
-            rules={[
-              { required: true, message: 'Code is required' },
-              { pattern: /^[a-z]{2,3}(-[A-Z]{2,4})?$/, message: 'Format: en, uk, nb-NO' },
-            ]}
+            label="Language"
+            rules={[{ required: true, message: 'Select a language' }]}
           >
-            <Input placeholder="en" />
+            <Select
+              showSearch
+              placeholder="Select language"
+              optionFilterProp="label"
+              onChange={(code: string) => {
+                const lang = LANGUAGE_BY_CODE[code];
+                if (lang) localeForm.setFieldsValue({ aliases: lang.aliases });
+              }}
+              options={SUPPORTED_LANGUAGES.map((l) => {
+                const alreadyAdded = p.locales.some(
+                  (loc) => loc.code === l.code,
+                );
+                return {
+                  value: l.code,
+                  label: `${l.flag} ${l.name} (${l.code})`,
+                  disabled: alreadyAdded,
+                };
+              })}
+            />
+          </Form.Item>
+          <Form.Item
+            name="aliases"
+            label="Aliases"
+            extra="Alternative locale codes that map to this language"
+          >
+            <Select mode="tags" placeholder="e.g. en-US, en-GB" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit locale aliases modal */}
+      <Modal
+        open={editLocaleModalOpen}
+        title={`Edit locale: ${editLocaleCode}`}
+        onCancel={() => {
+          setEditLocaleModalOpen(false);
+          editLocaleForm.resetFields();
+        }}
+        onOk={() =>
+          editLocaleForm.validateFields().then((v) =>
+            updateLocaleMutation.mutate({
+              code: editLocaleCode,
+              aliases: v.aliases ?? [],
+            }),
+          )
+        }
+        confirmLoading={updateLocaleMutation.isPending}
+        destroyOnHidden
+      >
+        <Form form={editLocaleForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="aliases"
+            label="Aliases"
+            extra="Alternative locale codes that map to this language"
+          >
+            <Select mode="tags" placeholder="e.g. en-US, en-GB" />
           </Form.Item>
         </Form>
       </Modal>
@@ -398,8 +670,13 @@ const ProjectSettingsPage: React.FC = () => {
       <Modal
         open={nsModalOpen}
         title="Add namespace"
-        onCancel={() => { setNsModalOpen(false); nsForm.resetFields(); }}
-        onOk={() => nsForm.validateFields().then((v) => addNsMutation.mutate(v.slug))}
+        onCancel={() => {
+          setNsModalOpen(false);
+          nsForm.resetFields();
+        }}
+        onOk={() =>
+          nsForm.validateFields().then((v) => addNsMutation.mutate(v.slug))
+        }
         confirmLoading={addNsMutation.isPending}
         destroyOnHidden
       >
@@ -410,7 +687,45 @@ const ProjectSettingsPage: React.FC = () => {
             extra="e.g. common, backoffice-translations"
             rules={[
               { required: true, message: 'Slug is required' },
-              { pattern: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/, message: 'Lowercase, digits, dashes' },
+              {
+                pattern: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/,
+                message: 'Lowercase, digits, dashes',
+              },
+            ]}
+          >
+            <Input placeholder="common" />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      {/* Edit namespace modal */}
+      <Modal
+        open={editNsModalOpen}
+        title={`Rename namespace: ${editNsSlug}`}
+        onCancel={() => {
+          setEditNsModalOpen(false);
+          editNsForm.resetFields();
+        }}
+        onOk={() =>
+          editNsForm
+            .validateFields()
+            .then((v) =>
+              updateNsMutation.mutate({ oldSlug: editNsSlug, newSlug: v.slug }),
+            )
+        }
+        confirmLoading={updateNsMutation.isPending}
+        destroyOnHidden
+      >
+        <Form form={editNsForm} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="slug"
+            label="New namespace slug"
+            rules={[
+              { required: true, message: 'Slug is required' },
+              {
+                pattern: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/,
+                message: 'Lowercase, digits, dashes',
+              },
             ]}
           >
             <Input placeholder="common" />
@@ -421,8 +736,15 @@ const ProjectSettingsPage: React.FC = () => {
       <Modal
         open={memberModalOpen}
         title="Add member"
-        onCancel={() => { setMemberModalOpen(false); memberForm.resetFields(); }}
-        onOk={() => memberForm.validateFields().then((v) => addMemberMutation.mutate(v.email))}
+        onCancel={() => {
+          setMemberModalOpen(false);
+          memberForm.resetFields();
+        }}
+        onOk={() =>
+          memberForm
+            .validateFields()
+            .then((v) => addMemberMutation.mutate(v.email))
+        }
         confirmLoading={addMemberMutation.isPending}
         destroyOnHidden
       >
@@ -431,7 +753,13 @@ const ProjectSettingsPage: React.FC = () => {
             name="email"
             label="User email"
             extra="The user must already exist in the system."
-            rules={[{ required: true, type: 'email', message: 'Valid email required' }]}
+            rules={[
+              {
+                required: true,
+                type: 'email',
+                message: 'Valid email required',
+              },
+            ]}
           >
             <Input placeholder="user@example.com" />
           </Form.Item>

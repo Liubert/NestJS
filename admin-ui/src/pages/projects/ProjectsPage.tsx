@@ -1,9 +1,15 @@
 import React, { useState } from 'react';
 import {
-  Table, Button, Modal, Form, Input, Space, Popconfirm,
-  Typography, message,
+  Table,
+  Button,
+  Modal,
+  Form,
+  Input,
+  Popconfirm,
+  Typography,
+  message,
 } from 'antd';
-import { PlusOutlined, SettingOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/client';
@@ -22,7 +28,10 @@ const fetchProjects = async (): Promise<Project[]> => {
   return res.data.data;
 };
 
-const createProject = async (dto: { slug: string; name: string }): Promise<Project> => {
+const createProject = async (dto: {
+  slug: string;
+  name: string;
+}): Promise<Project> => {
   const res = await apiClient.post('/translations/projects', dto);
   return res.data;
 };
@@ -50,7 +59,8 @@ const ProjectsPage: React.FC = () => {
       setModalOpen(false);
       form.resetFields();
     },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error creating project'),
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error creating project'),
   });
 
   const deleteMutation = useMutation({
@@ -59,7 +69,8 @@ const ProjectsPage: React.FC = () => {
       message.success('Project deleted');
       qc.invalidateQueries({ queryKey: ['projects'] });
     },
-    onError: (e: any) => message.error(e.response?.data?.message ?? 'Error deleting project'),
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error deleting project'),
   });
 
   const handleCreate = () => {
@@ -91,38 +102,53 @@ const ProjectsPage: React.FC = () => {
     {
       title: '',
       key: 'actions',
-      width: 140,
+      width: 60,
       render: (_: unknown, record: Project) => (
-        <Space>
+        <Popconfirm
+          title="Delete this project and all its translations?"
+          onConfirm={(e) => {
+            e?.stopPropagation();
+            deleteMutation.mutate(record.slug);
+          }}
+          onCancel={(e) => e?.stopPropagation()}
+          okText="Delete"
+          okButtonProps={{ danger: true }}
+        >
           <Button
+            type="text"
             size="small"
-            icon={<SettingOutlined />}
-            onClick={() => navigate(`/projects/${record.slug}`)}
-          >
-            Settings
-          </Button>
-          <Popconfirm
-            title="Delete this project and all its translations?"
-            onConfirm={() => deleteMutation.mutate(record.slug)}
-            okText="Delete"
-            okButtonProps={{ danger: true }}
-          >
-            <Button type="text" size="small" danger icon={<DeleteOutlined />} />
-          </Popconfirm>
-        </Space>
+            danger
+            icon={<DeleteOutlined />}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </Popconfirm>
       ),
     },
   ];
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <Title level={3} style={{ margin: 0 }}>Projects</Title>
-        <Button type="primary" icon={<PlusOutlined />} onClick={() => setModalOpen(true)}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 16,
+        }}
+      >
+        <Title level={3} style={{ margin: 0 }}>
+          Projects
+        </Title>
+        <Button
+          type="primary"
+          icon={<PlusOutlined />}
+          onClick={() => setModalOpen(true)}
+        >
           New project
         </Button>
       </div>
 
+      <style>{`.clickable-row { cursor: pointer; } .clickable-row:hover td { background: #e6f4ff !important; }`}</style>
       <Table
         rowKey="slug"
         columns={columns}
@@ -130,12 +156,19 @@ const ProjectsPage: React.FC = () => {
         loading={isLoading}
         size="small"
         pagination={false}
+        onRow={(record) => ({
+          onClick: () => navigate(`/projects/${record.slug}`),
+          className: 'clickable-row',
+        })}
       />
 
       <Modal
         open={modalOpen}
         title="Create project"
-        onCancel={() => { setModalOpen(false); form.resetFields(); }}
+        onCancel={() => {
+          setModalOpen(false);
+          form.resetFields();
+        }}
         onOk={handleCreate}
         confirmLoading={createMutation.isPending}
         destroyOnClose
@@ -156,7 +189,8 @@ const ProjectsPage: React.FC = () => {
               { required: true, message: 'Slug is required' },
               {
                 pattern: /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/,
-                message: 'Lowercase letters, digits, dashes only (no leading/trailing dash)',
+                message:
+                  'Lowercase letters, digits, dashes only (no leading/trailing dash)',
               },
             ]}
           >
