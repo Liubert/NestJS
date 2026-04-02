@@ -22,10 +22,10 @@ export class ListEntriesQueryDto extends PaginationDto {
 
   @ApiPropertyOptional({
     description: 'Filter by quality level',
-    enum: ['green', 'yellow', 'red', 'unchecked'],
+    enum: ['green', 'yellow', 'red', 'unchecked', 'needs_context'],
   })
   @IsOptional()
-  @IsIn(['green', 'yellow', 'red', 'unchecked'])
+  @IsIn(['green', 'yellow', 'red', 'unchecked', 'needs_context'])
   qualityLevel?: string;
 
   @ApiPropertyOptional({

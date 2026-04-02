@@ -424,6 +424,31 @@ export class TranslationsController {
     );
   }
 
+  @Get('projects/:slug/namespaces/:ns/attention')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get translations needing quality attention' })
+  async getAttentionItems(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Query('limit') limit?: string,
+    @Query('qualityLevels') qualityLevels?: string,
+    @Query('includeUnchecked') includeUnchecked?: string,
+    @CurrentUser() user?: CurrentUserType,
+  ) {
+    return this.translationsService.getAttentionItems(
+      slug,
+      ns,
+      {
+        limit: limit ? parseInt(limit, 10) : 50,
+        qualityLevels: qualityLevels?.split(',') ?? ['yellow', 'red'],
+        includeUnchecked: includeUnchecked === 'true',
+      },
+      user!.userId,
+      user!.role,
+    );
+  }
+
   @Post('projects/:slug/namespaces/:ns/entries/:key/check-quality')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

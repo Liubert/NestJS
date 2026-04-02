@@ -62,14 +62,19 @@ export function registerAiTools(server: McpServer): void {
         .enum(["translation_quality", "language_quality"])
         .default("translation_quality")
         .describe("Check mode: translation_quality compares to source, language_quality evaluates standalone"),
+      context: z
+        .string()
+        .max(500)
+        .optional()
+        .describe("Optional context about where/how this key is used. Helps AI evaluate accuracy for ambiguous terms."),
     },
-    async ({ projectSlug, source, translation, locale, mode }) => {
+    async ({ projectSlug, source, translation, locale, mode, context }) => {
       try {
         const result = await apiPost<{ score: number; level: string; comment: string }>(
           "/translations/ai-quality-check",
-          { source, translation, locale, mode, projectSlug },
+          { source, translation, locale, mode, projectSlug, ...(context ? { context } : {}) },
         );
-        logWrite("ai_quality_check", { projectSlug, source, translation, locale, mode }, result);
+        logWrite("ai_quality_check", { projectSlug, source, translation, locale, mode, context }, result);
 
         const lines = [
           `Quality Check (${locale}):`,

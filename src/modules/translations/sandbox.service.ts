@@ -829,6 +829,10 @@ export class SandboxService {
             WHERE tv3.key_id = tk.id AND tv3.value IS NOT NULL AND tv3.quality_level IS NULL
           )
         `;
+      } else if (qualityLevel === 'needs_context') {
+        qualityCondition = `
+          AND tk.context_required = true AND tk.context IS NULL
+        `;
       } else {
         params.push(qualityLevel);
         const qi = params.length;
