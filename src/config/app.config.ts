@@ -1,5 +1,4 @@
 import { ConfigType, registerAs } from '@nestjs/config';
-import { ConnectionOptions } from 'rabbitmq-client';
 import { SnakeNamingStrategy } from 'typeorm-naming-strategies';
 import { PostgresConnectionOptions } from 'typeorm/driver/postgres/PostgresConnectionOptions';
 
@@ -22,19 +21,7 @@ type S3Config = {
 };
 
 type RabbitMqConfig = {
-  user: string;
-  pass: string;
-  host: string;
-  port: number;
   url: string;
-  exchange: string;
-  processQueue: string;
-  retryQueue: string;
-  dlqQueue: string;
-  retryDelayMs: number;
-  maxAttempts: number;
-  prefetch: number;
-  connection: ConnectionOptions;
 };
 
 export type BaseAppConfig = {
@@ -75,24 +62,7 @@ export function loadBaseConfig(): BaseAppConfig {
     },
 
     rabbitmq: {
-      user: process.env.RABBITMQ_USER!,
-      pass: process.env.RABBITMQ_PASS!,
-      host: process.env.RABBITMQ_HOST!,
-      port: Number(process.env.RABBITMQ_PORT!),
       url: process.env.RABBITMQ_URL!,
-      exchange: process.env.RABBITMQ_EXCHANGE!,
-      processQueue: process.env.RABBITMQ_PROCESS_QUEUE!,
-      retryQueue: process.env.RABBITMQ_RETRY_QUEUE!,
-      dlqQueue: process.env.RABBITMQ_DLQ_QUEUE!,
-      retryDelayMs: Number(process.env.RABBITMQ_RETRY_DELAY_MS!),
-      maxAttempts: Number(process.env.RABBITMQ_MAX_ATTEMPTS!),
-      prefetch: Number(process.env.RABBITMQ_PREFETCH!),
-      connection: {
-        hostname: process.env.RABBITMQ_HOST!,
-        port: Number(process.env.RABBITMQ_PORT!),
-        username: process.env.RABBITMQ_USER!,
-        password: process.env.RABBITMQ_PASS!,
-      },
     },
   };
 }

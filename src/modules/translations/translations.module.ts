@@ -46,6 +46,11 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
     AiUsageService,
     SandboxService,
   ],
-  exports: [TranslationsService, SandboxService, AiConfigService, AiUsageService],
+  exports: [
+    TranslationsService,
+    SandboxService,
+    AiConfigService,
+    AiUsageService,
+  ],
 })
 export class TranslationsModule {}

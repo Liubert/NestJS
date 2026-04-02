@@ -152,7 +152,7 @@ jobs:
             set -euo pipefail
             cd "${DEPLOY_PATH}"
             COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
-            SERVICES="${SERVICES:-api worker admin-ui}"
+            SERVICES="${SERVICES:-api admin-ui}"
             STAGE_HEALTHCHECK_URL="${STAGE_HEALTHCHECK_URL:-http://localhost:8080/health}"
 
             printf 'APP_IMAGE=%s\nADMIN_UI_IMAGE=%s\nGEMINI_API_KEY=%s\n' \
@@ -184,6 +184,4 @@ jobs:
             echo "[4/4] Smoke check failed after 3 min"
             echo "--- api logs ---"
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd logs --tail=30 api
-            echo "--- worker logs ---"
-            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd logs --tail=10 worker
             exit 1

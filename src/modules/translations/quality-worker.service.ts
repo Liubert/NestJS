@@ -10,10 +10,7 @@ import {
   QualityQueueService,
   QualityBatchMessage,
 } from './quality-queue.service.js';
-import {
-  CONTEXT_MISSING_CAP,
-  scoreToLevel,
-} from './quality-constants.js';
+import { CONTEXT_MISSING_CAP, scoreToLevel } from './quality-constants.js';
 
 @Injectable()
 export class QualityWorkerService implements OnApplicationBootstrap {
@@ -152,14 +149,27 @@ export class QualityWorkerService implements OnApplicationBootstrap {
       const emptyResult = { results: {}, contextFlags: {} };
       const [mainResult, defaultResult] = await Promise.all([
         items.length
-          ? this.aiTranslateService.bulkCheckQuality(items, 5, 90_000, projectId)
+          ? this.aiTranslateService.bulkCheckQuality(
+              items,
+              5,
+              90_000,
+              projectId,
+            )
           : Promise.resolve(emptyResult),
         defaultItems.length
-          ? this.aiTranslateService.bulkCheckQuality(defaultItems, 5, 90_000, projectId)
+          ? this.aiTranslateService.bulkCheckQuality(
+              defaultItems,
+              5,
+              90_000,
+              projectId,
+            )
           : Promise.resolve(emptyResult),
       ]);
       results = { ...mainResult.results };
-      contextFlags = { ...mainResult.contextFlags, ...defaultResult.contextFlags };
+      contextFlags = {
+        ...mainResult.contextFlags,
+        ...defaultResult.contextFlags,
+      };
       for (const [key, localeMap] of Object.entries(defaultResult.results)) {
         results[key] = Object.assign({}, results[key] ?? {}, localeMap);
       }
@@ -178,7 +188,10 @@ export class QualityWorkerService implements OnApplicationBootstrap {
 
       const isContextRequired = contextFlags[keyEntity.key];
       // Persist contextRequired if AI determined it
-      if (isContextRequired !== undefined && keyEntity.contextRequired !== isContextRequired) {
+      if (
+        isContextRequired !== undefined &&
+        keyEntity.contextRequired !== isContextRequired
+      ) {
         keyEntity.contextRequired = isContextRequired;
         await this.keyRepo.save(keyEntity);
       }
@@ -190,7 +203,8 @@ export class QualityWorkerService implements OnApplicationBootstrap {
           if (r.score > CONTEXT_MISSING_CAP) {
             r.score = CONTEXT_MISSING_CAP;
             r.level = scoreToLevel(CONTEXT_MISSING_CAP);
-            const contextNote = 'Context is required but missing — confidence reduced.';
+            const contextNote =
+              'Context is required but missing — confidence reduced.';
             r.comment = r.comment ? `${r.comment} ${contextNote}` : contextNote;
           }
         }

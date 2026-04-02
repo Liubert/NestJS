@@ -4,4 +4,3 @@ import type { Request } from 'express';
 export type ReqWithUser = Request & {
   user?: CurrentUserType;
 };
-export type GqlContextWithReq = { req: ReqWithUser };

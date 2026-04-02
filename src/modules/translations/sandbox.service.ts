@@ -262,9 +262,14 @@ export class SandboxService {
           : 'changed',
       productionValue: r.production_value,
       sandboxValue: r.is_deleted ? null : r.sandbox_value,
-      quality: r.quality_score != null
-        ? { score: r.quality_score, level: r.quality_level as DiffQuality['level'], comment: r.quality_comment }
-        : null,
+      quality:
+        r.quality_score != null
+          ? {
+              score: r.quality_score,
+              level: r.quality_level as DiffQuality['level'],
+              comment: r.quality_comment,
+            }
+          : null,
     }));
 
     return {
@@ -489,7 +494,10 @@ export class SandboxService {
         label: `before-selective-promote-${new Date().toISOString().slice(0, 10)}`,
         data: snapshotRows,
       });
-      const savedSnapshot = await manager.save(ProductionSnapshotEntity, snapshot);
+      const savedSnapshot = await manager.save(
+        ProductionSnapshotEntity,
+        snapshot,
+      );
 
       let promoted = 0;
 
@@ -563,7 +571,9 @@ export class SandboxService {
         [project.id],
       );
       const hasChanges = Number(remaining[0]?.cnt ?? 0) > 0;
-      await manager.update(ProjectEntity, project.id, { sandboxHasChanges: hasChanges });
+      await manager.update(ProjectEntity, project.id, {
+        sandboxHasChanges: hasChanges,
+      });
 
       return { snapshotId: savedSnapshot.id, promoted };
     });
@@ -904,7 +914,13 @@ export class SandboxService {
     const qualityOrderCol = sortBy === 'qualityScore' ? '_qs' : '';
 
     const keys = await this.dataSource.query<
-      { id: string; key: string; created_at: Date; context: string | null; context_required: boolean | null }[]
+      {
+        id: string;
+        key: string;
+        created_at: Date;
+        context: string | null;
+        context_required: boolean | null;
+      }[]
     >(
       `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context, tk.context_required${qualitySelectExpr}
        FROM translation_keys tk
@@ -1109,10 +1125,10 @@ export class SandboxService {
             qualityComment: null,
             qualityCheckedAt: null,
           })
-          .where(
-            'key_id = :keyId AND quality_review_state != :expectedState',
-            { keyId: keyEntity.id, expectedState: 'expected' },
-          )
+          .where('key_id = :keyId AND quality_review_state != :expectedState', {
+            keyId: keyEntity.id,
+            expectedState: 'expected',
+          })
           .execute();
       }
     }

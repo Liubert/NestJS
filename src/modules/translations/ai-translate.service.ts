@@ -78,7 +78,10 @@ export class AiTranslateService {
           inputTokens,
           outputTokens,
           model: aiCfg.model,
-          metadata: { textLength: text.length, localeCount: Object.keys(parsed).length },
+          metadata: {
+            textLength: text.length,
+            localeCount: Object.keys(parsed).length,
+          },
         })
         .catch(() => {}); // Non-blocking: don't fail the translation if logging fails
     }
@@ -146,7 +149,10 @@ export class AiTranslateService {
           inputTokens,
           outputTokens,
           model: aiCfg.model,
-          metadata: { textLength: text.length, localeCount: Object.keys(parsed).length },
+          metadata: {
+            textLength: text.length,
+            localeCount: Object.keys(parsed).length,
+          },
         })
         .catch(() => {});
     }
@@ -203,7 +209,10 @@ export class AiTranslateService {
 
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
-      const prompt = this.buildBulkQualityPrompt(chunk, aiCfg.contextDetectionPrompt);
+      const prompt = this.buildBulkQualityPrompt(
+        chunk,
+        aiCfg.contextDetectionPrompt,
+      );
 
       let raw: string;
       try {
@@ -237,19 +246,27 @@ export class AiTranslateService {
         const keyData = value as Record<string, unknown>;
 
         // Detect format: new (has "locales" key) vs old (flat locale map)
-        const hasLocalesKey = keyData && typeof keyData === 'object' && 'locales' in keyData;
+        const hasLocalesKey =
+          keyData && typeof keyData === 'object' && 'locales' in keyData;
 
         if (hasLocalesKey) {
           // New format: { contextRequired: bool, locales: { locale: { score, comment } } }
           if (typeof keyData.contextRequired === 'boolean') {
             contextFlags[key] = keyData.contextRequired;
           }
-          const localeMap = (keyData.locales ?? {}) as Record<string, { score: number; comment: string }>;
+          const localeMap = (keyData.locales ?? {}) as Record<
+            string,
+            { score: number; comment: string }
+          >;
           results[key] = {};
           for (const [locale, r] of Object.entries(localeMap)) {
             if (r && typeof r.score === 'number') {
               const score = Math.min(100, Math.max(1, Math.round(r.score)));
-              results[key][locale] = { score, level: scoreToLevel(score), comment: r.comment ?? '' };
+              results[key][locale] = {
+                score,
+                level: scoreToLevel(score),
+                comment: r.comment ?? '',
+              };
             }
           }
         } else {
@@ -258,8 +275,15 @@ export class AiTranslateService {
           for (const [locale, r] of Object.entries(keyData)) {
             const localeResult = r as { score?: number; comment?: string };
             if (localeResult && typeof localeResult.score === 'number') {
-              const score = Math.min(100, Math.max(1, Math.round(localeResult.score)));
-              results[key][locale] = { score, level: scoreToLevel(score), comment: localeResult.comment ?? '' };
+              const score = Math.min(
+                100,
+                Math.max(1, Math.round(localeResult.score)),
+              );
+              results[key][locale] = {
+                score,
+                level: scoreToLevel(score),
+                comment: localeResult.comment ?? '',
+              };
             }
           }
         }

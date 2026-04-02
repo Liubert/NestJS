@@ -284,8 +284,7 @@ export class SandboxController {
 
   @Post('namespaces/:ns/entries/:key/locales/:locale/mark-expected')
   @ApiOperation({
-    summary:
-      'Mark a sandbox translation as manually accepted (expected)',
+    summary: 'Mark a sandbox translation as manually accepted (expected)',
   })
   markExpected(
     @Param('slug') slug: string,

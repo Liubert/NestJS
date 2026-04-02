@@ -81,7 +81,7 @@ jobs:
             set -euo pipefail
             cd "${DEPLOY_PATH}"
             COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
-            SERVICES="${SERVICES:-api worker admin-ui}"
+            SERVICES="${SERVICES:-api admin-ui}"
             PROD_HEALTHCHECK_URL="${PROD_HEALTHCHECK_URL:-http://localhost:8080/health}"
 
             cat > .env.cicd <<EOF
