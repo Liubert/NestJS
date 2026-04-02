@@ -7,10 +7,10 @@ export class ResetQualityForContextRules17714000000002 implements MigrationInter
     await queryRunner.query(`
       UPDATE translation_values
       SET quality_review_state = 'not_checked',
-          score = NULL,
-          level = NULL,
-          comment = NULL,
-          checked_at = NULL
+          quality_score = NULL,
+          quality_level = NULL,
+          quality_comment = NULL,
+          quality_checked_at = NULL
       WHERE quality_review_state != 'expected'
     `);
   }
