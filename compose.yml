@@ -62,7 +62,7 @@ services:
       - internal
       - public
     ports:
-      - "3001:80"
+      - "${ADMIN_UI_PORT:-3001}:80"
     restart: unless-stopped
 
   worker:
