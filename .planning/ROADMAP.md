@@ -66,7 +66,10 @@ Plans:
   1. A written inventory exists mapping every route to Admin UI, MCP tool, or public API (or flagged as orphan)
   2. Confirmed orphaned endpoints are absent from the codebase with a commit message recording why each was removed
   3. No partially-reverted features remain — each is either fully implemented or fully removed
-**Plans**: TBD
+**Plans**: 2 plans
+Plans:
+- [ ] 04-01-PLAN.md — Audit all endpoints and produce route-to-consumer inventory
+- [ ] 04-02-PLAN.md — Remove orphaned endpoints with cascading cleanup
 
 ### Phase 5: UI Polish
 **Goal**: The translations page is readable and quality state is visually clear without functional changes to the backend
@@ -89,5 +92,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
 | 2. Deploy Hardening | 2/2 | Complete   | 2026-04-02 |
 | 3. Bug Fixes | 2/2 | Complete   | 2026-04-02 |
-| 4. Dead Code Cleanup | 0/? | Not started | - |
+| 4. Dead Code Cleanup | 0/2 | Planned | - |
 | 5. UI Polish | 0/? | Not started | - |
