@@ -114,14 +114,17 @@ export class SandboxService {
     // Copy all production values for this project into sandbox
     const result = await this.dataSource.query<{ count: string }[]>(
       `
-      INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
+      INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, context, context_need, context_reason)
       SELECT
         ns.project_id,
         tv.key_id,
         tv.locale_id,
         tv.value,
         false,
-        now()
+        now(),
+        tk.context,
+        tk.context_need,
+        tk.context_reason
       FROM translation_values tv
       JOIN translation_keys tk ON tk.id = tv.key_id
       JOIN translation_namespaces ns ON ns.id = tk.namespace_id
@@ -416,6 +419,29 @@ export class SandboxService {
 
       const promotedCount = insertResult.length;
 
+      // 3b. Copy sandbox context to translation_keys (for any sandbox rows that have context)
+      await manager.query(
+        `
+        UPDATE translation_keys tk
+        SET
+          context        = sv_ctx.context,
+          context_need   = sv_ctx.context_need,
+          context_reason = sv_ctx.context_reason
+        FROM (
+          SELECT DISTINCT ON (sv.key_id)
+            sv.key_id,
+            sv.context,
+            sv.context_need,
+            sv.context_reason
+          FROM sandbox_values sv
+          WHERE sv.project_id = $1 AND sv.is_deleted = false
+            AND sv.context IS NOT NULL
+        ) sv_ctx
+        WHERE tk.id = sv_ctx.key_id
+      `,
+        [project.id],
+      );
+
       // 4. Delete sandbox-only keys that were deleted in sandbox
       // (keys with no production values after the insert and no non-deleted sandbox values)
       await manager.query(
@@ -441,8 +467,8 @@ export class SandboxService {
 
       await manager.query(
         `
-        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-        SELECT ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now()
+        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, context, context_need, context_reason)
+        SELECT ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(), tk.context, tk.context_need, tk.context_reason
         FROM translation_values tv
         JOIN translation_keys tk ON tk.id = tv.key_id
         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
@@ -542,15 +568,36 @@ export class SandboxService {
           }
         }
 
+        // Copy sandbox context to translation_keys for this key
+        await manager.query(
+          `
+          UPDATE translation_keys tk
+          SET
+            context        = sv_ctx.context,
+            context_need   = sv_ctx.context_need,
+            context_reason = sv_ctx.context_reason
+          FROM (
+            SELECT sv.context, sv.context_need, sv.context_reason
+            FROM sandbox_values sv
+            WHERE sv.project_id = $1 AND sv.key_id = $2
+              AND sv.is_deleted = false AND sv.context IS NOT NULL
+            LIMIT 1
+          ) sv_ctx
+          WHERE tk.id = $2
+          `,
+          [project.id, keyId],
+        );
+
         // Re-sync sandbox for this key from production
         await manager.query(
           `DELETE FROM sandbox_values WHERE project_id = $1 AND key_id = $2`,
           [project.id, keyId],
         );
         await manager.query(
-          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-           SELECT $1, tv.key_id, tv.locale_id, tv.value, false, now()
+          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, context, context_need, context_reason)
+           SELECT $1, tv.key_id, tv.locale_id, tv.value, false, now(), tk.context, tk.context_need, tk.context_reason
            FROM translation_values tv
+           JOIN translation_keys tk ON tk.id = tv.key_id
            WHERE tv.key_id = $2`,
           [project.id, keyId],
         );
@@ -932,7 +979,25 @@ export class SandboxService {
         context_reason: string | null;
       }[]
     >(
-      `SELECT DISTINCT tk.id, tk.key, tk.created_at, tk.context, tk.context_need, tk.context_reason${qualitySelectExpr}
+      `SELECT DISTINCT tk.id, tk.key, tk.created_at,
+              COALESCE(
+                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                   AND sv_ctx.is_deleted = false LIMIT 1),
+                tk.context
+              ) AS context,
+              COALESCE(
+                (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                   AND sv_ctx.is_deleted = false LIMIT 1),
+                tk.context_need
+              ) AS context_need,
+              COALESCE(
+                (SELECT sv_ctx.context_reason FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                   AND sv_ctx.is_deleted = false LIMIT 1),
+                tk.context_reason
+              ) AS context_reason${qualitySelectExpr}
        FROM translation_keys tk
        WHERE ${baseWhere}
        ORDER BY ${qualityOrderCol || sortCol} ${sortDir}${nullsLast}
@@ -1062,11 +1127,11 @@ export class SandboxService {
       );
     }
 
+    // Create key entity without context — context is staged in sandbox_values
     const keyEntity = await this.keyRepo.save(
       this.keyRepo.create({
         namespaceId: ns.id,
         key: dto.key,
-        context: dto.context ?? null,
       }),
     );
 
@@ -1081,12 +1146,20 @@ export class SandboxService {
       }
     }
 
+    // Write context to sandbox_values rows (staged, not written to translation_keys)
+    if (dto.context !== undefined && dto.context !== null) {
+      await this.sandboxRepo.update(
+        { keyId: keyEntity.id, projectId: project.id },
+        { context: dto.context },
+      );
+    }
+
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
-      context: keyEntity.context,
-      contextNeed: keyEntity.contextNeed ?? null,
-      contextReason: keyEntity.contextReason ?? null,
+      context: dto.context ?? null,
+      contextNeed: null,
+      contextReason: null,
       values: resultValues,
       quality: {},
     };
@@ -1119,15 +1192,26 @@ export class SandboxService {
     });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
+    // Track whether context changed (for quality reset)
+    const oldContext = keyEntity.context;
+    const newContext =
+      dto.context !== undefined ? (dto.context ?? null) : keyEntity.context;
+    const contextChanged =
+      dto.context !== undefined && oldContext !== newContext;
+
     if (dto.context !== undefined) {
-      const oldContext = keyEntity.context;
-      keyEntity.context = dto.context ?? null;
-      if (oldContext !== keyEntity.context) {
-        keyEntity.contextNeed = null;
-        keyEntity.contextReason = null;
-      }
-      await this.keyRepo.save(keyEntity);
-      if (oldContext !== keyEntity.context) {
+      // Write context to sandbox_values rows (not to translation_keys directly)
+      await this.sandboxRepo.update(
+        { keyId: keyEntity.id, projectId: project.id },
+        {
+          context: newContext,
+          contextNeed: contextChanged ? null : undefined,
+          contextReason: contextChanged ? null : undefined,
+        },
+      );
+
+      if (contextChanged) {
+        // Reset quality state on production values when context changes
         await this.valueRepo
           .createQueryBuilder()
           .update()
@@ -1157,12 +1241,18 @@ export class SandboxService {
       }
     }
 
+    // Read back the sandbox context from a sandbox row (per-locale, take first available)
+    const sandboxRow = await this.sandboxRepo.findOne({
+      where: { keyId: keyEntity.id, projectId: project.id, isDeleted: false },
+    });
+
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
-      context: keyEntity.context,
-      contextNeed: keyEntity.contextNeed ?? null,
-      contextReason: keyEntity.contextReason ?? null,
+      context: sandboxRow?.context ?? keyEntity.context,
+      contextNeed: sandboxRow?.contextNeed ?? keyEntity.contextNeed ?? null,
+      contextReason:
+        sandboxRow?.contextReason ?? keyEntity.contextReason ?? null,
       values: resultValues,
       quality: {},
     };
@@ -1220,6 +1310,9 @@ export class SandboxService {
             localeId: pv.localeId,
             value: pv.value,
             isDeleted: false,
+            context: keyEntity.context,
+            contextNeed: keyEntity.contextNeed,
+            contextReason: keyEntity.contextReason,
           }),
         );
       }
@@ -1301,45 +1394,16 @@ export class SandboxService {
       let keyEntity = existingKeyMap.get(entry.key);
 
       if (!keyEntity) {
-        // Create new key
+        // Create new key — context is staged in sandbox_values, not written to translation_keys
         keyEntity = await this.keyRepo.save(
           this.keyRepo.create({
             namespaceId: namespace.id,
             key: entry.key,
-            context: entry.context ?? null,
           }),
         );
         existingKeyMap.set(entry.key, keyEntity);
         created++;
       } else {
-        // Update context if provided
-        if (entry.context !== undefined) {
-          const oldContext = keyEntity.context;
-          keyEntity.context = entry.context ?? null;
-          if (oldContext !== keyEntity.context) {
-            keyEntity.contextNeed = null;
-        keyEntity.contextReason = null;
-          }
-          await this.keyRepo.save(keyEntity);
-          // Context change triggers async quality re-evaluation
-          if (oldContext !== keyEntity.context) {
-            await this.valueRepo
-              .createQueryBuilder()
-              .update()
-              .set({
-                qualityReviewState: 'not_checked',
-                qualityScore: null,
-                qualityLevel: null,
-                qualityComment: null,
-                qualityCheckedAt: null,
-              })
-              .where(
-                'key_id = :keyId AND quality_review_state != :expectedState',
-                { keyId: keyEntity.id, expectedState: 'expected' },
-              )
-              .execute();
-          }
-        }
         updated++;
       }
 
@@ -1354,6 +1418,15 @@ export class SandboxService {
             value,
           );
         }
+      }
+
+      // Write context to sandbox_values rows (staged, not written to translation_keys)
+      if (entry.context !== undefined) {
+        const newContext = entry.context ?? null;
+        await this.sandboxRepo.update(
+          { keyId: keyEntity.id, projectId: project.id },
+          { context: newContext, contextNeed: null, contextReason: null },
+        );
       }
     }
 
@@ -1404,8 +1477,8 @@ export class SandboxService {
     ns: string,
     key: string,
     locale: string,
-    userId: string,
-    userRole: UserRole,
+    _userId: string,
+    _userRole: UserRole,
   ): Promise<QualityInfo> {
     const project = await this.requireProject(slug);
 
@@ -1433,8 +1506,8 @@ export class SandboxService {
     ns: string,
     key: string,
     locale: string,
-    userId: string,
-    userRole: UserRole,
+    _userId: string,
+    _userRole: UserRole,
   ): Promise<void> {
     const project = await this.requireProject(slug);
 
