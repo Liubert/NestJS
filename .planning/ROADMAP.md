@@ -70,7 +70,7 @@ Plans:
 Plans:
 - [x] 04-01-PLAN.md — Audit all endpoints and produce route-to-consumer inventory
 - [x] 04-02-PLAN.md — Remove orphaned endpoints with cascading cleanup
-- [ ] 04-03-PLAN.md — Gap closure: remove dead FilesService methods, correct inventory
+- [x] 04-03-PLAN.md — Gap closure: remove dead FilesService methods, correct inventory
 
 ### Phase 5: UI Polish
 **Goal**: The translations page is readable and quality state is visually clear without functional changes to the backend
@@ -93,5 +93,5 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 1. Test Infrastructure | 1/1 | Complete   | 2026-04-02 |
 | 2. Deploy Hardening | 2/2 | Complete   | 2026-04-02 |
 | 3. Bug Fixes | 2/2 | Complete   | 2026-04-02 |
-| 4. Dead Code Cleanup | 2/3 | Gap closure | - |
+| 4. Dead Code Cleanup | 3/3 | Complete   | 2026-04-02 |
 | 5. UI Polish | 0/? | Not started | - |
