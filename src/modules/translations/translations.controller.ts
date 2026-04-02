@@ -349,7 +349,7 @@ export class TranslationsController {
     return this.translationsService.updateLocale(
       slug,
       code,
-      dto.aliases,
+      dto.aliases ?? [],
       user.userId,
       user.role,
     );
