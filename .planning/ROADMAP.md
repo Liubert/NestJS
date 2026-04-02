@@ -51,7 +51,7 @@ Plans:
 **Requirements**: BUG-01, BUG-02, BUG-03
 **Success Criteria** (what must be TRUE):
   1. A translation key that was skipped in quality check shows a blue indicator and "skipped" status (not green or missing) in the Admin UI
-  2. A quality check chunk that times out leaves affected keys in "failed" state (not silently unchecked), visible for retry
+  2. A quality check chunk that times out leaves affected keys in "skipped" state (not silently stuck in 'processing'), visible for retry via backfill
   3. Promoting a sandbox namespace to production carries `contextNeed`, `contextReason`, and `context` fields alongside the translation values
 **Plans**: 2 plans
 Plans:
