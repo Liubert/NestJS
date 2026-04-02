@@ -7,6 +7,7 @@ import {
   SearchOutlined, EditOutlined, DeleteOutlined, PlusOutlined,
   ThunderboltOutlined, SafetyCertificateOutlined,
   ArrowRightOutlined, RollbackOutlined, SyncOutlined, CheckCircleOutlined,
+  InfoCircleOutlined, WarningOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -42,6 +43,8 @@ interface QualityInfo {
 interface Entry {
   key: string;
   createdAt: string;
+  context: string | null;
+  contextRequired: boolean | null;
   values: Record<string, string>;
   quality: Record<string, QualityInfo | null>;
 }
@@ -132,18 +135,18 @@ const fetchEntries = async (
 };
 
 const createEntry = async (
-  slug: string, ns: string, payload: { key: string; values: Record<string, string> },
+  slug: string, ns: string, payload: { key: string; values: Record<string, string>; context?: string },
 ) => {
   const res = await apiClient.post(`/translations/projects/${slug}/namespaces/${ns}/entries`, payload);
   return res.data;
 };
 
 const updateEntry = async (
-  slug: string, ns: string, key: string, values: Record<string, string>,
+  slug: string, ns: string, key: string, values: Record<string, string>, context?: string,
 ) => {
   const res = await apiClient.patch(
     `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
-    { values },
+    { values, ...(context !== undefined ? { context } : {}) },
   );
   return res.data;
 };
@@ -201,7 +204,7 @@ const fetchSandboxEntries = async (
 };
 
 const createSandboxEntry = async (
-  slug: string, ns: string, payload: { key: string; values: Record<string, string> },
+  slug: string, ns: string, payload: { key: string; values: Record<string, string>; context?: string },
 ) => {
   const res = await apiClient.post(
     `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries`, payload,
@@ -210,11 +213,11 @@ const createSandboxEntry = async (
 };
 
 const updateSandboxEntry = async (
-  slug: string, ns: string, key: string, values: Record<string, string>,
+  slug: string, ns: string, key: string, values: Record<string, string>, context?: string,
 ) => {
   const res = await apiClient.patch(
     `/translations/projects/${slug}/sandbox/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
-    { values },
+    { values, ...(context !== undefined ? { context } : {}) },
   );
   return res.data;
 };
@@ -431,7 +434,7 @@ interface EditModalProps {
   locales: string[];
   isNew: boolean;
   onClose: () => void;
-  onSave: (key: string, values: Record<string, string>) => void;
+  onSave: (key: string, values: Record<string, string>, context?: string) => void;
   saving: boolean;
   projectSlug?: string;
   namespace?: string;
@@ -451,17 +454,17 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
       setQualityResults({});
       setAiLoadingLocale(null);
       setQualityLoadingLocale(null);
-      if (entry) { form.setFieldsValue({ key: entry.key, ...entry.values }); } else { form.resetFields(); }
+      if (entry) { form.setFieldsValue({ key: entry.key, context: entry.context ?? '', ...entry.values }); } else { form.resetFields(); }
     }
   }, [open, entry, form]);
 
   const handleOk = () => {
     form.validateFields().then((vals) => {
-      const { key: formKey, ...rest } = vals;
+      const { key: formKey, context: formContext, ...rest } = vals;
       const key = isNew ? formKey : (entry?.key ?? '');
       const values: Record<string, string> = {};
       for (const locale of locales) values[locale] = rest[locale] ?? '';
-      onSave(key, values);
+      onSave(key, values, formContext);
     });
   };
 
@@ -579,6 +582,17 @@ const EditModal: React.FC<EditModalProps> = ({ open, entry, locales, isNew, onCl
             <Input placeholder="e.g. accessControl" />
           </Form.Item>
         )}
+        <Form.Item
+          name="context"
+          label={<Space size={4}>Context {entry?.contextRequired && !entry?.context && <Tag color="warning" style={{ fontSize: 11 }}>Required</Tag>}</Space>}
+        >
+          <Input.TextArea
+            placeholder="Describe where this key is used (e.g. 'Save button in expense form footer')"
+            maxLength={500}
+            showCount
+            rows={2}
+          />
+        </Form.Item>
         {locales.map((locale) => {
           const qr = qualityResults[locale];
           const storedQuality = entry?.quality?.[locale];
@@ -765,8 +779,8 @@ interface EntriesTableProps {
   projectSlug: string;
   queryKeyPrefix: string;
   fetchFn: (slug: string, ns: string, page: number, limit: number, search: string, sortBy: string, sortOrder: string, qualityLevel?: string) => Promise<PaginatedEntries>;
-  createFn: (slug: string, ns: string, payload: { key: string; values: Record<string, string> }) => Promise<unknown>;
-  updateFn: (slug: string, ns: string, key: string, values: Record<string, string>) => Promise<unknown>;
+  createFn: (slug: string, ns: string, payload: { key: string; values: Record<string, string>; context?: string }) => Promise<unknown>;
+  updateFn: (slug: string, ns: string, key: string, values: Record<string, string>, context?: string) => Promise<unknown>;
   deleteFn: (slug: string, ns: string, key: string) => Promise<void>;
   enabled?: boolean;
   onMutationSuccess?: () => void;
@@ -838,8 +852,8 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   }, [qc, queryKeyPrefix, projectSlug, onMutationSuccess]);
 
   const createMutation = useMutation({
-    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
-      createFn(projectSlug, namespace, { key, values }),
+    mutationFn: ({ key, values, context }: { key: string; values: Record<string, string>; context?: string }) =>
+      createFn(projectSlug, namespace, { key, values, context }),
     onSuccess: () => {
       message.success('Key created');
       invalidate();
@@ -849,8 +863,8 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ key, values }: { key: string; values: Record<string, string> }) =>
-      updateFn(projectSlug, namespace, key, values),
+    mutationFn: ({ key, values, context }: { key: string; values: Record<string, string>; context?: string }) =>
+      updateFn(projectSlug, namespace, key, values, context),
     onSuccess: () => {
       message.success('Saved');
       invalidate();
@@ -887,12 +901,22 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
 
   const columns: ColumnsType<Entry> = [
     {
-      title: 'Key', dataIndex: 'key', key: 'key', sorter: true, width: 220, fixed: 'left',
-      render: (text: string) => (
+      title: 'Key', dataIndex: 'key', key: 'key', sorter: true, width: 240, fixed: 'left',
+      render: (text: string, record: Entry) => (
         <Space size={6}>
           <Tooltip title={text}>
             <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{text}</span>
           </Tooltip>
+          {record.context && (
+            <Tooltip title={record.context}>
+              <InfoCircleOutlined style={{ color: '#1677ff', fontSize: 12, cursor: 'help' }} />
+            </Tooltip>
+          )}
+          {record.contextRequired && !record.context && (
+            <Tooltip title="Context required but missing — quality scores may be capped">
+              <WarningOutlined style={{ color: '#faad14', fontSize: 12, cursor: 'help' }} />
+            </Tooltip>
+          )}
           {renderKeyExtra?.(text, namespace)}
         </Space>
       ),
@@ -996,6 +1020,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
               { value: 'red', label: 'Red' },
               { value: 'expected', label: 'Expected' },
               { value: 'unchecked', label: 'Not checked' },
+              { value: 'needs_context', label: 'Needs Context' },
             ]}
           />
         </Col>
@@ -1032,9 +1057,9 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         locales={locales}
         isNew={isNewEntry}
         onClose={() => setEditModalOpen(false)}
-        onSave={(key, values) => {
-          if (isNewEntry) createMutation.mutate({ key, values });
-          else updateMutation.mutate({ key, values });
+        onSave={(key, values, context) => {
+          if (isNewEntry) createMutation.mutate({ key, values, context });
+          else updateMutation.mutate({ key, values, context });
         }}
         saving={createMutation.isPending || updateMutation.isPending}
         projectSlug={projectSlug}
@@ -1503,6 +1528,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                 { value: 'yellow', label: 'Yellow' },
                 { value: 'red', label: 'Red' },
                 { value: 'unchecked', label: 'Not checked' },
+                { value: 'needs_context', label: 'Needs Context' },
               ]}
             />
           </Col>
