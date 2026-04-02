@@ -53,14 +53,13 @@ Source: Ant Design 8-point grid; xs exception confirmed by RESEARCH.md Pattern 3
 
 | Role | Size | Weight | Line Height |
 |------|------|--------|-------------|
-| Body | 14px | 400 (regular) | 1.5 |
 | Label | 12px | 400 (regular) | 1.4 |
+| Body | 14px | 400 (regular) | 1.5 |
 | Heading | 20px | 600 (semibold) | 1.2 |
 | Display | 24px | 600 (semibold) | 1.2 |
 
 **Phase-specific notes:**
-- Quality badge score text: 11px, weight 400, color matches dot color (see Color section). Source: RESEARCH.md Pattern 3.
-- Quality badge labels (skip, fail, —): 11px, weight 400.
+- Quality badge score text and labels (skip, fail, —): 12px, weight 400, color matches dot color (see Color section). Visual distinction from surrounding text comes from color, not size.
 - Locale value cell text (via `Typography.Text` ellipsis): 12px, weight 400.
 - Table row uses Ant Design `size='small'` — Ant Design internally reduces row padding; no custom row height override.
 - Filter bar labels and dropdown option text: 14px, weight 400 (Ant Design Select default).
@@ -140,8 +139,8 @@ Components to be created or modified in this phase:
 
 | Action | Trigger | Confirmation Approach |
 |--------|---------|----------------------|
-| Delete translation entry | Trash icon button in Actions column | Ant Design `Popconfirm` with title + description. Confirm button label: "Delete". Cancel: "Keep". |
-| Unmark expected | Click CheckCircleOutlined badge | Ant Design `Popconfirm` (existing, keep as-is). Confirm: "Reset". Cancel: "Cancel". |
+| Delete translation entry | Trash icon button in Actions column | Ant Design `Popconfirm` with title + description. Confirm button label: "Delete Entry". Cancel: "Keep". |
+| Unmark expected | Click CheckCircleOutlined badge | Ant Design `Popconfirm` (existing, keep as-is). Confirm: "Reset". Cancel: "Keep expected". |
 
 Source: CONTEXT.md D-04 (keep existing Popconfirm interactions); empty/error copy inferred from success criteria UI-01, UI-02, UI-03 in REQUIREMENTS.md.
 
@@ -149,21 +148,25 @@ Source: CONTEXT.md D-04 (keep existing Popconfirm interactions); empty/error cop
 
 ## Interaction Contracts
 
+### Primary Focal Point
+
+The table body is the primary focal point. The translation key column (fixed 200px) draws the eye first as the leftmost anchor; locale value cells follow as the core content area; quality badges appear inline after each value, providing at-a-glance state without requiring hover. The filter bar above the table is secondary — visible but subordinate to the data.
+
 ### QualityBadge visual states
 
 Each locale cell in the table renders a QualityBadge after the value text. Layout: `display: inline-flex`, `alignItems: center`, `gap: 4px`.
 
 | reviewState | Visual | Interaction |
 |-------------|--------|-------------|
-| `not_checked` | 12px gray dot (`#d9d9d9`) + "—" text (`#bbb`, 11px) | Tooltip: "Not yet reviewed". No click action. |
+| `not_checked` | 12px gray dot (`#d9d9d9`) + "—" text (`#bbb`, 12px) | Tooltip: "Not yet reviewed". No click action. |
 | `queued` | `SyncOutlined spin` (12px, `#8c8c8c`) | Tooltip: "Queued for review". No click action. |
 | `processing` | `SyncOutlined spin` (12px, `#8c8c8c`) | Tooltip: "Reviewing...". No click action. |
-| `skipped` | 12px blue dot (`#1677ff`) + "skip" text (`#1677ff`, 11px) | Tooltip: "Quality check skipped — scored 100 by default". No click action. |
+| `skipped` | 12px blue dot (`#1677ff`) + "skip" text (`#1677ff`, 12px) | Tooltip: "Quality check skipped — scored 100 by default". No click action. |
 | `expected` | `CheckCircleOutlined` (12px, `#1677ff`) | Tooltip: "Manually accepted — score: 100/100". Click opens Popconfirm to unmark. |
-| `failed` | `WarningOutlined` (12px, `#fa8c16`) + "fail" text (`#fa8c16`, 11px) | Tooltip: "Quality review failed — will retry". No click action. |
-| `checked` (green) | 12px green dot (`#52c41a`) + score number (11px, `#52c41a`) | Tooltip: "Score: N/100 — [comment]". Click opens Popconfirm to mark as expected. |
-| `checked` (yellow) | 12px amber dot (`#faad14`) + score number (11px, `#faad14`) | Same as checked/green. |
-| `checked` (red) | 12px red dot (`#ff4d4f`) + score number (11px, `#ff4d4f`) | Same as checked/green. |
+| `failed` | `WarningOutlined` (12px, `#fa8c16`) + "fail" text (`#fa8c16`, 12px) | Tooltip: "Quality review failed — will retry". No click action. |
+| `checked` (green) | 12px green dot (`#52c41a`) + score number (12px, `#52c41a`) | Tooltip: "Score: N/100 — [comment]". Click opens Popconfirm to mark as expected. |
+| `checked` (yellow) | 12px amber dot (`#faad14`) + score number (12px, `#faad14`) | Same as checked/green. |
+| `checked` (red) | 12px red dot (`#ff4d4f`) + score number (12px, `#ff4d4f`) | Same as checked/green. |
 
 ### Table layout
 
@@ -228,3 +231,7 @@ No third-party component registries are used in this phase. All components are b
 | Popconfirm copy kept as-is (D-04) | CONTEXT.md D-04 |
 | Inline style={{}} convention | CLAUDE.md Frontend Conventions; RESEARCH.md Anti-Patterns |
 | Component extraction order (D-13) | CONTEXT.md D-13 |
+| 11px collapsed into 12px — badge text | Checker revision 2026-04-02: visual distinction via color, not size |
+| "Cancel" → "Keep expected" in Unmark Popconfirm | Checker revision 2026-04-02: generic label blocked |
+| "Delete" → "Delete Entry" confirm label | Checker recommendation 2026-04-02: clarity improvement |
+| Primary focal point declaration added | Checker recommendation 2026-04-02: Dimension 2 Visuals |
