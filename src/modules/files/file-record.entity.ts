@@ -6,11 +6,14 @@ import {
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
-import { FileVisibility } from './dto/presign.dto';
-
 export enum FileStatus {
   PENDING = 'pending',
   READY = 'ready',
+}
+
+export enum FileVisibility {
+  PRIVATE = 'private',
+  PUBLIC = 'public',
 }
 
 @Entity('file_records')
