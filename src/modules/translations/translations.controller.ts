@@ -188,6 +188,7 @@ export class TranslationsController {
       dto.locale,
       dto.mode,
       projectId,
+      dto.context,
     );
   }
 

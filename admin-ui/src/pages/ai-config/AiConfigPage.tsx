@@ -22,6 +22,7 @@ interface AiConfig {
   translatePrompt: string;
   qualityTranslatePrompt: string;
   qualityLanguagePrompt: string;
+  contextDetectionPrompt: string | null;
   updatedAt: string;
 }
 
@@ -42,8 +43,8 @@ const resetConfig = async (): Promise<AiConfig> => {
 
 const PROMPT_VARS: Record<string, string[]> = {
   translatePrompt: ['{{text}}', '{{languages}}'],
-  qualityTranslatePrompt: ['{{source}}', '{{translation}}', '{{locale}}'],
-  qualityLanguagePrompt: ['{{translation}}', '{{locale}}'],
+  qualityTranslatePrompt: ['{{source}}', '{{translation}}', '{{locale}}', '{{context}}'],
+  qualityLanguagePrompt: ['{{translation}}', '{{locale}}', '{{context}}'],
 };
 
 const AiConfigPage: React.FC = () => {
@@ -142,6 +143,22 @@ const AiConfigPage: React.FC = () => {
             </Text>
             <Form.Item name="qualityLanguagePrompt" rules={[{ required: true }]} noStyle>
               <TextArea rows={14} style={{ fontFamily: 'monospace', fontSize: 12 }} />
+            </Form.Item>
+          </Card>
+
+          <Card
+            size="small"
+            title="Context Detection Prompt"
+            style={{ marginBottom: 16 }}
+          >
+            <Text type="secondary" style={{ display: 'block', marginBottom: 8, fontSize: 12 }}>
+              Embedded in bulk quality evaluation. Controls how the AI decides whether a translation key needs context
+              (e.g. ambiguous terms like "Save", "Train", "Light"). Keys marked as "context required" get a score cap
+              when context is not provided. Leave empty to disable context detection entirely.
+            </Text>
+            <Form.Item name="contextDetectionPrompt" noStyle>
+              <TextArea rows={10} style={{ fontFamily: 'monospace', fontSize: 12 }}
+                placeholder="Instructions for AI to determine which keys need context..." />
             </Form.Item>
           </Card>
 

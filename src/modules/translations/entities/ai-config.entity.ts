@@ -22,6 +22,9 @@ export class AiConfigEntity {
   @Column({ name: 'quality_language_prompt', type: 'text' })
   qualityLanguagePrompt!: string;
 
+  @Column({ name: 'context_detection_prompt', type: 'text', nullable: true })
+  contextDetectionPrompt!: string | null;
+
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 }

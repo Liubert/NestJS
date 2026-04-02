@@ -28,6 +28,10 @@ class UpdateAiConfigDto {
   @IsOptional()
   @IsString()
   qualityLanguagePrompt?: string;
+
+  @IsOptional()
+  @IsString()
+  contextDetectionPrompt?: string;
 }
 
 @ApiTags('ai-config')

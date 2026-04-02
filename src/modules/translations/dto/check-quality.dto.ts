@@ -40,4 +40,13 @@ export class CheckQualityDto {
   @IsOptional()
   @IsString()
   projectSlug?: string;
+
+  @ApiPropertyOptional({
+    example: 'Button label in expense form footer',
+    description:
+      'Optional context about where/how this key is used. Helps AI evaluate accuracy for ambiguous terms.',
+  })
+  @IsOptional()
+  @IsString()
+  context?: string;
 }

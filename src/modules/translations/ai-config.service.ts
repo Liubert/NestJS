@@ -6,8 +6,9 @@ import { AiConfigEntity } from './entities/ai-config.entity.js';
 // ─── Default prompt templates ─────────────────────────────────────────────────
 // Variables interpolated at runtime (unknown {{...}} are left as-is):
 //   translatePrompt         → {{text}}, {{languages}}
-//   qualityTranslatePrompt  → {{source}}, {{translation}}, {{locale}}
-//   qualityLanguagePrompt   → {{translation}}, {{locale}}
+//   qualityTranslatePrompt  → {{source}}, {{translation}}, {{locale}}, {{context}}
+//   qualityLanguagePrompt   → {{translation}}, {{locale}}, {{context}}
+//   contextDetectionPrompt  → (embedded in bulk quality prompt, no runtime variables)
 
 export const DEFAULT_TRANSLATE_PROMPT = `\
 You are a software localization assistant. Translate the following English UI text into the specified languages.
@@ -39,6 +40,10 @@ IMPORTANT — Ambiguity and multiple meanings:
 - Do NOT penalize a translation that uses a less common but valid interpretation.
 - When the source is genuinely ambiguous, give the benefit of the doubt to the translator.
 - Only flag a meaning error if the translation cannot reasonably correspond to any valid interpretation of the source.
+
+Context (if provided): "{{context}}"
+- If context is present, use it to determine the intended meaning and evaluate more precisely.
+- If context is empty or not provided, evaluate using all reasonable interpretations as described above.
 
 Additional checks:
 - Does the translation accurately convey the meaning of the source (for at least one valid interpretation)?
@@ -81,6 +86,9 @@ Text ({{locale}}): "{{translation}}"
 Check only whether the text is written correctly and naturally in {{locale}}.
 Do not evaluate translation accuracy.
 
+Context (if provided): "{{context}}"
+- If context is present, use it to judge whether the text is appropriate for its intended use.
+
 Checks to apply:
 - Grammar: correct forms, agreement, case, verb forms
 - Spelling: correctly spelled in {{locale}}
@@ -106,6 +114,24 @@ Comment rules:
 Return ONLY valid JSON, no markdown, no extra text:
 {"score": <1-100>, "comment": "<string>"}`;
 
+export const DEFAULT_CONTEXT_DETECTION_PROMPT = `\
+Context awareness instructions for bulk quality evaluation:
+
+For each translation key, determine whether the source text is ambiguous and would benefit from context for confident translation.
+
+Set "contextRequired" to true if:
+- The source text has multiple valid meanings that could lead to different translations
+- Context about where/how the key is used would meaningfully improve translation confidence
+- Examples of ambiguous keys: "Train" (vehicle or exercise), "Save" (rescue or store), "Light" (illumination or weight), "Set" (collection or configure), "Run" (execute or jog)
+
+Set "contextRequired" to false if:
+- The meaning is clear without additional context
+- The text is a common UI term with an obvious meaning
+- Examples of clear keys: "Cancel", "OK", "Delete", "Email", "Password", "Settings", "Loading..."
+
+If "context" is provided for a key, use it to determine the correct meaning and evaluate translations more precisely.
+Do NOT lower scores for missing context — score purely on grammar and translation accuracy. Context penalties are applied separately by the system.`;
+
 // ─── Interpolation helper ─────────────────────────────────────────────────────
 
 /** Replaces {{key}} in template with vars[key]. Unknown placeholders are left as-is. */
@@ -126,6 +152,7 @@ export interface AiConfigUpdate {
   translatePrompt?: string;
   qualityTranslatePrompt?: string;
   qualityLanguagePrompt?: string;
+  contextDetectionPrompt?: string;
 }
 
 @Injectable()
@@ -145,13 +172,18 @@ export class AiConfigService {
         translatePrompt: DEFAULT_TRANSLATE_PROMPT,
         qualityTranslatePrompt: DEFAULT_QUALITY_TRANSLATE_PROMPT,
         qualityLanguagePrompt: DEFAULT_QUALITY_LANGUAGE_PROMPT,
+        contextDetectionPrompt: DEFAULT_CONTEXT_DETECTION_PROMPT,
       }),
     );
   }
 
   async updateConfig(dto: AiConfigUpdate): Promise<AiConfigEntity> {
     const config = await this.getConfig();
-    Object.assign(config, dto);
+    for (const [key, value] of Object.entries(dto)) {
+      if (value !== undefined) {
+        (config as unknown as Record<string, unknown>)[key] = value;
+      }
+    }
     return this.repo.save(config);
   }
 
@@ -161,6 +193,7 @@ export class AiConfigService {
       translatePrompt: DEFAULT_TRANSLATE_PROMPT,
       qualityTranslatePrompt: DEFAULT_QUALITY_TRANSLATE_PROMPT,
       qualityLanguagePrompt: DEFAULT_QUALITY_LANGUAGE_PROMPT,
+      contextDetectionPrompt: DEFAULT_CONTEXT_DETECTION_PROMPT,
     });
   }
 }

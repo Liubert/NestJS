@@ -203,7 +203,7 @@ export class AiTranslateService {
 
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
-      const prompt = this.buildBulkQualityPrompt(chunk);
+      const prompt = this.buildBulkQualityPrompt(chunk, aiCfg.contextDetectionPrompt);
 
       let raw: string;
       try {
@@ -295,7 +295,12 @@ export class AiTranslateService {
       context: string | null;
       translations: Record<string, string>;
     }>,
+    contextDetectionPrompt: string | null,
   ): string {
+    const contextSection = contextDetectionPrompt
+      ? `\n${contextDetectionPrompt}\n`
+      : '';
+
     return `You are a professional translation quality reviewer. Evaluate each translation below.
 
 IMPORTANT — Ambiguity and multiple meanings:
@@ -303,13 +308,7 @@ IMPORTANT — Ambiguity and multiple meanings:
 - If the translation is correct for ANY valid interpretation that makes sense in a software/product UI, treat it as accurate.
 - Only flag errors when the translation genuinely cannot correspond to any valid interpretation of the source.
 - If "context" is present, use it to determine the correct meaning and evaluate more precisely.
-
-Context awareness:
-- For each key, determine whether the source text is ambiguous and would benefit from context for confident translation.
-- Set "contextRequired" to true if context would meaningfully improve translation confidence (e.g., ambiguous words like "train", "moon", "light", "save").
-- Set "contextRequired" to false if the meaning is clear without context (e.g., "Cancel", "OK", "Delete", "Email").
-- Do NOT lower scores for missing context — score purely on grammar and translation accuracy. Context penalties are applied separately.
-
+${contextSection}
 Score each translation on a 1–100 scale:
 - 95–100: Excellent — accurate, natural, production-ready
 - 80–94: Very strong — minor improvement opportunities
@@ -344,6 +343,7 @@ ${JSON.stringify(items, null, 2)}`;
     locale: string,
     mode: 'translation_quality' | 'language_quality' = 'translation_quality',
     projectId?: string,
+    context?: string,
   ): Promise<{
     score: number;
     level: 'green' | 'yellow' | 'red';
@@ -365,7 +365,9 @@ ${JSON.stringify(items, null, 2)}`;
         ? aiCfg.qualityTranslatePrompt
         : aiCfg.qualityLanguagePrompt;
 
-    const prompt = interpolate(template, { source, translation, locale });
+    const vars: Record<string, string> = { source, translation, locale };
+    if (context) vars.context = context;
+    const prompt = interpolate(template, vars);
 
     let raw: string;
     try {
