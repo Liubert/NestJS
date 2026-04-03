@@ -1959,6 +1959,115 @@ export class SandboxService {
     return { deleted };
   }
 
+  // ─── Batch translate ─────────────────────────────────────────────────────
+
+  async batchTranslate(
+    projectSlug: string,
+    nsSlug: string,
+    keys: string[],
+    userId: string,
+    role: UserRole,
+    targetLocales?: string[],
+  ): Promise<{ translated: number; skipped: number }> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const locales = await this.localeRepo.findBy({ projectId: project.id });
+    const defaultLocale = locales.find((l) => l.isDefault);
+    if (!defaultLocale) {
+      throw new BadRequestException('No default locale found');
+    }
+
+    const targets = targetLocales
+      ? locales.filter((l) => targetLocales.includes(l.code))
+      : locales.filter((l) => !l.isDefault);
+
+    let translated = 0;
+    let skipped = 0;
+
+    for (const key of keys) {
+      const keyEntity = await this.keyRepo.findOne({
+        where: { namespaceId: ns.id, key },
+      });
+      if (!keyEntity) {
+        skipped++;
+        continue;
+      }
+
+      // Read source (en) value from sandbox
+      const sourceRow = await this.sandboxRepo.findOne({
+        where: {
+          projectId: project.id,
+          keyId: keyEntity.id,
+          localeId: defaultLocale.id,
+          isDeleted: false,
+        },
+      });
+      if (!sourceRow?.value) {
+        skipped++;
+        continue;
+      }
+
+      try {
+        const translations = await this.aiTranslateService.translate(
+          sourceRow.value,
+          project.id,
+          keyEntity.context ?? undefined,
+          targets.map((l) => l.code),
+        );
+
+        for (const locale of targets) {
+          const val = translations[locale.code];
+          if (val) {
+            await this.upsertSandboxValue(
+              project.id,
+              keyEntity.id,
+              locale.id,
+              val,
+            );
+          }
+        }
+        translated++;
+      } catch {
+        skipped++;
+      }
+    }
+
+    return { translated, skipped };
+  }
+
+  // ─── Batch revert ───────────────────────────────────────────────────────
+
+  async batchRevert(
+    projectSlug: string,
+    nsSlug: string,
+    keys: string[],
+    userId: string,
+    role: UserRole,
+  ): Promise<{ reverted: number; skipped: number }> {
+    let reverted = 0;
+    let skipped = 0;
+
+    for (const key of keys) {
+      try {
+        await this.revertSandboxKey(projectSlug, nsSlug, key, userId, role);
+        reverted++;
+      } catch {
+        skipped++;
+      }
+    }
+
+    return { reverted, skipped };
+  }
+
   // ─── Rename key ──────────────────────────────────────────────────────────
 
   /**

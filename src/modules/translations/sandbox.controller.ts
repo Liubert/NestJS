@@ -25,6 +25,8 @@ import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { BulkImportDto } from './dto/bulk-import.dto.js';
 import { BulkDeleteDto } from './dto/bulk-delete.dto.js';
+import { BatchTranslateDto } from './dto/batch-translate.dto.js';
+import { BatchRevertDto } from './dto/batch-revert.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
 
@@ -316,6 +318,45 @@ export class SandboxController {
     @CurrentUser() user: CurrentUserType,
   ) {
     return this.sandboxService.batchDelete(
+      slug,
+      ns,
+      dto.keys,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Post('namespaces/:ns/entries/batch-translate')
+  @ApiOperation({
+    summary: 'AI-translate multiple keys and save results to sandbox',
+  })
+  async batchTranslateEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BatchTranslateDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.batchTranslate(
+      slug,
+      ns,
+      dto.keys,
+      user.userId,
+      user.role,
+      dto.targetLocales,
+    );
+  }
+
+  @Post('namespaces/:ns/entries/batch-revert')
+  @ApiOperation({
+    summary: 'Revert multiple sandbox keys to their production values',
+  })
+  async batchRevertEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BatchRevertDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.batchRevert(
       slug,
       ns,
       dto.keys,
