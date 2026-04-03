@@ -56,6 +56,14 @@ export class QualityWorkerService
     this.processing = true;
 
     try {
+      // Fix stuck: null/empty values should never be processing or not_checked
+      await this.dataSource.query(
+        `UPDATE sandbox_values
+         SET quality_review_state = 'checked'
+         WHERE (value IS NULL OR value = '')
+           AND quality_review_state IN ('not_checked', 'processing', 'failed', 'skipped')`,
+      );
+
       const rows = await this.dataSource.query<
         { project_id: string; key_id: string }[]
       >(
@@ -118,13 +126,13 @@ export class QualityWorkerService
   ): Promise<void> {
     if (!keyIds.length) return;
 
-    // Mark as processing in sandbox
+    // Mark as processing in sandbox (only non-null values)
     await this.sandboxRepo
       .createQueryBuilder()
       .update()
       .set({ qualityReviewState: 'processing' })
       .where(
-        'project_id = :projectId AND key_id IN (:...keyIds) AND quality_review_state IN (:...states)',
+        'project_id = :projectId AND key_id IN (:...keyIds) AND quality_review_state IN (:...states) AND value IS NOT NULL',
         {
           projectId,
           keyIds,
