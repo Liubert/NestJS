@@ -1179,15 +1179,30 @@ export class SandboxService {
       };
     }
 
-    const data: SandboxEntryRow[] = keys.map((k) => ({
-      key: k.key,
-      createdAt: k.created_at,
-      context: k.context ?? null,
-      contextNeed: (k.context_need as SandboxEntryRow['contextNeed']) ?? null,
-      contextReason: k.context_reason ?? null,
-      values: valuesByKey.get(k.id) ?? {},
-      quality: qualityByKey.get(k.id) ?? {},
-    }));
+    const data: SandboxEntryRow[] = keys.map((k) => {
+      const vals = valuesByKey.get(k.id) ?? {};
+      const qual = qualityByKey.get(k.id) ?? {};
+      for (const locale of Object.keys(vals)) {
+        if (!qual[locale]) {
+          qual[locale] = {
+            reviewState: 'not_checked',
+            score: null,
+            level: null,
+            comment: null,
+            checkedAt: null,
+          };
+        }
+      }
+      return {
+        key: k.key,
+        createdAt: k.created_at,
+        context: k.context ?? null,
+        contextNeed: (k.context_need as SandboxEntryRow['contextNeed']) ?? null,
+        contextReason: k.context_reason ?? null,
+        values: vals,
+        quality: qual,
+      };
+    });
 
     return paginate(data, Number(count), page, limit);
   }
@@ -1748,15 +1763,30 @@ export class SandboxService {
       };
     }
 
-    const data: SandboxEntryRow[] = keys.map((k) => ({
-      key: k.key,
-      createdAt: k.created_at,
-      context: k.context ?? null,
-      contextNeed: (k.context_need as SandboxEntryRow['contextNeed']) ?? null,
-      contextReason: k.context_reason ?? null,
-      values: valuesByKey.get(k.id) ?? {},
-      quality: qualityByKey.get(k.id) ?? {},
-    }));
+    const data: SandboxEntryRow[] = keys.map((k) => {
+      const vals = valuesByKey.get(k.id) ?? {};
+      const qual = qualityByKey.get(k.id) ?? {};
+      for (const locale of Object.keys(vals)) {
+        if (!qual[locale]) {
+          qual[locale] = {
+            reviewState: 'not_checked',
+            score: null,
+            level: null,
+            comment: null,
+            checkedAt: null,
+          };
+        }
+      }
+      return {
+        key: k.key,
+        createdAt: k.created_at,
+        context: k.context ?? null,
+        contextNeed: (k.context_need as SandboxEntryRow['contextNeed']) ?? null,
+        contextReason: k.context_reason ?? null,
+        values: vals,
+        quality: qual,
+      };
+    });
 
     return paginate(data, total, 1, limit);
   }

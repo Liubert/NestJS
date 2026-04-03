@@ -1256,6 +1256,34 @@ export class TranslationsService {
         }
       }
 
+      // Re-sync sandbox: if sandbox is initialized, refresh it with new production data
+      if (project.sandboxInitializedAt) {
+        await manager.query(
+          `DELETE FROM sandbox_values WHERE project_id = $1`,
+          [project.id],
+        );
+        await manager.query(
+          `
+          INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+            context, context_need, context_reason,
+            quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
+          SELECT
+            ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(),
+            tk.context, tk.context_need, tk.context_reason,
+            tv.quality_score, tv.quality_level, tv.quality_comment,
+            tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
+          FROM translation_values tv
+          JOIN translation_keys tk ON tk.id = tv.key_id
+          JOIN translation_namespaces ns ON ns.id = tk.namespace_id
+          WHERE ns.project_id = $1
+          `,
+          [project.id],
+        );
+        await manager.update(ProjectEntity, project.id, {
+          sandboxHasChanges: false,
+        });
+      }
+
       return {
         imported,
         locales: [...localeMap.keys()],
