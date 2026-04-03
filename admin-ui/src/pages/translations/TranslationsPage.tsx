@@ -1354,10 +1354,13 @@ const TranslationsPage: React.FC = () => {
   });
 
   React.useEffect(() => {
-    if (projects.length > 0 && !projectSlug) {
-      const first = projects[0].slug;
-      setProjectSlug(first);
-      localStorage.setItem('translations_projectSlug', first);
+    if (projects.length > 0) {
+      const slugExists = projects.some((p) => p.slug === projectSlug);
+      if (!projectSlug || !slugExists) {
+        const first = projects[0].slug;
+        setProjectSlug(first);
+        localStorage.setItem('translations_projectSlug', first);
+      }
     }
   }, [projects, projectSlug]);
 
