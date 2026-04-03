@@ -1132,40 +1132,31 @@ export function registerProjectManagementTools(server: McpServer): void {
     async ({ projectSlug }) => {
       try {
         const usage = await apiGet<{
-          totalInputTokens: number;
-          totalOutputTokens: number;
-          operationCounts: Record<string, number>;
-          recentLogs: {
+          totalTokens: number;
+          inputTokens: number;
+          outputTokens: number;
+          breakdown: {
             operation: string;
-            model: string;
+            totalTokens: number;
             inputTokens: number;
             outputTokens: number;
-            createdAt: string;
+            callCount: number;
           }[];
         }>(`/translations/projects/${projectSlug}/ai-usage`);
 
         const lines = [
           `AI Usage for project "${projectSlug}":`,
           ``,
-          `  Total input tokens:  ${usage.totalInputTokens.toLocaleString()}`,
-          `  Total output tokens: ${usage.totalOutputTokens.toLocaleString()}`,
+          `  Total tokens:        ${(usage.totalTokens ?? 0).toLocaleString()}`,
+          `  Total input tokens:  ${(usage.inputTokens ?? 0).toLocaleString()}`,
+          `  Total output tokens: ${(usage.outputTokens ?? 0).toLocaleString()}`,
         ];
 
-        if (
-          usage.operationCounts &&
-          Object.keys(usage.operationCounts).length > 0
-        ) {
-          lines.push(``, `Operations:`);
-          for (const [op, count] of Object.entries(usage.operationCounts)) {
-            lines.push(`  ${op}: ${count}`);
-          }
-        }
-
-        if (usage.recentLogs?.length > 0) {
-          lines.push(``, `Recent activity (last ${usage.recentLogs.length}):`);
-          for (const log of usage.recentLogs.slice(0, 10)) {
+        if (usage.breakdown?.length > 0) {
+          lines.push(``, `Breakdown by operation:`);
+          for (const b of usage.breakdown) {
             lines.push(
-              `  ${log.createdAt} — ${log.operation} (${log.inputTokens}+${log.outputTokens} tokens)`,
+              `  ${b.operation}: ${b.callCount} calls (${b.totalTokens.toLocaleString()} tokens)`,
             );
           }
         }
