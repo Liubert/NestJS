@@ -29,12 +29,17 @@ describe('Translations CRUD (e2e)', () => {
       })
       .expect(201);
 
-    // Create locale for the project
+    // Locale 'en' is auto-created as default by createProject.
+    // Create it only if it doesn't exist (expect 201 or 409).
     await request(app.getHttpServer())
       .post(`/translations/projects/${TEST_PROJECT_SLUG}/locales`)
       .set('Authorization', `Bearer ${token}`)
       .send({ code: TEST_LOCALE, isDefault: true })
-      .expect(201);
+      .expect((res) => {
+        if (res.status !== 201 && res.status !== 409) {
+          throw new Error(`Expected 201 or 409, got ${res.status}`);
+        }
+      });
 
     // Create namespace for the project (CreateNamespaceDto uses 'slug' field)
     await request(app.getHttpServer())
@@ -46,6 +51,55 @@ describe('Translations CRUD (e2e)', () => {
 
   afterAll(async () => {
     await teardownTestApp();
+  });
+
+  it('should auto-initialize sandbox on project creation', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/translations/projects/${TEST_PROJECT_SLUG}/sandbox/status`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body.initialized).toBe(true);
+    expect(res.body.initializedAt).toBeTruthy();
+    expect(res.body.hasChanges).toBe(false);
+  });
+
+  it('should allow creating sandbox entry without manual init', async () => {
+    const res = await request(app.getHttpServer())
+      .post(
+        `/translations/projects/${TEST_PROJECT_SLUG}/sandbox/namespaces/${TEST_NAMESPACE}/entries`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        key: 'sandbox.auto.test',
+        values: { [TEST_LOCALE]: 'Sandbox works' },
+      })
+      .expect(201);
+
+    expect(res.body.key).toBe('sandbox.auto.test');
+    expect(res.body.values[TEST_LOCALE]).toBe('Sandbox works');
+  });
+
+  it('should list sandbox entries without manual init', async () => {
+    const res = await request(app.getHttpServer())
+      .get(
+        `/translations/projects/${TEST_PROJECT_SLUG}/sandbox/namespaces/${TEST_NAMESPACE}/entries`,
+      )
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body).toHaveProperty('data');
+    expect(Array.isArray(res.body.data)).toBe(true);
+  });
+
+  it('should return sandbox diff without manual init', async () => {
+    const res = await request(app.getHttpServer())
+      .get(`/translations/projects/${TEST_PROJECT_SLUG}/sandbox/diff`)
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+
+    expect(res.body).toHaveProperty('total');
+    expect(res.body).toHaveProperty('entries');
   });
 
   it('should create a translation entry and retrieve it', async () => {

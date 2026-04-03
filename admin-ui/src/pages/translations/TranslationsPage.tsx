@@ -472,7 +472,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const { data: diff } = useQuery<DiffResult>({
     queryKey: ['sandbox-diff', projectSlug],
     queryFn: () => fetchSandboxDiff(projectSlug),
-    enabled: !!projectSlug && !!status?.initialized,
+    enabled: !!projectSlug && !!status,
   });
 
   const keyStatusMap = useMemo(
@@ -494,23 +494,6 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     qc.invalidateQueries({ queryKey: ['sandbox-diff', projectSlug] });
     qc.invalidateQueries({ queryKey: ['sandbox-entries', projectSlug] });
   }, [qc, projectSlug]);
-
-  const initMutation = useMutation({
-    mutationFn: () =>
-      apiClient
-        .post(`/translations/projects/${projectSlug}/sandbox/init`, {
-          force: false,
-        })
-        .then((r) => r.data),
-    onSuccess: (data: any) => {
-      message.success(
-        `Sandbox initialized — ${data.copiedRows} rows copied from production`,
-      );
-      invalidateSandbox();
-    },
-    onError: (e: any) =>
-      message.error(e.response?.data?.message ?? 'Failed to initialize'),
-  });
 
   const promoteMutation = useMutation({
     mutationFn: () =>
@@ -673,30 +656,6 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         <Spin />
       </div>
     );
-
-  // ── Not initialized
-  if (!status?.initialized) {
-    return (
-      <div style={{ maxWidth: 520, margin: '56px auto', textAlign: 'center' }}>
-        <Title level={4} style={{ fontWeight: 400, marginBottom: 8 }}>
-          Sandbox is not initialized
-        </Title>
-        <p style={{ color: '#8c8c8c', marginBottom: 28, lineHeight: 1.7 }}>
-          The sandbox is a working copy of production. Initialize it to start
-          making changes that will not affect production until you explicitly
-          push them.
-        </p>
-        <Button
-          type="primary"
-          size="large"
-          loading={initMutation.isPending}
-          onClick={() => initMutation.mutate()}
-        >
-          Initialize sandbox
-        </Button>
-      </div>
-    );
-  }
 
   const hasChanges = !!status?.hasChanges;
   const statusBg = hasChanges ? '#fffbe6' : '#f6ffed';
@@ -918,7 +877,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         createFn={createSandboxEntry}
         updateFn={updateSandboxEntry}
         deleteFn={deleteSandboxEntry}
-        enabled={!!status?.initialized}
+        enabled={!!status}
         onMutationSuccess={invalidateSandbox}
         isSandbox
         deleteConfirmTitle="Remove this key from sandbox?"

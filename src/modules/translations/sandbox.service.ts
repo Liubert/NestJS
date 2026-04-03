@@ -818,7 +818,7 @@ export class SandboxService {
     const project = await this.requireProject(projectSlug);
 
     if (!project.sandboxInitializedAt) {
-      // Sandbox not initialized — fall back to production data
+      // Defensive guard — sandbox is auto-initialized on project creation
       return {};
     }
 
