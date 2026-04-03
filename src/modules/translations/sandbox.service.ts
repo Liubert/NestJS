@@ -319,8 +319,9 @@ export class SandboxService {
     projectId: string,
     keyId: string,
     localeId: string,
-    value: string,
+    rawValue: string,
   ): Promise<void> {
+    const value = rawValue.trimEnd();
     try {
       // Check if value actually changed — skip quality reset if identical
       const existing = await this.sandboxRepo.findOne({
