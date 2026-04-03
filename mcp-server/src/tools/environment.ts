@@ -220,6 +220,8 @@ The following actions are **irreversible or high-impact**. Never call them unles
 | \`reset_sandbox\` | Wipes all pending sandbox changes — irreversible |
 | \`push_changes_to_production\` | Overwrites production data |
 | \`delete_translation\` | Permanently removes a key and all its values |
+| \`delete_locale\` | Removes a locale and ALL its values across namespaces |
+| \`delete_namespace\` | Removes a namespace and ALL its keys and values |
 | \`bulk_import\` with overwrite | Can silently overwrite existing translations |
 
 **Investigating a problem ≠ permission to fix it.** If the user asks "why does X show Y", that is a diagnostic question — answer it, do not take action. Only act when the user says to.

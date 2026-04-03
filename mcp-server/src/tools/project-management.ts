@@ -1,7 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { readFileSync } from "fs";
-import { apiGet, apiPost, ApiError } from "../api-client.js";
+import { apiGet, apiPost, apiPatch, apiDelete, ApiError } from "../api-client.js";
 import { logWrite } from "../logger.js";
 import { errorResult, textResult } from "../utils.js";
 
@@ -803,6 +803,186 @@ export function registerProjectManagementTools(server: McpServer): void {
           );
         } else {
           lines.push(``, `All locales are fully covered.`);
+        }
+
+        return textResult(lines.join("\n"));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── update_locale ────────────────────────────────────────────────────────
+  server.tool(
+    "update_locale",
+    [
+      "Update locale settings — currently supports setting locale aliases.",
+      "Aliases allow a single locale to serve multiple codes (e.g. 'nb-NO' can have alias 'no').",
+      "When a client requests translations for an alias code, the server returns the parent locale's translations.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+      code: z.string().describe("Locale code to update (e.g. 'nb-NO')"),
+      aliases: z
+        .array(z.string())
+        .describe("List of alias codes for this locale (e.g. ['no', 'nb'] for nb-NO). Pass empty array to clear aliases."),
+    },
+    async ({ projectSlug, code, aliases }) => {
+      try {
+        const result = await apiPatch<{ code: string; aliases: string[] }>(
+          `/translations/projects/${projectSlug}/locales/${code}`,
+          { aliases },
+        );
+        return textResult([
+          `Updated locale: ${result.code} in project ${projectSlug}`,
+          `Aliases: ${result.aliases?.length ? result.aliases.join(", ") : "(none)"}`,
+        ].join("\n"));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── delete_locale ────────────────────────────────────────────────────────
+  server.tool(
+    "delete_locale",
+    [
+      "Remove a locale from a project. This deletes ALL translation values for that locale across all namespaces.",
+      "This is a destructive operation — use with caution.",
+      "The default locale cannot be deleted.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+      code: z.string().describe("Locale code to delete (e.g. 'nb-NO')"),
+      confirmed: z
+        .boolean()
+        .default(false)
+        .describe("Must be true to execute. Without confirmation, returns a warning."),
+    },
+    async ({ projectSlug, code, confirmed }) => {
+      if (!confirmed) {
+        return textResult([
+          `⚠️  This will permanently DELETE locale "${code}" from project "${projectSlug}".`,
+          `All translation values for this locale across ALL namespaces will be lost.`,
+          ``,
+          `To execute, call this tool again with confirmed: true.`,
+        ].join("\n"));
+      }
+
+      try {
+        await apiDelete(`/translations/projects/${projectSlug}/locales/${code}`);
+        return textResult(`Deleted locale "${code}" from project "${projectSlug}". All translation values for this locale have been removed.`);
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── rename_namespace ─────────────────────────────────────────────────────
+  server.tool(
+    "rename_namespace",
+    [
+      "Rename an existing namespace in a project.",
+      "All keys and values are preserved — only the slug changes.",
+      "The new slug must not already exist in the project.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+      currentSlug: z.string().describe("Current namespace slug"),
+      newSlug: z
+        .string()
+        .regex(/^[a-z0-9-]+$/, "Namespace slug must be lowercase alphanumeric with dashes")
+        .describe("New namespace slug"),
+    },
+    async ({ projectSlug, currentSlug, newSlug }) => {
+      try {
+        const result = await apiPatch<{ slug: string }>(
+          `/translations/projects/${projectSlug}/namespaces/${currentSlug}`,
+          { slug: newSlug },
+        );
+        return textResult(
+          `Renamed namespace: ${currentSlug} → ${result.slug} in project ${projectSlug}\n\n` +
+          `All keys and values preserved. Update any client references to use the new namespace slug.`,
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── delete_namespace ─────────────────────────────────────────────────────
+  server.tool(
+    "delete_namespace",
+    [
+      "Delete a namespace from a project. This cascades to ALL keys and values in the namespace.",
+      "This is a destructive and irreversible operation.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+      namespace: z.string().describe("Namespace slug to delete"),
+      confirmed: z
+        .boolean()
+        .default(false)
+        .describe("Must be true to execute. Without confirmation, returns a warning."),
+    },
+    async ({ projectSlug, namespace, confirmed }) => {
+      if (!confirmed) {
+        return textResult([
+          `⚠️  This will permanently DELETE namespace "${namespace}" from project "${projectSlug}".`,
+          `All translation keys and values in this namespace will be lost.`,
+          ``,
+          `To execute, call this tool again with confirmed: true.`,
+        ].join("\n"));
+      }
+
+      try {
+        await apiDelete(`/translations/projects/${projectSlug}/namespaces/${namespace}`);
+        return textResult(`Deleted namespace "${namespace}" from project "${projectSlug}". All keys and values have been removed.`);
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── get_ai_usage ─────────────────────────────────────────────────────────
+  server.tool(
+    "get_ai_usage",
+    [
+      "Get AI token usage statistics for a project.",
+      "Shows how many tokens have been consumed by AI translation and quality check operations.",
+      "Useful for monitoring costs and understanding AI usage patterns.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+    },
+    async ({ projectSlug }) => {
+      try {
+        const usage = await apiGet<{
+          totalInputTokens: number;
+          totalOutputTokens: number;
+          operationCounts: Record<string, number>;
+          recentLogs: { operation: string; model: string; inputTokens: number; outputTokens: number; createdAt: string }[];
+        }>(`/translations/projects/${projectSlug}/ai-usage`);
+
+        const lines = [
+          `AI Usage for project "${projectSlug}":`,
+          ``,
+          `  Total input tokens:  ${usage.totalInputTokens.toLocaleString()}`,
+          `  Total output tokens: ${usage.totalOutputTokens.toLocaleString()}`,
+        ];
+
+        if (usage.operationCounts && Object.keys(usage.operationCounts).length > 0) {
+          lines.push(``, `Operations:`);
+          for (const [op, count] of Object.entries(usage.operationCounts)) {
+            lines.push(`  ${op}: ${count}`);
+          }
+        }
+
+        if (usage.recentLogs?.length > 0) {
+          lines.push(``, `Recent activity (last ${usage.recentLogs.length}):`);
+          for (const log of usage.recentLogs.slice(0, 10)) {
+            lines.push(`  ${log.createdAt} — ${log.operation} (${log.inputTokens}+${log.outputTokens} tokens)`);
+          }
         }
 
         return textResult(lines.join("\n"));

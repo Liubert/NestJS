@@ -43,17 +43,11 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
   isSandbox,
   onUpdate,
 }) => {
-  if (!info) return <span style={{ color: '#bbb', fontSize: 11 }}>—</span>;
+  if (!info) return null;
 
-  if (info.reviewState === 'queued' || info.reviewState === 'processing') {
+  if (info.reviewState === 'not_checked' || info.reviewState === 'queued' || info.reviewState === 'processing') {
     return (
-      <Tooltip
-        title={
-          info.reviewState === 'processing'
-            ? 'Reviewing...'
-            : 'Queued for review'
-        }
-      >
+      <Tooltip title={info.reviewState === 'processing' ? 'Reviewing...' : 'Queued for review'}>
         <SyncOutlined spin style={{ color: '#8c8c8c', fontSize: 12 }} />
       </Tooltip>
     );
@@ -62,30 +56,7 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
   if (info.reviewState === 'failed') {
     return (
       <Tooltip title="Quality review failed — will retry">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, cursor: 'help' }}>
-          <WarningOutlined style={{ color: '#fa8c16', fontSize: 12 }} />
-          <span style={{ fontSize: 12, color: '#fa8c16' }}>fail</span>
-        </span>
-      </Tooltip>
-    );
-  }
-
-  if (info.reviewState === 'not_checked') {
-    return (
-      <Tooltip title="Not yet reviewed">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: '50%',
-              backgroundColor: '#d9d9d9',
-              flexShrink: 0,
-              display: 'inline-block',
-            }}
-          />
-          <span style={{ fontSize: 12, color: '#bbb' }}>—</span>
-        </span>
+        <WarningOutlined style={{ color: '#fa8c16', fontSize: 12, cursor: 'help' }} />
       </Tooltip>
     );
   }
@@ -132,19 +103,15 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
   if (info.reviewState === 'skipped') {
     return (
       <Tooltip title="Quality check skipped — scored 100 by default">
-        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-          <span
-            style={{
-              width: 12,
-              height: 12,
-              borderRadius: '50%',
-              backgroundColor: '#1677ff',
-              flexShrink: 0,
-              display: 'inline-block',
-            }}
-          />
-          <span style={{ fontSize: 12, color: '#1677ff' }}>skip</span>
-        </span>
+        <span
+          style={{
+            width: 12,
+            height: 12,
+            borderRadius: '50%',
+            backgroundColor: '#1677ff',
+            display: 'inline-block',
+          }}
+        />
       </Tooltip>
     );
   }
@@ -173,9 +140,6 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
             display: 'inline-block',
           }}
         />
-        <span style={{ fontSize: 12, color: QUALITY_COLOR[info.level ?? ''] ?? '#bbb' }}>
-          {info.score ?? '?'}
-        </span>
       </span>
     </Tooltip>
   );

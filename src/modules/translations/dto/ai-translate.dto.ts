@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import {
+  IsArray,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export class AiTranslateDto {
   @ApiProperty({
@@ -27,4 +33,14 @@ export class AiTranslateDto {
   @IsString()
   @MaxLength(500)
   context?: string;
+
+  @ApiPropertyOptional({
+    example: ['uk', 'nb', 'sv'],
+    description:
+      'Target locale codes to translate into. If omitted, uses default set.',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  targetLocales?: string[];
 }

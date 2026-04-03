@@ -9,11 +9,52 @@ import { AiConfigService, interpolate } from './ai-config.service.js';
 import { AiUsageService } from './ai-usage.service.js';
 import { scoreToLevel } from './quality-constants.js';
 
-const TARGET_LOCALES: Record<string, string> = {
+const DEFAULT_TARGET_LOCALES: Record<string, string> = {
   uk: 'Ukrainian',
   'nb-NO': 'Norwegian Bokmål',
   sv: 'Swedish',
   'da-DK': 'Danish',
+};
+
+const LOCALE_NAMES: Record<string, string> = {
+  uk: 'Ukrainian',
+  nb: 'Norwegian Bokmål',
+  'nb-NO': 'Norwegian Bokmål',
+  sv: 'Swedish',
+  da: 'Danish',
+  'da-DK': 'Danish',
+  de: 'German',
+  fr: 'French',
+  es: 'Spanish',
+  it: 'Italian',
+  pt: 'Portuguese',
+  pl: 'Polish',
+  nl: 'Dutch',
+  fi: 'Finnish',
+  ja: 'Japanese',
+  ko: 'Korean',
+  zh: 'Chinese',
+  ar: 'Arabic',
+  hi: 'Hindi',
+  tr: 'Turkish',
+  cs: 'Czech',
+  ro: 'Romanian',
+  hu: 'Hungarian',
+  el: 'Greek',
+  he: 'Hebrew',
+  th: 'Thai',
+  vi: 'Vietnamese',
+  id: 'Indonesian',
+  ms: 'Malay',
+  bg: 'Bulgarian',
+  hr: 'Croatian',
+  sk: 'Slovak',
+  sl: 'Slovenian',
+  lt: 'Lithuanian',
+  lv: 'Latvian',
+  et: 'Estonian',
+  sr: 'Serbian',
+  ru: 'Russian',
 };
 
 @Injectable()
@@ -28,6 +69,7 @@ export class AiTranslateService {
     text: string,
     projectId?: string,
     context?: string,
+    targetLocales?: string[],
   ): Promise<Record<string, string>> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
@@ -40,7 +82,12 @@ export class AiTranslateService {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
-    const languages = Object.entries(TARGET_LOCALES)
+    const localeEntries =
+      targetLocales && targetLocales.length > 0
+        ? targetLocales.map((code) => [code, LOCALE_NAMES[code] ?? code])
+        : Object.entries(DEFAULT_TARGET_LOCALES);
+
+    const languages = localeEntries
       .map(([code, name]) => `${name} (${code})`)
       .join(', ');
 

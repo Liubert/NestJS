@@ -81,7 +81,7 @@ export class AutoTranslateWorkerService
     this.timer = setInterval(() => {
       void this.pollAndProcess();
     }, POLL_INTERVAL_MS);
-    this.logger.log('Auto-translate worker polling started (every 30s)');
+    this.logger.log('Auto-translate worker polling started (every 10s)');
   }
 
   onModuleDestroy(): void {

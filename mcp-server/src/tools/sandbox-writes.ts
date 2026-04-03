@@ -366,6 +366,95 @@ export function registerSandboxWriteTools(server: McpServer): void {
       }
     },
   );
+
+  // ─── mark_expected ──────────────────────────────────────────────────────────
+  server.tool(
+    "mark_expected",
+    [
+      "Mark a specific locale translation as manually accepted ('expected').",
+      "This suppresses quality warnings for this key+locale — useful when the AI quality check flags it",
+      "but a human has verified the translation is correct.",
+      "Quality checks will skip locales marked as expected.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+      namespace: z.string().describe("Namespace slug"),
+      key: z.string().describe("Translation key"),
+      locale: z.string().describe("Locale code to mark as expected (e.g. 'nb-NO')"),
+    },
+    async ({ projectSlug, namespace, key, locale }) => {
+      try {
+        await apiPost<unknown>(
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
+        );
+        logWrite("mark_expected", { projectSlug, namespace, key, locale }, { marked: true });
+        return textResult(
+          `Marked as expected: ${projectSlug}/${namespace}/${key} [${locale}]\n\n` +
+          `Quality warnings for this locale will be suppressed. Use unmark_expected to revert.`,
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── unmark_expected ────────────────────────────────────────────────────────
+  server.tool(
+    "unmark_expected",
+    [
+      "Remove the 'expected' mark from a specific locale translation.",
+      "The translation will be subject to quality checks again.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+      namespace: z.string().describe("Namespace slug"),
+      key: z.string().describe("Translation key"),
+      locale: z.string().describe("Locale code to unmark (e.g. 'nb-NO')"),
+    },
+    async ({ projectSlug, namespace, key, locale }) => {
+      try {
+        await apiDelete(
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
+        );
+        logWrite("unmark_expected", { projectSlug, namespace, key, locale }, { unmarked: true });
+        return textResult(
+          `Removed expected mark: ${projectSlug}/${namespace}/${key} [${locale}]\n\n` +
+          `This locale will be included in quality checks again.`,
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── revert_sandbox_entry ───────────────────────────────────────────────────
+  server.tool(
+    "revert_sandbox_entry",
+    [
+      "Revert a specific key in sandbox back to its production value.",
+      "Useful when you want to undo a sandbox edit for one key without resetting the entire sandbox.",
+      "If the key was added in sandbox (not in production), this effectively removes it.",
+    ].join(" "),
+    {
+      projectSlug: z.string().describe("Project slug"),
+      namespace: z.string().describe("Namespace slug"),
+      key: z.string().describe("Translation key to revert"),
+    },
+    async ({ projectSlug, namespace, key }) => {
+      try {
+        await apiPost<void>(
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/${encodeURIComponent(key)}/revert`,
+        );
+        logWrite("revert_sandbox_entry", { projectSlug, namespace, key }, { reverted: true });
+        return textResult(
+          `Reverted sandbox key: ${projectSlug}/${namespace}/${key}\n\n` +
+          `Key restored to its production value. Use get_translation_diff to verify.`,
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
 }
 
 function successContent(

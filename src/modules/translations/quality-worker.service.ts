@@ -7,7 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { createHash } from 'crypto';
-import { TranslationValueEntity } from './entities/translation-value.entity.js';
+import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
 import { AiTranslateService } from './ai-translate.service.js';
@@ -30,8 +30,8 @@ export class QualityWorkerService
   private processing = false;
 
   constructor(
-    @InjectRepository(TranslationValueEntity)
-    private readonly valueRepo: Repository<TranslationValueEntity>,
+    @InjectRepository(SandboxValueEntity)
+    private readonly sandboxRepo: Repository<SandboxValueEntity>,
     @InjectRepository(TranslationKeyEntity)
     private readonly keyRepo: Repository<TranslationKeyEntity>,
     @InjectRepository(LocaleEntity)
@@ -44,7 +44,7 @@ export class QualityWorkerService
     this.timer = setInterval(() => {
       void this.pollAndProcess();
     }, POLL_INTERVAL_MS);
-    this.logger.log('Quality worker polling started (every 30s)');
+    this.logger.log('Quality worker polling started (sandbox, every 30s)');
   }
 
   onModuleDestroy(): void {
@@ -59,22 +59,21 @@ export class QualityWorkerService
       const rows = await this.dataSource.query<
         { project_id: string; key_id: string }[]
       >(
-        `SELECT DISTINCT ns.project_id, tv.key_id
-         FROM translation_values tv
-         JOIN translation_keys tk ON tk.id = tv.key_id
-         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-         WHERE tv.quality_review_state IN ('not_checked', 'failed', 'skipped')
-           AND tv.value IS NOT NULL
+        `SELECT DISTINCT sv.project_id, sv.key_id
+         FROM sandbox_values sv
+         WHERE sv.quality_review_state IN ('not_checked', 'failed', 'skipped')
+           AND sv.value IS NOT NULL
+           AND sv.is_deleted = false
          LIMIT $1`,
         [MAX_KEYS_PER_CYCLE],
       );
 
       if (!rows.length) {
-        this.logger.debug('No keys need quality check');
+        this.logger.debug('No sandbox keys need quality check');
         return;
       }
 
-      this.logger.log(`Found ${rows.length} keys to check`);
+      this.logger.log(`Found ${rows.length} sandbox keys to check`);
 
       // Group by project
       const byProject = new Map<string, string[]>();
@@ -100,7 +99,9 @@ export class QualityWorkerService
       }
 
       if (totalProcessed > 0) {
-        this.logger.log(`Quality check: processed ${totalProcessed} keys`);
+        this.logger.log(
+          `Quality check: processed ${totalProcessed} sandbox keys`,
+        );
       }
     } catch (e: unknown) {
       this.logger.error(
@@ -117,14 +118,15 @@ export class QualityWorkerService
   ): Promise<void> {
     if (!keyIds.length) return;
 
-    // Mark as processing
-    await this.valueRepo
+    // Mark as processing in sandbox
+    await this.sandboxRepo
       .createQueryBuilder()
       .update()
       .set({ qualityReviewState: 'processing' })
       .where(
-        'key_id IN (:...keyIds) AND quality_review_state IN (:...states)',
+        'project_id = :projectId AND key_id IN (:...keyIds) AND quality_review_state IN (:...states)',
         {
+          projectId,
           keyIds,
           states: ['not_checked', 'failed', 'skipped'],
         },
@@ -134,7 +136,7 @@ export class QualityWorkerService
     // Load project locales
     const projectLocales = await this.localeRepo.findBy({ projectId });
     if (!projectLocales.length) {
-      await this.setStateForKeys(keyIds, 'failed');
+      await this.setStateForKeys(projectId, keyIds, 'failed');
       return;
     }
     const defaultLocale = projectLocales.find((l) => l.isDefault);
@@ -144,14 +146,20 @@ export class QualityWorkerService
     const keys = await this.keyRepo.findBy({ id: In(keyIds) });
     const keyById = new Map(keys.map((k) => [k.id, k]));
 
-    // Load values
-    const values = await this.valueRepo
-      .createQueryBuilder('tv')
-      .where('tv.key_id IN (:...keyIds)', { keyIds })
+    // Load sandbox values
+    const values = await this.sandboxRepo
+      .createQueryBuilder('sv')
+      .where(
+        'sv.project_id = :projectId AND sv.key_id IN (:...keyIds) AND sv.is_deleted = false',
+        {
+          projectId,
+          keyIds,
+        },
+      )
       .select([
-        'tv.key_id AS key_id',
-        'tv.locale_id AS locale_id',
-        'tv.value AS value',
+        'sv.key_id AS key_id',
+        'sv.locale_id AS locale_id',
+        'sv.value AS value',
       ])
       .getRawMany<{
         key_id: string;
@@ -216,7 +224,7 @@ export class QualityWorkerService
     }
 
     if (!items.length && !defaultItems.length) {
-      await this.setStateForKeys(keyIds, 'checked');
+      await this.setStateForKeys(projectId, keyIds, 'checked');
       return;
     }
 
@@ -273,11 +281,11 @@ export class QualityWorkerService
       this.logger.error(
         `Gemini failed for batch: ${e instanceof Error ? e.message : String(e)}`,
       );
-      await this.setStateForKeys(keyIds, 'failed');
+      await this.setStateForKeys(projectId, keyIds, 'failed');
       return;
     }
 
-    // Persist contextNeed/contextReason and apply context penalties
+    // Persist contextNeed/contextReason to both sandbox_values and translation_keys
     for (const keyId of keyIds) {
       const keyEntity = keyById.get(keyId);
       if (!keyEntity) continue;
@@ -287,9 +295,21 @@ export class QualityWorkerService
         const needChanged = keyEntity.contextNeed !== info.need;
         const reasonChanged = keyEntity.contextReason !== info.reason;
         if (needChanged || reasonChanged) {
+          // Update translation_keys (source of truth for context metadata)
           keyEntity.contextNeed = info.need;
           keyEntity.contextReason = info.reason;
           await this.keyRepo.save(keyEntity);
+
+          // Update sandbox_values for this key
+          await this.sandboxRepo
+            .createQueryBuilder()
+            .update()
+            .set({ contextNeed: info.need, contextReason: info.reason })
+            .where('project_id = :projectId AND key_id = :keyId', {
+              projectId,
+              keyId,
+            })
+            .execute();
         }
       }
 
@@ -313,7 +333,7 @@ export class QualityWorkerService
       }
     }
 
-    // Persist results per key×locale
+    // Persist results per key×locale in sandbox
     const now = new Date();
     for (const keyId of keyIds) {
       const keyEntity = keyById.get(keyId);
@@ -324,17 +344,22 @@ export class QualityWorkerService
       if (keyEntity && allSkippedKeys.has(keyEntity.key)) {
         if (valMap) {
           for (const [localeId] of valMap.entries()) {
-            await this.valueRepo.update(
-              { keyId, localeId },
-              {
+            await this.sandboxRepo
+              .createQueryBuilder()
+              .update()
+              .set({
                 qualityReviewState: 'skipped',
                 qualityScore: 100,
                 qualityLevel: null,
                 qualityComment:
                   'Quality check skipped — AI timed out on this chunk',
                 qualityCheckedAt: now,
-              },
-            );
+              })
+              .where(
+                'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
+                { projectId, keyId, localeId },
+              )
+              .execute();
           }
         }
         continue;
@@ -343,10 +368,15 @@ export class QualityWorkerService
       if (!keyResult) {
         if (valMap) {
           for (const [localeId] of valMap.entries()) {
-            await this.valueRepo.update(
-              { keyId, localeId },
-              { qualityReviewState: 'failed' },
-            );
+            await this.sandboxRepo
+              .createQueryBuilder()
+              .update()
+              .set({ qualityReviewState: 'failed' })
+              .where(
+                'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
+                { projectId, keyId, localeId },
+              )
+              .execute();
           }
         }
         continue;
@@ -362,27 +392,37 @@ export class QualityWorkerService
           ? createHash('sha256').update(value).digest('hex')
           : null;
 
-        await this.valueRepo.update(
-          { keyId, localeId: locale.id },
-          {
+        await this.sandboxRepo
+          .createQueryBuilder()
+          .update()
+          .set({
             qualityScore: r.score,
             qualityLevel: r.level,
             qualityComment: r.comment,
             qualityCheckedAt: now,
             qualityReviewState: 'checked',
             qualityContentHash: hash,
-          },
-        );
+          })
+          .where(
+            'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
+            { projectId, keyId, localeId: locale.id },
+          )
+          .execute();
       }
 
       // Mark any locales missing from results as failed
       if (valMap) {
         for (const [localeId] of valMap.entries()) {
           if (!checkedLocaleIds.has(localeId)) {
-            await this.valueRepo.update(
-              { keyId, localeId },
-              { qualityReviewState: 'failed' },
-            );
+            await this.sandboxRepo
+              .createQueryBuilder()
+              .update()
+              .set({ qualityReviewState: 'failed' })
+              .where(
+                'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
+                { projectId, keyId, localeId },
+              )
+              .execute();
           }
         }
       }
@@ -390,14 +430,18 @@ export class QualityWorkerService
   }
 
   private async setStateForKeys(
+    projectId: string,
     keyIds: string[],
     state: 'checked' | 'failed',
   ): Promise<void> {
-    await this.valueRepo
+    await this.sandboxRepo
       .createQueryBuilder()
       .update()
       .set({ qualityReviewState: state })
-      .where('key_id IN (:...keyIds)', { keyIds })
+      .where('project_id = :projectId AND key_id IN (:...keyIds)', {
+        projectId,
+        keyIds,
+      })
       .execute();
   }
 }

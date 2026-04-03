@@ -114,7 +114,9 @@ export class SandboxService {
     // Copy all production values for this project into sandbox
     const result = await this.dataSource.query<{ count: string }[]>(
       `
-      INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, context, context_need, context_reason)
+      INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+        context, context_need, context_reason,
+        quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
       SELECT
         ns.project_id,
         tv.key_id,
@@ -124,7 +126,13 @@ export class SandboxService {
         now(),
         tk.context,
         tk.context_need,
-        tk.context_reason
+        tk.context_reason,
+        tv.quality_score,
+        tv.quality_level,
+        tv.quality_comment,
+        tv.quality_checked_at,
+        tv.quality_review_state,
+        tv.quality_content_hash
       FROM translation_values tv
       JOIN translation_keys tk ON tk.id = tv.key_id
       JOIN translation_namespaces ns ON ns.id = tk.namespace_id
@@ -405,11 +413,15 @@ export class SandboxService {
         [project.id],
       );
 
-      // 3. Insert sandbox values (non-deleted) as new production values
+      // 3. Insert sandbox values (non-deleted) as new production values (including quality data)
       const insertResult = await manager.query<{ id: string }[]>(
         `
-        INSERT INTO translation_values (id, key_id, locale_id, value, updated_at)
-        SELECT gen_random_uuid(), sv.key_id, sv.locale_id, sv.value, now()
+        INSERT INTO translation_values (id, key_id, locale_id, value,
+          quality_score, quality_level, quality_comment,
+          quality_checked_at, quality_review_state, quality_content_hash, updated_at)
+        SELECT gen_random_uuid(), sv.key_id, sv.locale_id, sv.value,
+          sv.quality_score, sv.quality_level, sv.quality_comment,
+          sv.quality_checked_at, sv.quality_review_state, sv.quality_content_hash, now()
         FROM sandbox_values sv
         WHERE sv.project_id = $1 AND sv.is_deleted = false
         RETURNING id
@@ -467,8 +479,12 @@ export class SandboxService {
 
       await manager.query(
         `
-        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, context, context_need, context_reason)
-        SELECT ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(), tk.context, tk.context_need, tk.context_reason
+        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+          context, context_need, context_reason,
+          quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
+        SELECT ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(),
+          tk.context, tk.context_need, tk.context_reason,
+          tv.quality_score, tv.quality_level, tv.quality_comment, tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
         FROM translation_values tv
         JOIN translation_keys tk ON tk.id = tv.key_id
         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
@@ -540,11 +556,24 @@ export class SandboxService {
         if (!keyRows.length) continue;
         const keyId = keyRows[0].key_id;
 
-        // Get sandbox values for this key
+        // Get sandbox values for this key (including quality data)
         const svRows = await manager.query<
-          { locale_id: string; value: string | null; is_deleted: boolean }[]
+          {
+            locale_id: string;
+            value: string | null;
+            is_deleted: boolean;
+            quality_score: number | null;
+            quality_level: string | null;
+            quality_comment: string | null;
+            quality_checked_at: Date | null;
+            quality_review_state: string | null;
+            quality_content_hash: string | null;
+          }[]
         >(
-          `SELECT locale_id, value, is_deleted FROM sandbox_values
+          `SELECT locale_id, value, is_deleted,
+            quality_score, quality_level, quality_comment,
+            quality_checked_at, quality_review_state, quality_content_hash
+           FROM sandbox_values
            WHERE project_id = $1 AND key_id = $2`,
           [project.id, keyId],
         );
@@ -557,12 +586,28 @@ export class SandboxService {
               [keyId, sv.locale_id],
             );
           } else {
-            // Upsert into production
+            // Upsert into production (with quality data from sandbox)
             await manager.query(
-              `INSERT INTO translation_values (id, key_id, locale_id, value, updated_at)
-               VALUES (gen_random_uuid(), $1, $2, $3, now())
-               ON CONFLICT (key_id, locale_id) DO UPDATE SET value = $3, updated_at = now()`,
-              [keyId, sv.locale_id, sv.value],
+              `INSERT INTO translation_values (id, key_id, locale_id, value,
+                quality_score, quality_level, quality_comment,
+                quality_checked_at, quality_review_state, quality_content_hash, updated_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+               ON CONFLICT (key_id, locale_id) DO UPDATE SET
+                value = $3,
+                quality_score = $4, quality_level = $5, quality_comment = $6,
+                quality_checked_at = $7, quality_review_state = $8, quality_content_hash = $9,
+                updated_at = now()`,
+              [
+                keyId,
+                sv.locale_id,
+                sv.value,
+                sv.quality_score,
+                sv.quality_level,
+                sv.quality_comment,
+                sv.quality_checked_at,
+                sv.quality_review_state,
+                sv.quality_content_hash,
+              ],
             );
             promoted++;
           }
@@ -588,14 +633,18 @@ export class SandboxService {
           [project.id, keyId],
         );
 
-        // Re-sync sandbox for this key from production
+        // Re-sync sandbox for this key from production (including quality data)
         await manager.query(
           `DELETE FROM sandbox_values WHERE project_id = $1 AND key_id = $2`,
           [project.id, keyId],
         );
         await manager.query(
-          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, context, context_need, context_reason)
-           SELECT $1, tv.key_id, tv.locale_id, tv.value, false, now(), tk.context, tk.context_need, tk.context_reason
+          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+            context, context_need, context_reason,
+            quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
+           SELECT $1, tv.key_id, tv.locale_id, tv.value, false, now(),
+            tk.context, tk.context_need, tk.context_reason,
+            tv.quality_score, tv.quality_level, tv.quality_comment, tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
            FROM translation_values tv
            JOIN translation_keys tk ON tk.id = tv.key_id
            WHERE tv.key_id = $2`,
@@ -1063,7 +1112,7 @@ export class SandboxService {
       if (v.value != null) valuesByKey.get(v.key_id)![v.locale] = v.value;
     }
 
-    // Quality is stored on production translation_values rows
+    // Quality is stored on sandbox_values
     const qualityRows = await this.dataSource.query<
       {
         key_id: string;
@@ -1075,13 +1124,13 @@ export class SandboxService {
         quality_review_state: string | null;
       }[]
     >(
-      `SELECT tv.key_id, l.code AS locale,
-              tv.quality_score, tv.quality_level, tv.quality_comment,
-              tv.quality_checked_at, tv.quality_review_state
-       FROM translation_values tv
-       JOIN translation_locales l ON l.id = tv.locale_id
-       WHERE tv.key_id = ANY($1)`,
-      [keyIds],
+      `SELECT sv.key_id, l.code AS locale,
+              sv.quality_score, sv.quality_level, sv.quality_comment,
+              sv.quality_checked_at, sv.quality_review_state
+       FROM sandbox_values sv
+       JOIN translation_locales l ON l.id = sv.locale_id
+       WHERE sv.key_id = ANY($1) AND sv.project_id = $2 AND sv.is_deleted = false`,
+      [keyIds, project.id],
     );
 
     const qualityByKey = new Map<string, Record<string, QualityInfo | null>>();
@@ -1231,8 +1280,8 @@ export class SandboxService {
       );
 
       if (contextChanged) {
-        // Reset quality state on production values when context changes
-        await this.valueRepo
+        // Reset quality state on sandbox values when context changes
+        await this.sandboxRepo
           .createQueryBuilder()
           .update()
           .set({
@@ -1242,10 +1291,14 @@ export class SandboxService {
             qualityComment: null,
             qualityCheckedAt: null,
           })
-          .where('key_id = :keyId AND quality_review_state != :expectedState', {
-            keyId: keyEntity.id,
-            expectedState: 'expected',
-          })
+          .where(
+            'project_id = :projectId AND key_id = :keyId AND quality_review_state != :expectedState',
+            {
+              projectId: project.id,
+              keyId: keyEntity.id,
+              expectedState: 'expected',
+            },
+          )
           .execute();
       }
     }

@@ -71,6 +71,7 @@ services:
 
   migrate:
     image: ${APP_IMAGE}
+    profiles: ["tools"]
     build:
       context: .
       target: prod
@@ -92,6 +93,7 @@ services:
 
   seed:
     image: ${APP_IMAGE}
+    profiles: ["seed"]
     build:
       context: .
       target: prod

@@ -7,6 +7,7 @@ import {
   Space,
   Tooltip,
   Tag,
+  Checkbox,
   message,
   Alert,
   Typography,
@@ -16,7 +17,6 @@ import {
   SafetyCertificateOutlined,
   CheckCircleOutlined,
   SyncOutlined,
-  InfoCircleOutlined,
 } from '@ant-design/icons';
 
 const { Text } = Typography;
@@ -29,7 +29,7 @@ import {
   markSandboxExpected,
   unmarkSandboxExpected,
 } from './api';
-import { AI_LOCALES, QUALITY_COLOR, QUALITY_CONFIG } from './QualityBadge';
+import { QUALITY_CONFIG } from './QualityBadge';
 import { getFlagForCode } from '../../../constants/supported-languages';
 
 // ─── Entry Edit Modal ─────────────────────────────────────────────────────────
@@ -57,6 +57,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
   >({});
   const [expectedLoading, setExpectedLoading] = useState<string | null>(null);
   const [keyValue, setKeyValue] = useState('');
+  const [showContext, setShowContext] = useState(false);
 
   const hasKey = isNew ? keyValue.trim().length > 0 : true;
 
@@ -72,9 +73,15 @@ const EntryEditModal: React.FC<EditModalProps> = ({
           ...entry.values,
         });
         setKeyValue(entry.key);
+        setShowContext(
+          !!entry.context ||
+            entry.contextNeed === 'required' ||
+            entry.contextNeed === 'useful',
+        );
       } else {
         form.resetFields();
         setKeyValue('');
+        setShowContext(false);
       }
     }
   }, [open, entry, form]);
@@ -99,9 +106,15 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     setAiLoadingLocale('all');
     try {
       const contextVal: string = form.getFieldValue('context') ?? '';
-      const result = await aiTranslate(enText, projectSlug, contextVal);
+      const targetLocales = locales.filter((l) => l !== 'en');
+      const result = await aiTranslate(
+        enText,
+        projectSlug,
+        contextVal,
+        targetLocales,
+      );
       const patch: Record<string, string> = {};
-      for (const locale of AI_LOCALES) {
+      for (const locale of targetLocales) {
         if (result[locale] !== undefined) patch[locale] = result[locale];
       }
       form.setFieldsValue(patch);
@@ -124,7 +137,9 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     setAiLoadingLocale(locale);
     try {
       const contextVal: string = form.getFieldValue('context') ?? '';
-      const result = await aiTranslate(enText, projectSlug, contextVal);
+      const result = await aiTranslate(enText, projectSlug, contextVal, [
+        locale,
+      ]);
       if (result[locale] !== undefined) {
         form.setFieldsValue({ [locale]: result[locale] });
         setQualityResults((prev) => {
@@ -209,7 +224,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
   };
 
   const hasEnLocale = locales.includes('en');
-  const hasAiLocales = AI_LOCALES.some((l) => locales.includes(l));
+  const hasOtherLocales = locales.some((l) => l !== 'en');
   const isAiLoading = aiLoadingLocale !== null;
   const isQualityLoading = qualityLoadingLocale !== null;
 
@@ -243,56 +258,53 @@ const EntryEditModal: React.FC<EditModalProps> = ({
             />
           </Form.Item>
         )}
-        <Form.Item
-          name="context"
-          label={
-            <Space size={4}>
-              Context
+        <div style={{ marginBottom: showContext ? 0 : 12 }}>
+          <Checkbox
+            checked={showContext}
+            onChange={(e) => setShowContext(e.target.checked)}
+          >
+            <Text type="secondary" style={{ fontSize: 13 }}>
+              Add context
               {entry?.contextNeed === 'required' && !entry?.context ? (
                 <Tooltip title={entry?.contextReason}>
-                  <Tag color="error" style={{ fontSize: 11, margin: 0 }}>
+                  <Tag color="error" style={{ fontSize: 11, margin: '0 0 0 6px' }}>
                     Required
                   </Tag>
                 </Tooltip>
               ) : entry?.contextNeed === 'useful' && !entry?.context ? (
                 <Tooltip title={entry?.contextReason}>
-                  <Tag color="processing" style={{ fontSize: 11, margin: 0 }}>
+                  <Tag color="processing" style={{ fontSize: 11, margin: '0 0 0 6px' }}>
                     Suggested
                   </Tag>
                 </Tooltip>
-              ) : (
-                <Tag style={{ fontSize: 11, margin: 0 }}>optional</Tag>
-              )}
-            </Space>
-          }
-          extra={
-            entry?.contextReason &&
-            !entry?.context &&
-            entry?.contextNeed !== 'none'
-              ? entry.contextReason
-              : undefined
-          }
-          style={isNew && !hasKey ? { marginBottom: 8 } : undefined}
-        >
-          <Input.TextArea
-            placeholder="e.g. Button label on permissions settings page"
-            maxLength={500}
-            showCount
-            style={{ maxHeight: 200, resize: 'vertical' }}
-            autoSize={{ minRows: 2, maxRows: 5 }}
-          />
-        </Form.Item>
-        {(!entry?.contextReason || entry?.context || entry?.contextNeed === 'none') && (
-          <Text type="secondary" style={{ fontSize: 12, marginTop: -12, marginBottom: 12, display: 'block' }}>
-            <InfoCircleOutlined style={{ marginRight: 4 }} />
-            Providing context improves auto-translation quality.
-          </Text>
+              ) : null}
+            </Text>
+          </Checkbox>
+        </div>
+        {showContext && (
+          <Form.Item
+            name="context"
+            style={{ marginBottom: 12 }}
+            extra={
+              entry?.contextReason &&
+              !entry?.context &&
+              entry?.contextNeed !== 'none'
+                ? entry.contextReason
+                : 'Helps AI translate more accurately'
+            }
+          >
+            <Input.TextArea
+              placeholder="e.g. Button label on permissions settings page"
+              maxLength={500}
+              showCount
+              autoSize={{ minRows: 1, maxRows: 3 }}
+            />
+          </Form.Item>
         )}
         {(!isNew || hasKey) && locales.map((locale) => {
           const qr = qualityResults[locale];
           const storedQuality = entry?.quality?.[locale];
           const isEnRow = locale === 'en';
-          const isAiLocale = AI_LOCALES.includes(locale);
           const canToggleExpected = !isNew && projectSlug && namespace && entry;
 
           const handleToggleExpected = async () => {
@@ -409,7 +421,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
                   </Tooltip>
                 )}
               {/* English row: global buttons */}
-              {isEnRow && hasAiLocales && (
+              {isEnRow && hasOtherLocales && (
                 <Button
                   size="small"
                   icon={<ThunderboltOutlined />}
@@ -433,8 +445,8 @@ const EntryEditModal: React.FC<EditModalProps> = ({
                   Check all
                 </Button>
               )}
-              {/* Per-locale translate button for AI locales */}
-              {!isEnRow && isAiLocale && (
+              {/* Per-locale translate button */}
+              {!isEnRow && (
                 <Tooltip title={`Translate ${locale}`}>
                   <Button
                     size="small"

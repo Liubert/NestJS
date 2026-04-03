@@ -103,4 +103,12 @@ export class SandboxValueEntity {
     nullable: true,
   })
   contextReason!: string | null;
+
+  @Column({
+    name: 'quality_content_hash',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  qualityContentHash!: string | null;
 }

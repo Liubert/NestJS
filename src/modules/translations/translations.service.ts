@@ -253,6 +253,23 @@ export class TranslationsService {
       }),
     );
 
+    // Auto-create default source locale (English)
+    await this.localeRepo.save(
+      this.localeRepo.create({
+        projectId: project.id,
+        code: 'en',
+        isDefault: true,
+      }),
+    );
+
+    // Auto-create default namespace
+    await this.namespaceRepo.save(
+      this.namespaceRepo.create({
+        projectId: project.id,
+        slug: 'main',
+      }),
+    );
+
     return project;
   }
 
@@ -424,6 +441,7 @@ export class TranslationsService {
     isDefault = false,
     userId: string,
     userRole: UserRole,
+    aliases: string[] = [],
   ): Promise<LocaleEntity> {
     const project = await this.requireProject(projectSlug);
     await this.assertManageAccess(project, userId, userRole);
@@ -439,7 +457,12 @@ export class TranslationsService {
     }
 
     return this.localeRepo.save(
-      this.localeRepo.create({ projectId: project.id, code, isDefault }),
+      this.localeRepo.create({
+        projectId: project.id,
+        code,
+        isDefault,
+        aliases,
+      }),
     );
   }
 

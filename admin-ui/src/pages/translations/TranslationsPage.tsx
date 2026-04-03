@@ -211,7 +211,8 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   }, [projectSlug]);
 
   React.useEffect(() => {
-    if (projectDetails && projectDetails.namespaces.length > 0 && !namespace) {
+    if (!projectDetails || projectDetails.namespaces.length === 0) return;
+    if (!namespace || !projectDetails.namespaces.includes(namespace)) {
       setNamespace(projectDetails.namespaces[0]);
     }
   }, [projectDetails, namespace]);

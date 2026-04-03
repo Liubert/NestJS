@@ -1,5 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsString, Matches } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsOptional,
+  IsString,
+  Matches,
+} from 'class-validator';
 
 export class CreateLocaleDto {
   @ApiProperty({ example: 'uk' })
@@ -13,4 +19,13 @@ export class CreateLocaleDto {
   @IsOptional()
   @IsBoolean()
   isDefault?: boolean;
+
+  @ApiPropertyOptional({
+    example: ['en-US', 'en-GB'],
+    description: 'Alternative locale codes that map to this language',
+  })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  aliases?: string[];
 }

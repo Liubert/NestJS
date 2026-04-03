@@ -101,7 +101,7 @@ export function buildColumns(
                 {val}
               </Text>
             ) : (
-              <span style={{ color: '#ccc', fontStyle: 'italic' }}>—</span>
+              <span style={{ color: '#d9d9d9', fontSize: 11 }}>—</span>
             )}
           </Space>
         );

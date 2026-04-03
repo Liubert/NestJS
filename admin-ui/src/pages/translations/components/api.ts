@@ -91,9 +91,11 @@ export const aiTranslate = async (
   text: string,
   projectSlug?: string,
   context?: string,
+  targetLocales?: string[],
 ): Promise<Record<string, string>> => {
-  const body: Record<string, string | undefined> = { text, projectSlug };
+  const body: Record<string, unknown> = { text, projectSlug };
   if (context?.trim()) body.context = context.trim();
+  if (targetLocales?.length) body.targetLocales = targetLocales;
   const res = await apiClient.post('/translations/ai-translate', body);
   return res.data;
 };
