@@ -1421,39 +1421,65 @@ export class TranslationsService {
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const defaultLocale = locales.find((l) => l.isDefault);
 
+    // Read source from sandbox first, fallback to production
     let source: string | undefined;
     if (defaultLocale) {
-      const sourceValue = await this.valueRepo.findOne({
-        where: { keyId: keyEntity.id, localeId: defaultLocale.id },
-      });
-      source = sourceValue?.value ?? undefined;
+      const [sandboxSource] = await this.dataSource.query<
+        { value: string | null }[]
+      >(
+        `SELECT sv.value FROM sandbox_values sv
+         WHERE sv.project_id = $1 AND sv.key_id = $2 AND sv.locale_id = $3 AND sv.is_deleted = false
+         LIMIT 1`,
+        [project.id, keyEntity.id, defaultLocale.id],
+      );
+      if (sandboxSource?.value) {
+        source = sandboxSource.value;
+      } else {
+        const prodSource = await this.valueRepo.findOne({
+          where: { keyId: keyEntity.id, localeId: defaultLocale.id },
+        });
+        source = prodSource?.value ?? undefined;
+      }
     }
 
     const results: Record<string, QualityInfo | null> = {};
 
     await Promise.allSettled(
       locales.map(async (locale) => {
-        const valueEntity = await this.valueRepo.findOne({
-          where: { keyId: keyEntity.id, localeId: locale.id },
-        });
-        // Skip expected (manually accepted) translations
-        if (valueEntity?.qualityReviewState === 'expected') {
+        // Read from sandbox first, fallback to production
+        const [sandboxRow] = await this.dataSource.query<
+          {
+            value: string | null;
+            quality_review_state: string | null;
+            quality_checked_at: string | null;
+          }[]
+        >(
+          `SELECT sv.value, sv.quality_review_state, sv.quality_checked_at
+           FROM sandbox_values sv
+           WHERE sv.project_id = $1 AND sv.key_id = $2 AND sv.locale_id = $3 AND sv.is_deleted = false
+           LIMIT 1`,
+          [project.id, keyEntity.id, locale.id],
+        );
+
+        const reviewState = sandboxRow?.quality_review_state;
+        if (reviewState === 'expected') {
           results[locale.code] = {
             reviewState: 'expected',
             score: 100,
             level: 'expected',
             comment: null,
-            checkedAt: valueEntity.qualityCheckedAt?.toISOString() ?? null,
+            checkedAt: sandboxRow?.quality_checked_at ?? null,
           };
           return;
         }
-        const translation = valueEntity?.value;
+
+        const translation = sandboxRow?.value;
         if (!translation) {
           results[locale.code] = null;
           return;
         }
+
         try {
-          // Default locale has no source to compare against — check language quality only
           const mode = locale.isDefault
             ? 'language_quality'
             : source
@@ -1468,7 +1494,6 @@ export class TranslationsService {
             keyEntity.context ?? undefined,
           );
 
-          // Persist contextNeed/contextReason from AI evaluation
           if (
             result.contextNeed &&
             (keyEntity.contextNeed !== result.contextNeed ||
@@ -1479,7 +1504,22 @@ export class TranslationsService {
             await this.keyRepo.save(keyEntity);
           }
 
-          await this.persistQualityResult(keyEntity.id, locale.id, result);
+          // Persist to sandbox
+          await this.dataSource.query(
+            `UPDATE sandbox_values
+             SET quality_score = $1, quality_level = $2, quality_comment = $3,
+                 quality_checked_at = now(), quality_review_state = 'checked'
+             WHERE project_id = $4 AND key_id = $5 AND locale_id = $6`,
+            [
+              result.score,
+              result.level,
+              result.comment,
+              project.id,
+              keyEntity.id,
+              locale.id,
+            ],
+          );
+
           results[locale.code] = {
             reviewState: 'checked',
             score: result.score,
