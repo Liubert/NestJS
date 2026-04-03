@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TranslationsController } from './translations.controller.js';
+import { PublicTranslationsController } from './public-translations.controller.js';
 import { TranslationsService } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiConfigService } from './ai-config.service.js';
@@ -38,7 +39,14 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
     ]),
     forwardRef(() => WebhooksModule),
   ],
-  controllers: [TranslationsController, SandboxController, AiConfigController],
+  controllers: [
+    TranslationsController,
+    SandboxController,
+    AiConfigController,
+    // PublicTranslationsController MUST be last — its wildcard routes
+    // would otherwise intercept /projects/:slug/webhooks etc.
+    PublicTranslationsController,
+  ],
   providers: [
     TranslationsService,
     AiTranslateService,

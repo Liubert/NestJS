@@ -9,7 +9,6 @@ import {
   Patch,
   Post,
   Query,
-  Res,
   UploadedFile,
   UseGuards,
   UseInterceptors,
@@ -21,16 +20,13 @@ import {
   ApiConsumes,
   ApiOperation,
   ApiParam,
-  ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
-import { SandboxService } from './sandbox.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiUsageService } from './ai-usage.service.js';
 import { AiTranslateDto } from './dto/ai-translate.dto.js';
@@ -52,7 +48,6 @@ import { PaginationDto } from '../../common/dto/pagination.dto.js';
 export class TranslationsController {
   constructor(
     private readonly translationsService: TranslationsService,
-    private readonly sandboxService: SandboxService,
     private readonly aiTranslateService: AiTranslateService,
     private readonly aiUsageService: AiUsageService,
   ) {}
@@ -71,62 +66,8 @@ export class TranslationsController {
     return this.aiUsageService.getProjectUsage(project.id);
   }
 
-  // ─── Public (Locize-compatible) ───────────────────────────────────────────
-
-  @Get(':projectSlug/locales')
-  @ApiOperation({ summary: 'Get all supported locales for a project' })
-  async getLocales(
-    @Param('projectSlug') projectSlug: string,
-  ): Promise<string[]> {
-    return this.translationsService.getLocales(projectSlug);
-  }
-
-  @Get(':projectSlug/namespaces')
-  @ApiOperation({ summary: 'Get all namespaces for a project' })
-  async getNamespaces(
-    @Param('projectSlug') projectSlug: string,
-  ): Promise<string[]> {
-    return this.translationsService.getNamespaces(projectSlug);
-  }
-
-  @Get(':projectSlug/:namespace/:locale')
-  @ApiOperation({
-    summary:
-      'Get translations for a namespace and locale (Locize-compatible). Pass ?env=sandbox for sandbox data.',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Flat key-value translation object',
-  })
-  async getNamespace(
-    @Param('projectSlug') projectSlug: string,
-    @Param('namespace') namespace: string,
-    @Param('locale') locale: string,
-    @Query('env') env: string | undefined,
-    @Res() res: Response,
-  ): Promise<void> {
-    if (env === 'sandbox') {
-      // Sandbox view: returns sandbox values overlaid on production.
-      // Intended for local dev testing without promoting to production.
-      // NOT cached — sandbox data changes frequently.
-      const translations = await this.sandboxService.getSandboxNamespace(
-        projectSlug,
-        namespace,
-        locale,
-      );
-      res.setHeader('Cache-Control', 'no-store');
-      res.json(translations);
-      return;
-    }
-
-    const translations = await this.translationsService.getNamespace(
-      projectSlug,
-      namespace,
-      locale,
-    );
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json(translations);
-  }
+  // Public (Locize-compatible) routes moved to PublicTranslationsController
+  // to avoid wildcard route conflicts with webhooks/sandbox controllers.
 
   @Post('import')
   @HttpCode(HttpStatus.OK)

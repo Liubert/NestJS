@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -60,6 +61,8 @@ export interface DiffEntry {
 
 @Injectable()
 export class SandboxService {
+  private readonly logger = new Logger(SandboxService.name);
+
   constructor(
     @InjectRepository(ProjectEntity)
     private readonly projectRepo: Repository<ProjectEntity>,
@@ -112,38 +115,46 @@ export class SandboxService {
     }
 
     // Copy all production values for this project into sandbox
-    const result = await this.dataSource.query<{ count: string }[]>(
-      `
-      INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
-        context, context_need, context_reason,
-        quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
-      SELECT
-        ns.project_id,
-        tv.key_id,
-        tv.locale_id,
-        tv.value,
-        false,
-        now(),
-        tk.context,
-        tk.context_need,
-        tk.context_reason,
-        tv.quality_score,
-        tv.quality_level,
-        tv.quality_comment,
-        tv.quality_checked_at,
-        tv.quality_review_state,
-        tv.quality_content_hash
-      FROM translation_values tv
-      JOIN translation_keys tk ON tk.id = tv.key_id
-      JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-      WHERE ns.project_id = $1
-      ON CONFLICT (project_id, key_id, locale_id) DO NOTHING
-      RETURNING id
-    `,
-      [project.id],
-    );
-
-    const copiedRows = Array.isArray(result) ? result.length : 0;
+    let copiedRows = 0;
+    try {
+      const result = await this.dataSource.query<{ id: string }[]>(
+        `
+        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+          context, context_need, context_reason,
+          quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
+        SELECT
+          ns.project_id,
+          tv.key_id,
+          tv.locale_id,
+          tv.value,
+          false,
+          now(),
+          tk.context,
+          tk.context_need,
+          tk.context_reason,
+          tv.quality_score,
+          tv.quality_level,
+          tv.quality_comment,
+          tv.quality_checked_at,
+          tv.quality_review_state,
+          tv.quality_content_hash
+        FROM translation_values tv
+        JOIN translation_keys tk ON tk.id = tv.key_id
+        JOIN translation_namespaces ns ON ns.id = tk.namespace_id
+        WHERE ns.project_id = $1
+        ON CONFLICT (project_id, key_id, locale_id) DO NOTHING
+        RETURNING id
+      `,
+        [project.id],
+      );
+      copiedRows = Array.isArray(result) ? result.length : 0;
+    } catch (err) {
+      this.logger.error(
+        `initSandbox SQL failed for project ${projectSlug}: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw err;
+    }
 
     await this.projectRepo.update(project.id, {
       sandboxInitializedAt: new Date(),
@@ -305,13 +316,21 @@ export class SandboxService {
     localeId: string,
     value: string,
   ): Promise<void> {
-    await this.sandboxRepo.upsert(
-      { projectId, keyId, localeId, value, isDeleted: false },
-      {
-        conflictPaths: ['projectId', 'keyId', 'localeId'],
-        skipUpdateIfNoValuesChanged: true,
-      },
-    );
+    try {
+      await this.sandboxRepo.upsert(
+        { projectId, keyId, localeId, value, isDeleted: false },
+        {
+          conflictPaths: ['projectId', 'keyId', 'localeId'],
+          skipUpdateIfNoValuesChanged: true,
+        },
+      );
+    } catch (err) {
+      this.logger.error(
+        `upsertSandboxValue failed: projectId=${projectId} keyId=${keyId} localeId=${localeId}: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw err;
+    }
     await this.projectRepo.update(projectId, { sandboxHasChanges: true });
   }
 

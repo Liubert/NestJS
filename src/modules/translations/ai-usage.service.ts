@@ -49,9 +49,9 @@ export class AiUsageService {
 
     const breakdown = await qb
       .select('log.operation', 'operation')
-      .addSelect('SUM(log.total_tokens)', 'totalTokens')
-      .addSelect('SUM(log.input_tokens)', 'inputTokens')
-      .addSelect('SUM(log.output_tokens)', 'outputTokens')
+      .addSelect('COALESCE(SUM(log.total_tokens), 0)', 'totalTokens')
+      .addSelect('COALESCE(SUM(log.input_tokens), 0)', 'inputTokens')
+      .addSelect('COALESCE(SUM(log.output_tokens), 0)', 'outputTokens')
       .addSelect('COUNT(*)::int', 'callCount')
       .groupBy('log.operation')
       .getRawMany<{
@@ -63,15 +63,15 @@ export class AiUsageService {
       }>();
 
     const totalTokens = breakdown.reduce(
-      (sum, row) => sum + Number(row.totalTokens),
+      (sum, row) => sum + (Number(row.totalTokens) || 0),
       0,
     );
     const inputTokens = breakdown.reduce(
-      (sum, row) => sum + Number(row.inputTokens),
+      (sum, row) => sum + (Number(row.inputTokens) || 0),
       0,
     );
     const outputTokens = breakdown.reduce(
-      (sum, row) => sum + Number(row.outputTokens),
+      (sum, row) => sum + (Number(row.outputTokens) || 0),
       0,
     );
 
@@ -81,10 +81,10 @@ export class AiUsageService {
       outputTokens,
       breakdown: breakdown.map((row) => ({
         operation: row.operation,
-        totalTokens: Number(row.totalTokens),
-        inputTokens: Number(row.inputTokens),
-        outputTokens: Number(row.outputTokens),
-        callCount: Number(row.callCount),
+        totalTokens: Number(row.totalTokens) || 0,
+        inputTokens: Number(row.inputTokens) || 0,
+        outputTokens: Number(row.outputTokens) || 0,
+        callCount: Number(row.callCount) || 0,
       })),
     };
   }
