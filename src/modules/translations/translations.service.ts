@@ -262,12 +262,14 @@ export class TranslationsService {
       }),
     );
 
-    // Auto-create default namespace
+    // Create namespaces provided by the user
     await this.namespaceRepo.save(
-      this.namespaceRepo.create({
-        projectId: project.id,
-        slug: 'main',
-      }),
+      dto.namespaces.map((slug) =>
+        this.namespaceRepo.create({
+          projectId: project.id,
+          slug,
+        }),
+      ),
     );
 
     // Auto-initialize sandbox (empty — no production data to copy yet)

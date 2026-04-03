@@ -41,8 +41,9 @@ export function registerProjectManagementTools(server: McpServer): void {
       'Create a new translation project on the localization backend.',
       'Only call this after the user has explicitly confirmed they want to create a project.',
       'The slug must be unique — if a project with this slug already exists, the call will fail.',
-      'After creating a project, you must also: create at least one namespace (create_namespace),',
-      'create at least one locale (create_locale). Sandbox is auto-initialized',
+      'At least one namespace is required — provide it in the namespaces array.',
+      'After creating a project, you must also: create at least one locale (create_locale).',
+      'Default locale "en" is auto-created. Sandbox is auto-initialized',
       'and ready for writes immediately after project creation.',
     ].join(' '),
     {
@@ -61,8 +62,21 @@ export function registerProjectManagementTools(server: McpServer): void {
         .describe(
           "Optional human-readable project name (e.g. 'My Application'). Shown in Admin UI.",
         ),
+      namespaces: z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z0-9-]+$/,
+              'Namespace slugs must be lowercase alphanumeric with dashes',
+            ),
+        )
+        .min(1, 'At least one namespace is required')
+        .describe(
+          "List of namespace slugs to create (e.g. ['common'] or ['backoffice-translations', 'mobile']). At least one is required.",
+        ),
     },
-    async ({ slug, name }) => {
+    async ({ slug, name, namespaces }) => {
       try {
         interface ProjectCreated {
           id: string;
@@ -76,11 +90,12 @@ export function registerProjectManagementTools(server: McpServer): void {
           '/translations/projects',
           {
             slug,
+            namespaces,
             ...(name ? { name } : {}),
           },
         );
 
-        logWrite('create_project', { slug, name }, project);
+        logWrite('create_project', { slug, name, namespaces }, project);
 
         const lines = [
           `✅ Project created successfully.`,
@@ -88,10 +103,10 @@ export function registerProjectManagementTools(server: McpServer): void {
           `Slug: ${project.slug}`,
           ...(project.name ? [`Name: ${project.name}`] : []),
           `ID: ${project.id}`,
+          `Namespaces: ${namespaces.join(', ')}`,
           ``,
           `Next steps:`,
-          `1. create_namespace — add at least one namespace (e.g. "common") — default "main" already exists`,
-          `2. create_locale — add locales (default "en" already exists)`,
+          `1. create_locale — add locales (default "en" already exists)`,
           `Sandbox is auto-initialized — you can start writing translations immediately.`,
         ];
 

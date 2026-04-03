@@ -5,6 +5,7 @@ import {
   Modal,
   Form,
   Input,
+  Select,
   Popconfirm,
   Typography,
   message,
@@ -31,6 +32,7 @@ const fetchProjects = async (): Promise<Project[]> => {
 const createProject = async (dto: {
   slug: string;
   name: string;
+  namespaces: string[];
 }): Promise<Project> => {
   const res = await apiClient.post('/translations/projects', dto);
   return res.data;
@@ -75,7 +77,11 @@ const ProjectsPage: React.FC = () => {
 
   const handleCreate = () => {
     form.validateFields().then((vals) => {
-      createMutation.mutate({ slug: vals.slug, name: vals.name || vals.slug });
+      createMutation.mutate({
+        slug: vals.slug,
+        name: vals.name || vals.slug,
+        namespaces: vals.namespaces,
+      });
     });
   };
 
@@ -195,6 +201,23 @@ const ProjectsPage: React.FC = () => {
             ]}
           >
             <Input placeholder="my-project" />
+          </Form.Item>
+          <Form.Item
+            name="namespaces"
+            label="Namespaces"
+            extra="Type a namespace slug and press Enter. At least one is required."
+            rules={[
+              {
+                required: true,
+                message: 'At least one namespace is required',
+              },
+            ]}
+          >
+            <Select
+              mode="tags"
+              placeholder="common"
+              tokenSeparators={[',', ' ']}
+            />
           </Form.Item>
         </Form>
       </Modal>
