@@ -82,10 +82,15 @@ export class AiTranslateService {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
-    const localeEntries =
-      targetLocales && targetLocales.length > 0
-        ? targetLocales.map((code) => [code, LOCALE_NAMES[code] ?? code])
-        : Object.entries(DEFAULT_TARGET_LOCALES);
+    // If targetLocales is explicitly provided (even empty), respect it.
+    // Only fall back to DEFAULT_TARGET_LOCALES when targetLocales is undefined.
+    const localeEntries = targetLocales
+      ? targetLocales.map((code) => [code, LOCALE_NAMES[code] ?? code])
+      : Object.entries(DEFAULT_TARGET_LOCALES);
+
+    if (localeEntries.length === 0) {
+      return {};
+    }
 
     const languages = localeEntries
       .map(([code, name]) => `${name} (${code})`)

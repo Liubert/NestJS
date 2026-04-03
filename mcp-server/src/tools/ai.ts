@@ -33,7 +33,7 @@ export function registerAiTools(server: McpServer): void {
           {
             text,
             projectSlug,
-            ...(targetLocales.length > 0 ? { targetLocales } : {}),
+            targetLocales,
           },
         );
         logWrite('ai_translate', { projectSlug, text }, result);
@@ -155,9 +155,10 @@ export function registerAiTools(server: McpServer): void {
         const lines = [
           `Quality check: ${projectSlug}/${namespace}/${key}`,
           ``,
-          ...Object.entries(result).map(
-            ([locale, r]) =>
-              `  [${locale}] ${r.score}/100 (${r.level}) — ${r.comment}`,
+          ...Object.entries(result).map(([locale, r]) =>
+            r
+              ? `  [${locale}] ${r.score}/100 (${r.level}) — ${r.comment}`
+              : `  [${locale}] skipped (no translation)`,
           ),
           ``,
           `Results saved to database. Visible in Admin UI.`,
