@@ -19,9 +19,4 @@ export class ImportTranslationsDto {
   @IsOptional()
   @IsString()
   projectName?: string;
-
-  @ApiPropertyOptional({ example: 'en', description: 'Default locale code' })
-  @IsOptional()
-  @IsString()
-  defaultLocale?: string;
 }

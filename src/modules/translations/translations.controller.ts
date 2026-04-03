@@ -84,7 +84,6 @@ export class TranslationsController {
         file: { type: 'string', format: 'binary' },
         projectSlug: { type: 'string' },
         projectName: { type: 'string' },
-        defaultLocale: { type: 'string' },
       },
     },
   })

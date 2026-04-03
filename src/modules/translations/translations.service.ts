@@ -1152,7 +1152,7 @@ export class TranslationsService {
     fileBuffer: Buffer,
     dto: ImportTranslationsDto,
   ): Promise<{ imported: number; locales: string[]; namespaces: string[] }> {
-    const { projectSlug, projectName, defaultLocale = 'en' } = dto;
+    const { projectSlug, projectName } = dto;
     const zipData = this.parseZip(fileBuffer);
     const localeCodes = Object.keys(zipData);
 
@@ -1178,8 +1178,12 @@ export class TranslationsService {
         );
       }
 
+      // Ensure 'en' locale always exists and is default
       const localeMap = new Map<string, LocaleEntity>();
-      for (const code of localeCodes) {
+      const allLocaleCodes = new Set(localeCodes);
+      allLocaleCodes.add('en');
+
+      for (const code of allLocaleCodes) {
         let locale = await localeRepo.findOne({
           where: { projectId: project.id, code },
         });
@@ -1188,9 +1192,12 @@ export class TranslationsService {
             localeRepo.create({
               projectId: project.id,
               code,
-              isDefault: code === defaultLocale,
+              isDefault: code === 'en',
             }),
           );
+        } else if (code === 'en' && !locale.isDefault) {
+          locale.isDefault = true;
+          await localeRepo.save(locale);
         }
         localeMap.set(code, locale);
       }
