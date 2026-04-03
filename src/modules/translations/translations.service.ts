@@ -1167,7 +1167,6 @@ export class TranslationsService {
       const namespaceRepo = manager.getRepository(NamespaceEntity);
       const localeRepo = manager.getRepository(LocaleEntity);
       const keyRepo = manager.getRepository(TranslationKeyEntity);
-      const valueRepo = manager.getRepository(TranslationValueEntity);
 
       let project = await projectRepo.findOne({ where: { slug: projectSlug } });
       if (!project) {
@@ -1221,8 +1220,7 @@ export class TranslationsService {
         }
         namespaceMap.set(nsSlug, ns);
 
-        await keyRepo.delete({ namespaceId: ns.id });
-
+        // Collect all keys from ZIP for this namespace
         const allKeys = new Set<string>();
         for (const localeData of Object.values(zipData)) {
           const nsData = localeData[nsSlug];
@@ -1231,56 +1229,51 @@ export class TranslationsService {
           }
         }
 
-        const keyEntities = await keyRepo.save(
-          [...allKeys].map((key) =>
-            keyRepo.create({ namespaceId: ns.id, key }),
-          ),
-        );
-        const keyMap = new Map<string, TranslationKeyEntity>(
-          keyEntities.map((k) => [k.key, k]),
-        );
+        // Upsert keys: create missing, keep existing
+        const existingKeys = await keyRepo.findBy({ namespaceId: ns.id });
+        const existingKeyMap = new Map(existingKeys.map((k) => [k.key, k]));
 
+        const newKeys = [...allKeys].filter((k) => !existingKeyMap.has(k));
+        if (newKeys.length) {
+          const created = await keyRepo.save(
+            newKeys.map((key) => keyRepo.create({ namespaceId: ns.id, key })),
+          );
+          for (const k of created) existingKeyMap.set(k.key, k);
+        }
+
+        // Write values to sandbox only
         for (const [localeCode, localeData] of Object.entries(zipData)) {
           const nsData = localeData[nsSlug];
           if (!nsData) continue;
           const locale = localeMap.get(localeCode)!;
-          const valueEntities = Object.entries(nsData).map(([key, value]) =>
-            valueRepo.create({
-              keyId: keyMap.get(key)!.id,
-              localeId: locale.id,
-              value,
-            }),
-          );
-          await valueRepo.save(valueEntities);
-          imported += valueEntities.length;
+
+          for (const [key, value] of Object.entries(nsData)) {
+            const keyEntity = existingKeyMap.get(key);
+            if (!keyEntity) continue;
+
+            await manager.query(
+              `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
+               VALUES ($1, $2, $3, $4, false, now())
+               ON CONFLICT (project_id, key_id, locale_id)
+               DO UPDATE SET value = $4, is_deleted = false, updated_at = now(),
+                 quality_review_state = 'not_checked', quality_score = NULL,
+                 quality_level = NULL, quality_comment = NULL, quality_checked_at = NULL`,
+              [project.id, keyEntity.id, locale.id, value],
+            );
+            imported++;
+          }
         }
       }
 
-      // Re-sync sandbox: if sandbox is initialized, refresh it with new production data
-      if (project.sandboxInitializedAt) {
-        await manager.query(
-          `DELETE FROM sandbox_values WHERE project_id = $1`,
-          [project.id],
-        );
-        await manager.query(
-          `
-          INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
-            context, context_need, context_reason,
-            quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
-          SELECT
-            ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(),
-            tk.context, tk.context_need, tk.context_reason,
-            tv.quality_score, tv.quality_level, tv.quality_comment,
-            tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
-          FROM translation_values tv
-          JOIN translation_keys tk ON tk.id = tv.key_id
-          JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-          WHERE ns.project_id = $1
-          `,
-          [project.id],
-        );
+      // Auto-init sandbox if not yet initialized
+      if (!project.sandboxInitializedAt) {
         await manager.update(ProjectEntity, project.id, {
-          sandboxHasChanges: false,
+          sandboxInitializedAt: new Date(),
+          sandboxHasChanges: true,
+        });
+      } else {
+        await manager.update(ProjectEntity, project.id, {
+          sandboxHasChanges: true,
         });
       }
 
