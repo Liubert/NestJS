@@ -24,6 +24,7 @@ import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { BulkImportDto } from './dto/bulk-import.dto.js';
+import { BulkDeleteDto } from './dto/bulk-delete.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
 
@@ -302,6 +303,25 @@ export class SandboxController {
       ns,
     );
     return this.sandboxService.batchUpsert(project, namespace, dto.entries);
+  }
+
+  @Post('namespaces/:ns/entries/batch-delete')
+  @ApiOperation({
+    summary: 'Bulk delete multiple translation keys in sandbox',
+  })
+  async batchDeleteEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkDeleteDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.batchDelete(
+      slug,
+      ns,
+      dto.keys,
+      user.userId,
+      user.role,
+    );
   }
 
   @Post('namespaces/:ns/entries/:key/rename')

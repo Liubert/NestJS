@@ -322,11 +322,33 @@ export class SandboxService {
     value: string,
   ): Promise<void> {
     try {
+      // Check if value actually changed — skip quality reset if identical
+      const existing = await this.sandboxRepo.findOne({
+        where: { projectId, keyId, localeId },
+        select: ['value', 'qualityReviewState'],
+      });
+
+      const valueChanged = !existing || existing.value !== value;
+
       await this.sandboxRepo.upsert(
-        { projectId, keyId, localeId, value, isDeleted: false },
+        {
+          projectId,
+          keyId,
+          localeId,
+          value,
+          isDeleted: false,
+          ...(valueChanged && existing?.qualityReviewState !== 'expected'
+            ? {
+                qualityReviewState: 'not_checked',
+                qualityScore: null,
+                qualityLevel: null,
+                qualityComment: null,
+                qualityCheckedAt: null,
+              }
+            : {}),
+        },
         {
           conflictPaths: ['projectId', 'keyId', 'localeId'],
-          skipUpdateIfNoValuesChanged: true,
         },
       );
     } catch (err) {
@@ -1897,6 +1919,44 @@ export class SandboxService {
     }
 
     return { created, updated };
+  }
+
+  // ─── Batch delete ─────────────────────────────────────────────────────────
+
+  async batchDelete(
+    projectSlug: string,
+    nsSlug: string,
+    keys: string[],
+    _userId: string,
+    _role: UserRole,
+  ): Promise<{ deleted: number }> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const locales = await this.localeRepo.findBy({ projectId: project.id });
+    let deleted = 0;
+
+    for (const key of keys) {
+      const keyEntity = await this.keyRepo.findOne({
+        where: { namespaceId: ns.id, key },
+      });
+      if (!keyEntity) continue;
+
+      for (const locale of locales) {
+        await this.deleteSandboxValue(project.id, keyEntity.id, locale.id);
+      }
+      deleted++;
+    }
+
+    return { deleted };
   }
 
   // ─── Rename key ──────────────────────────────────────────────────────────
