@@ -462,20 +462,6 @@ ${JSON.stringify(items, null, 2)}`;
     contextNeed: 'required' | 'useful' | 'none';
     contextReason: string | null;
   }> {
-    // Detect untranslated text: source equals translation for non-default locale
-    if (
-      mode === 'translation_quality' &&
-      source.trim() === translation.trim()
-    ) {
-      return {
-        score: 1,
-        level: 'red',
-        comment: `Text appears untranslated — "${locale}" value is identical to source.`,
-        contextNeed: 'none',
-        contextReason: null,
-      };
-    }
-
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -494,7 +480,14 @@ ${JSON.stringify(items, null, 2)}`;
 
     const vars: Record<string, string> = { source, translation, locale };
     if (context) vars.context = context;
-    const prompt = interpolate(template, vars);
+
+    // When source and translation are identical, hint the AI to check for untranslated text
+    const identicalHint =
+      mode === 'translation_quality' && source.trim() === translation.trim()
+        ? `\n\nIMPORTANT: The translation is IDENTICAL to the English source text. This is often a sign that the text was not translated at all. Some words (like "taxi", "hotel", "internet") are legitimately the same across languages — if so, score normally. But if this is a phrase or word that should differ in ${locale}, score it very low (1-3) and comment that it appears untranslated.`
+        : '';
+
+    const prompt = interpolate(template, vars) + identicalHint;
 
     let raw: string;
     try {
