@@ -133,7 +133,8 @@ export function registerTranslationTools(server: McpServer): void {
   server.tool(
     "get_translations_needing_attention",
     [
-      "Get translations that need quality improvement.",
+      "Get SANDBOX translations that need quality improvement.",
+      "Reads quality scores from sandbox (not production).",
       "Returns all non-green/problematic translations with full context, values, and quality details.",
       "Use this to find translations that need better context, improved translation quality, or both.",
       "The agent can then inspect each item and decide: add/improve context, improve translation, or both.",
@@ -160,7 +161,7 @@ export function registerTranslationTools(server: McpServer): void {
         };
 
         const data = await apiGet<EntriesResponse>(
-          `/translations/projects/${projectSlug}/namespaces/${namespace}/attention`,
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/attention`,
           params,
         );
 

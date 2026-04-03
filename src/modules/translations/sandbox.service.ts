@@ -2,9 +2,11 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  Inject,
   Injectable,
   Logger,
   NotFoundException,
+  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -28,6 +30,7 @@ import {
   PaginatedResponse,
 } from '../../common/dto/paginated-response.dto.js';
 import type { QualityInfo } from './translations.service.js';
+import { AiTranslateService } from './ai-translate.service.js';
 
 const MAX_SNAPSHOTS = 5;
 
@@ -79,6 +82,8 @@ export class SandboxService {
     @InjectRepository(LocaleEntity)
     private readonly localeRepo: Repository<LocaleEntity>,
     private readonly dataSource: DataSource,
+    @Inject(forwardRef(() => AiTranslateService))
+    private readonly aiTranslateService: AiTranslateService,
   ) {}
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -952,8 +957,9 @@ export class SandboxService {
       if (qualityLevel === 'unchecked') {
         qualityCondition = `
           AND EXISTS (
-            SELECT 1 FROM translation_values tv3
-            WHERE tv3.key_id = tk.id AND tv3.value IS NOT NULL AND tv3.quality_level IS NULL
+            SELECT 1 FROM sandbox_values sv3
+            WHERE sv3.key_id = tk.id AND sv3.project_id = $1
+              AND sv3.is_deleted = false AND sv3.value IS NOT NULL AND sv3.quality_level IS NULL
           )
         `;
       } else if (qualityLevel === 'needs_context') {
@@ -971,8 +977,9 @@ export class SandboxService {
       } else if (qualityLevel === 'expected') {
         qualityCondition = `
           AND EXISTS (
-            SELECT 1 FROM translation_values tv3
-            WHERE tv3.key_id = tk.id AND tv3.quality_level = 'expected'
+            SELECT 1 FROM sandbox_values sv3
+            WHERE sv3.key_id = tk.id AND sv3.project_id = $1
+              AND sv3.is_deleted = false AND sv3.quality_level = 'expected'
           )
         `;
       } else {
@@ -980,8 +987,9 @@ export class SandboxService {
         const qi = params.length;
         qualityCondition = `
           AND EXISTS (
-            SELECT 1 FROM translation_values tv3
-            WHERE tv3.key_id = tk.id AND tv3.quality_level = $${qi}
+            SELECT 1 FROM sandbox_values sv3
+            WHERE sv3.key_id = tk.id AND sv3.project_id = $1
+              AND sv3.is_deleted = false AND sv3.quality_level = $${qi}
           )
         `;
       }
@@ -993,8 +1001,9 @@ export class SandboxService {
       const rsi = params.length;
       reviewStateCondition = `
         AND EXISTS (
-          SELECT 1 FROM translation_values tv4
-          WHERE tv4.key_id = tk.id AND tv4.quality_review_state = $${rsi}
+          SELECT 1 FROM sandbox_values sv4
+          WHERE sv4.key_id = tk.id AND sv4.project_id = $1
+            AND sv4.is_deleted = false AND sv4.quality_review_state = $${rsi}
         )
       `;
     }
@@ -1040,7 +1049,7 @@ export class SandboxService {
 
     const sortCol =
       sortBy === 'qualityScore'
-        ? '(SELECT MIN(tv_qs.quality_score) FROM translation_values tv_qs WHERE tv_qs.key_id = tk.id AND tv_qs.quality_score IS NOT NULL)'
+        ? `(SELECT MIN(sv_qs.quality_score) FROM sandbox_values sv_qs WHERE sv_qs.key_id = tk.id AND sv_qs.project_id = $1 AND sv_qs.is_deleted = false AND sv_qs.quality_score IS NOT NULL)`
         : sortBy === 'createdAt'
           ? 'tk.created_at'
           : 'tk.key';
@@ -1053,7 +1062,7 @@ export class SandboxService {
 
     const qualitySelectExpr =
       sortBy === 'qualityScore'
-        ? `, (SELECT MIN(tv_qs.quality_score) FROM translation_values tv_qs WHERE tv_qs.key_id = tk.id AND tv_qs.quality_score IS NOT NULL) AS _qs`
+        ? `, (SELECT MIN(sv_qs.quality_score) FROM sandbox_values sv_qs WHERE sv_qs.key_id = tk.id AND sv_qs.project_id = $1 AND sv_qs.is_deleted = false AND sv_qs.quality_score IS NOT NULL) AS _qs`
         : '';
     const qualityOrderCol = sortBy === 'qualityScore' ? '_qs' : '';
 
@@ -1415,6 +1424,341 @@ export class SandboxService {
     await this.projectRepo.update(project.id, {
       sandboxHasChanges: diff.total > 0,
     });
+  }
+
+  // ─── Sandbox quality check ────────────────────────────────────────────────
+
+  /**
+   * Runs AI quality check on all locales of a key, reading from SANDBOX values
+   * and persisting results to SANDBOX values. Production is never touched.
+   */
+  async runSandboxQualityCheck(
+    projectSlug: string,
+    nsSlug: string,
+    key: string,
+    _userId: string,
+    _role: UserRole,
+  ): Promise<Record<string, QualityInfo | null>> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const keyEntity = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key },
+    });
+    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    const locales = await this.localeRepo.findBy({ projectId: project.id });
+    const defaultLocale = locales.find((l) => l.isDefault);
+
+    // Read source text from sandbox (default locale)
+    let source: string | undefined;
+    if (defaultLocale) {
+      const sourceRow = await this.sandboxRepo.findOne({
+        where: {
+          projectId: project.id,
+          keyId: keyEntity.id,
+          localeId: defaultLocale.id,
+          isDeleted: false,
+        },
+      });
+      source = sourceRow?.value ?? undefined;
+    }
+
+    const results: Record<string, QualityInfo | null> = {};
+
+    await Promise.allSettled(
+      locales.map(async (locale) => {
+        // Read from sandbox
+        const sandboxValue = await this.sandboxRepo.findOne({
+          where: {
+            projectId: project.id,
+            keyId: keyEntity.id,
+            localeId: locale.id,
+            isDeleted: false,
+          },
+        });
+
+        // Skip expected (manually accepted) translations
+        if (sandboxValue?.qualityReviewState === 'expected') {
+          results[locale.code] = {
+            reviewState: 'expected',
+            score: 100,
+            level: 'expected',
+            comment: null,
+            checkedAt: sandboxValue.qualityCheckedAt?.toISOString() ?? null,
+          };
+          return;
+        }
+
+        const translation = sandboxValue?.value;
+        if (!translation) {
+          results[locale.code] = null;
+          return;
+        }
+
+        try {
+          const mode = locale.isDefault
+            ? 'language_quality'
+            : source
+              ? 'translation_quality'
+              : 'language_quality';
+
+          const result = await this.aiTranslateService.checkQuality(
+            locale.isDefault ? translation : (source ?? translation),
+            translation,
+            locale.code,
+            mode,
+            project.id,
+            keyEntity.context ?? undefined,
+          );
+
+          // Persist contextNeed/contextReason from AI evaluation
+          if (
+            result.contextNeed &&
+            (keyEntity.contextNeed !== result.contextNeed ||
+              keyEntity.contextReason !== result.contextReason)
+          ) {
+            keyEntity.contextNeed = result.contextNeed;
+            keyEntity.contextReason = result.contextReason;
+            await this.keyRepo.save(keyEntity);
+          }
+
+          // Persist quality results to SANDBOX (not production)
+          await this.sandboxRepo
+            .createQueryBuilder()
+            .update()
+            .set({
+              qualityScore: result.score,
+              qualityLevel: result.level,
+              qualityComment: result.comment,
+              qualityCheckedAt: new Date(),
+              qualityReviewState: 'checked',
+            })
+            .where(
+              'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
+              {
+                projectId: project.id,
+                keyId: keyEntity.id,
+                localeId: locale.id,
+              },
+            )
+            .execute();
+
+          results[locale.code] = {
+            reviewState: 'checked',
+            score: result.score,
+            level: result.level,
+            comment: result.comment,
+            checkedAt: new Date().toISOString(),
+          };
+        } catch {
+          results[locale.code] = null;
+        }
+      }),
+    );
+
+    return results;
+  }
+
+  // ─── Sandbox attention items ────────────────────────────────────────────────
+
+  /**
+   * Returns sandbox translations needing quality attention.
+   * Reads quality data from sandbox_values (not production).
+   */
+  async getSandboxAttentionItems(
+    projectSlug: string,
+    nsSlug: string,
+    options: {
+      limit: number;
+      qualityLevels: string[];
+      includeUnchecked: boolean;
+    },
+    _userId: string,
+    _role: UserRole,
+  ): Promise<PaginatedResponse<SandboxEntryRow>> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const limit = Math.min(options.limit, 100);
+    const levels = options.qualityLevels.filter((l) =>
+      ['green', 'yellow', 'red'].includes(l),
+    );
+
+    const conditions: string[] = [];
+    const params: unknown[] = [project.id, ns.id];
+
+    if (levels.length) {
+      params.push(levels);
+      conditions.push(`EXISTS (
+        SELECT 1 FROM sandbox_values sv2
+        WHERE sv2.key_id = tk.id AND sv2.project_id = $1
+          AND sv2.is_deleted = false AND sv2.quality_level = ANY($${params.length})
+      )`);
+    }
+
+    if (options.includeUnchecked) {
+      conditions.push(`EXISTS (
+        SELECT 1 FROM sandbox_values sv3
+        WHERE sv3.key_id = tk.id AND sv3.project_id = $1
+          AND sv3.is_deleted = false AND sv3.value IS NOT NULL AND sv3.quality_level IS NULL
+      )`);
+    }
+
+    if (
+      options.qualityLevels.includes('needs_context') ||
+      !options.qualityLevels.length
+    ) {
+      conditions.push(
+        `(tk.context_need IN ('required', 'useful') AND tk.context IS NULL)`,
+      );
+    }
+
+    // Visibility: key must have at least one active sandbox value
+    const visibilityWhere = `
+      AND NOT (
+        EXISTS (SELECT 1 FROM sandbox_values sv WHERE sv.key_id = tk.id AND sv.project_id = $1 AND sv.is_deleted = true)
+        AND NOT EXISTS (SELECT 1 FROM sandbox_values sv WHERE sv.key_id = tk.id AND sv.project_id = $1 AND sv.is_deleted = false)
+      )
+      AND (
+        EXISTS (SELECT 1 FROM translation_values tv WHERE tv.key_id = tk.id)
+        OR EXISTS (SELECT 1 FROM sandbox_values sv WHERE sv.key_id = tk.id AND sv.project_id = $1 AND sv.is_deleted = false)
+      )
+    `;
+
+    const whereClause = conditions.length
+      ? `AND (${conditions.join(' OR ')})`
+      : '';
+
+    const countResult = await this.dataSource.query<{ cnt: string }[]>(
+      `SELECT COUNT(DISTINCT tk.id) AS cnt
+       FROM translation_keys tk
+       WHERE tk.namespace_id = $2 ${visibilityWhere} ${whereClause}`,
+      params,
+    );
+    const total = Number(countResult[0]?.cnt ?? 0);
+
+    params.push(limit);
+    const keys = await this.dataSource.query<
+      {
+        id: string;
+        key: string;
+        created_at: Date;
+        context: string | null;
+        context_need: string | null;
+        context_reason: string | null;
+      }[]
+    >(
+      `SELECT DISTINCT tk.id, tk.key, tk.created_at,
+              COALESCE(
+                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                   AND sv_ctx.is_deleted = false LIMIT 1),
+                tk.context
+              ) AS context,
+              COALESCE(
+                (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                   AND sv_ctx.is_deleted = false LIMIT 1),
+                tk.context_need
+              ) AS context_need,
+              COALESCE(
+                (SELECT sv_ctx.context_reason FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                   AND sv_ctx.is_deleted = false LIMIT 1),
+                tk.context_reason
+              ) AS context_reason,
+              (SELECT MIN(sv_qs.quality_score) FROM sandbox_values sv_qs
+               WHERE sv_qs.key_id = tk.id AND sv_qs.project_id = $1
+                 AND sv_qs.is_deleted = false AND sv_qs.quality_score IS NOT NULL) AS _qs
+       FROM translation_keys tk
+       WHERE tk.namespace_id = $2 ${visibilityWhere} ${whereClause}
+       ORDER BY _qs ASC NULLS FIRST
+       LIMIT $${params.length}`,
+      params,
+    );
+
+    if (!keys.length) return paginate([], total, 1, limit);
+
+    const keyIds = keys.map((k) => k.id);
+
+    // Load sandbox values
+    const values = await this.dataSource.query<
+      { key_id: string; locale: string; value: string | null }[]
+    >(
+      `SELECT sv.key_id, l.code AS locale, sv.value
+       FROM sandbox_values sv
+       JOIN translation_locales l ON l.id = sv.locale_id
+       WHERE sv.key_id = ANY($1) AND sv.project_id = $2 AND sv.is_deleted = false`,
+      [keyIds, project.id],
+    );
+
+    const qualityRows = await this.dataSource.query<
+      {
+        key_id: string;
+        locale: string;
+        quality_score: number | null;
+        quality_level: string | null;
+        quality_comment: string | null;
+        quality_checked_at: string | null;
+        quality_review_state: string | null;
+      }[]
+    >(
+      `SELECT sv.key_id, l.code AS locale,
+              sv.quality_score, sv.quality_level, sv.quality_comment,
+              sv.quality_checked_at, sv.quality_review_state
+       FROM sandbox_values sv
+       JOIN translation_locales l ON l.id = sv.locale_id
+       WHERE sv.key_id = ANY($1) AND sv.project_id = $2 AND sv.is_deleted = false`,
+      [keyIds, project.id],
+    );
+
+    const valuesByKey = new Map<string, Record<string, string>>();
+    for (const v of values) {
+      if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
+      if (v.value != null) valuesByKey.get(v.key_id)![v.locale] = v.value;
+    }
+
+    const qualityByKey = new Map<string, Record<string, QualityInfo | null>>();
+    for (const q of qualityRows) {
+      if (!qualityByKey.has(q.key_id)) qualityByKey.set(q.key_id, {});
+      qualityByKey.get(q.key_id)![q.locale] = {
+        reviewState: (q.quality_review_state ??
+          'not_checked') as QualityInfo['reviewState'],
+        score: q.quality_score,
+        level: q.quality_level as QualityInfo['level'],
+        comment: q.quality_comment,
+        checkedAt: q.quality_checked_at,
+      };
+    }
+
+    const data: SandboxEntryRow[] = keys.map((k) => ({
+      key: k.key,
+      createdAt: k.created_at,
+      context: k.context ?? null,
+      contextNeed: (k.context_need as SandboxEntryRow['contextNeed']) ?? null,
+      contextReason: k.context_reason ?? null,
+      values: valuesByKey.get(k.id) ?? {},
+      quality: qualityByKey.get(k.id) ?? {},
+    }));
+
+    return paginate(data, total, 1, limit);
   }
 
   /**

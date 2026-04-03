@@ -200,6 +200,51 @@ export class SandboxController {
     );
   }
 
+  @Post('namespaces/:ns/entries/:key/check-quality')
+  @ApiOperation({
+    summary:
+      'Run AI quality check for all locales of a key in sandbox and persist results to sandbox',
+  })
+  checkEntryQuality(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.runSandboxQualityCheck(
+      slug,
+      ns,
+      decodeURIComponent(key),
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Get('namespaces/:ns/attention')
+  @ApiOperation({
+    summary: 'Get sandbox translations needing quality attention',
+  })
+  getAttentionItems(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Query('limit') limit?: string,
+    @Query('qualityLevels') qualityLevels?: string,
+    @Query('includeUnchecked') includeUnchecked?: string,
+    @CurrentUser() user?: CurrentUserType,
+  ) {
+    return this.sandboxService.getSandboxAttentionItems(
+      slug,
+      ns,
+      {
+        limit: limit ? parseInt(limit, 10) : 50,
+        qualityLevels: qualityLevels?.split(',') ?? ['yellow', 'red'],
+        includeUnchecked: includeUnchecked === 'true',
+      },
+      user!.userId,
+      user!.role,
+    );
+  }
+
   @Post('namespaces/:ns/entries/:key/revert')
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({

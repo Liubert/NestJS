@@ -129,10 +129,11 @@ export function registerAiTools(server: McpServer): void {
   server.tool(
     'check_entry_quality',
     [
-      'Run AI quality check on all locales of a specific translation key and PERSIST the results.',
-      'Results are saved to the database (score, level, comment) and visible in Admin UI.',
-      'Uses the default locale as source text for comparison.',
+      'Run AI quality check on all locales of a specific translation key in SANDBOX and PERSIST the results to sandbox.',
+      'Results are saved to sandbox (score, level, comment) and visible in Admin UI.',
+      'Uses the default locale sandbox value as source text for comparison.',
       "Skips locales marked as 'expected' (manually accepted).",
+      'Production is never read or written by this tool.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug'),
@@ -144,7 +145,7 @@ export function registerAiTools(server: McpServer): void {
         const result = await apiPost<
           Record<string, { score: number; level: string; comment: string }>
         >(
-          `/translations/projects/${projectSlug}/namespaces/${namespace}/entries/${encodeURIComponent(key)}/check-quality`,
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/${encodeURIComponent(key)}/check-quality`,
         );
         logWrite(
           'check_entry_quality',
