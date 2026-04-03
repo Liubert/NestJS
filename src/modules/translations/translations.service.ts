@@ -270,6 +270,14 @@ export class TranslationsService {
       }),
     );
 
+    // Auto-initialize sandbox (empty — no production data to copy yet)
+    await this.projectRepo.update(project.id, {
+      sandboxInitializedAt: new Date(),
+      sandboxHasChanges: false,
+    });
+    project.sandboxInitializedAt = new Date();
+    project.sandboxHasChanges = false;
+
     return project;
   }
 
@@ -498,6 +506,12 @@ export class TranslationsService {
       where: { projectId: project.id, code },
     });
     if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
+
+    if (locale.isDefault) {
+      throw new BadRequestException(
+        `Cannot delete the default locale "${code}". Change the default locale first.`,
+      );
+    }
 
     await this.localeRepo.remove(locale);
   }

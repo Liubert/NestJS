@@ -118,6 +118,12 @@ export class AiTranslateService {
       );
     }
 
+    // Filter response to only include requested locales
+    const requestedCodes = new Set(localeEntries.map(([code]) => code));
+    const filtered = Object.fromEntries(
+      Object.entries(parsed).filter(([code]) => requestedCodes.has(code)),
+    );
+
     if (projectId) {
       const inputTokens = Math.ceil(prompt.length / 4);
       const outputTokens = Math.ceil(raw.length / 4);
@@ -130,13 +136,13 @@ export class AiTranslateService {
           model: aiCfg.model,
           metadata: {
             textLength: text.length,
-            localeCount: Object.keys(parsed).length,
+            localeCount: Object.keys(filtered).length,
           },
         })
         .catch(() => {}); // Non-blocking: don't fail the translation if logging fails
     }
 
-    return parsed;
+    return filtered;
   }
 
   /**
@@ -189,6 +195,12 @@ export class AiTranslateService {
       );
     }
 
+    // Filter to only requested locales
+    const requestedCodes = new Set(Object.keys(targetLocales));
+    const filtered = Object.fromEntries(
+      Object.entries(parsed).filter(([code]) => requestedCodes.has(code)),
+    );
+
     if (projectId) {
       const inputTokens = Math.ceil(prompt.length / 4);
       const outputTokens = Math.ceil(raw.length / 4);
@@ -201,13 +213,13 @@ export class AiTranslateService {
           model: aiCfg.model,
           metadata: {
             textLength: text.length,
-            localeCount: Object.keys(parsed).length,
+            localeCount: Object.keys(filtered).length,
           },
         })
         .catch(() => {});
     }
 
-    return parsed;
+    return filtered;
   }
 
   /**
@@ -450,6 +462,20 @@ ${JSON.stringify(items, null, 2)}`;
     contextNeed: 'required' | 'useful' | 'none';
     contextReason: string | null;
   }> {
+    // Detect untranslated text: source equals translation for non-default locale
+    if (
+      mode === 'translation_quality' &&
+      source.trim() === translation.trim()
+    ) {
+      return {
+        score: 1,
+        level: 'red',
+        comment: `Text appears untranslated — "${locale}" value is identical to source.`,
+        contextNeed: 'none',
+        contextReason: null,
+      };
+    }
+
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
