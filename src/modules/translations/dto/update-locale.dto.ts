@@ -13,11 +13,12 @@ export class UpdateLocaleDto {
 
   @ApiPropertyOptional({
     description:
-      'Translation guidance for AI — formality, plural rules, style notes',
-    example: 'Use formal "vi". Avoid anglicisms.',
+      'Language-specific translation guide for AI — style, tone, grammar rules, anti-patterns, common mistakes, wording preferences. Supports up to ~500 words.',
+    example:
+      'Use formal "ви" (not "ти"). Avoid anglicisms when Ukrainian equivalents exist. 3 plural forms: 1 елемент, 2 елементи, 5 елементів.',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(3000)
+  @MaxLength(5000)
   guidance?: string;
 }

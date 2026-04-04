@@ -11,7 +11,7 @@ export class ContextAwareQuality17714000000001 implements MigrationInterface {
     // Add context_required flag — set by AI during quality evaluation
     await queryRunner.query(`
       ALTER TABLE translation_keys
-      ADD COLUMN context_required BOOLEAN DEFAULT NULL
+      ADD COLUMN IF NOT EXISTS context_required BOOLEAN DEFAULT NULL
     `);
   }
 

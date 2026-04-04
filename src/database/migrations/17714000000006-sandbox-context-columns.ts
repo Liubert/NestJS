@@ -4,9 +4,9 @@ export class SandboxContextColumns17714000000006 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE sandbox_values
-        ADD COLUMN context VARCHAR(500) DEFAULT NULL,
-        ADD COLUMN context_need VARCHAR(10) DEFAULT NULL,
-        ADD COLUMN context_reason VARCHAR(300) DEFAULT NULL
+        ADD COLUMN IF NOT EXISTS context VARCHAR(500) DEFAULT NULL,
+        ADD COLUMN IF NOT EXISTS context_need VARCHAR(10) DEFAULT NULL,
+        ADD COLUMN IF NOT EXISTS context_reason VARCHAR(300) DEFAULT NULL
     `);
   }
 

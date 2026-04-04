@@ -701,14 +701,14 @@ const ProjectSettingsPage: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="guidance"
-            label="Translation guidance"
-            extra="Style rules for AI translations — formality, plural forms, common pitfalls"
+            label="Language translation guide"
+            extra="Practical language-specific guide for AI: style, tone, grammar, anti-patterns, common mistakes, wording rules. The richer the guide, the better the translation quality."
           >
             <Input.TextArea
-              rows={6}
-              maxLength={3000}
+              rows={10}
+              maxLength={5000}
               showCount
-              placeholder="e.g. Use formal 'vi' (not 'ty'). Ukrainian has 3 plural forms..."
+              placeholder={`e.g.\n- Tone: formal "ви", not informal "ти"\n- Plural forms: 3 forms — 1 елемент, 2 елементи, 5 елементів\n- Anti-patterns: avoid anglicisms (налаштування, not сетинги)\n- UI wording: use imperative for buttons (Зберегти, not Збереження)\n- Common mistakes: "приймати участь" → "брати участь"\n- Quotation marks: «text» not "text"`}
             />
           </Form.Item>
         </Form>
@@ -744,14 +744,14 @@ const ProjectSettingsPage: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="guidance"
-            label="Translation guidance"
-            extra="Style rules for AI translations — formality, plural forms, common pitfalls"
+            label="Language translation guide"
+            extra="Practical language-specific guide for AI: style, tone, grammar, anti-patterns, common mistakes, wording rules. The richer the guide, the better the translation quality."
           >
             <Input.TextArea
-              rows={6}
-              maxLength={3000}
+              rows={10}
+              maxLength={5000}
               showCount
-              placeholder="e.g. Use formal 'vi' (not 'ty'). Ukrainian has 3 plural forms..."
+              placeholder={`e.g.\n- Tone: formal "ви", not informal "ти"\n- Plural forms: 3 forms — 1 елемент, 2 елементи, 5 елементів\n- Anti-patterns: avoid anglicisms (налаштування, not сетинги)\n- UI wording: use imperative for buttons (Зберегти, not Збереження)\n- Common mistakes: "приймати участь" → "брати участь"\n- Quotation marks: «text» not "text"`}
             />
           </Form.Item>
         </Form>

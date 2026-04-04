@@ -215,10 +215,10 @@ export function registerProjectManagementTools(server: McpServer): void {
         .describe('Whether this is the default locale for the project'),
       guidance: z
         .string()
-        .max(3000)
+        .max(5000)
         .optional()
         .describe(
-          'Translation style guidance for AI — formality, plural rules, style notes. If omitted, server auto-fills from built-in defaults for known locales.',
+          'Language-specific translation guide for AI — style, tone, grammar rules, anti-patterns, common mistakes, wording preferences (up to ~500 words). If omitted, server auto-fills from built-in defaults for known locales.',
         ),
     },
     async ({ projectSlug, code, isDefault, guidance }) => {

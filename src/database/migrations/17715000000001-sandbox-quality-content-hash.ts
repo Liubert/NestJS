@@ -4,7 +4,7 @@ export class SandboxQualityContentHash17715000000001 implements MigrationInterfa
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
       ALTER TABLE sandbox_values
-        ADD COLUMN quality_content_hash VARCHAR(64) DEFAULT NULL
+        ADD COLUMN IF NOT EXISTS quality_content_hash VARCHAR(64) DEFAULT NULL
     `);
   }
 

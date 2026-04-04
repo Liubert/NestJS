@@ -90,7 +90,7 @@ export class FeedbackService {
       qb.andWhere('project.slug = :slug', { slug: query.projectSlug });
     }
 
-    qb.orderBy('fb.created_at', 'DESC')
+    qb.orderBy('fb.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
 
