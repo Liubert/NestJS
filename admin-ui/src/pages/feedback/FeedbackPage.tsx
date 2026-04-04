@@ -138,7 +138,7 @@ const FeedbackPage: React.FC = () => {
       dataIndex: 'message',
       key: 'message',
       render: (val: string) =>
-        val?.length > 80 ? val.slice(0, 80) + '...' : val,
+        val?.length > 500 ? val.slice(0, 500) + '...' : val,
     },
     {
       title: 'Status',
@@ -178,6 +178,9 @@ const FeedbackPage: React.FC = () => {
   const expandedRowRender = (record: FeedbackItem) => (
     <Descriptions column={1} size="small" bordered>
       <Descriptions.Item label="Full Message">{record.message}</Descriptions.Item>
+      {record.actionAttempted && (
+        <Descriptions.Item label="Action Attempted">{record.actionAttempted}</Descriptions.Item>
+      )}
       {record.suggestion && (
         <Descriptions.Item label="Suggestion">{record.suggestion}</Descriptions.Item>
       )}

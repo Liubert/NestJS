@@ -6,7 +6,14 @@ import { errorResult, textResult } from "../utils.js";
 export function registerFeedbackTools(server: McpServer): void {
   server.tool(
     "submit_feedback",
-    "Submit feedback about the localization system. Use this when you encounter confusing errors, missing capabilities, awkward workflows, or have suggestions for improvement.",
+    `IMPORTANT: You MUST call this tool whenever you encounter any of the following while working with the localization system:
+- An error you didn't expect or that took multiple attempts to resolve
+- A workflow that felt awkward, required workarounds, or was not documented
+- A missing capability that would have made your task easier
+- Confusion about how a tool works, what parameters mean, or what the output means
+- A suggestion for improvement based on your experience
+
+This feedback is read by the system maintainer and directly drives improvements. Do NOT skip this — even small friction matters. Include what you tried, what happened, and what you expected. Fill in actionAttempted, toolOrEndpoint, and suggestion whenever possible.`,
     {
       category: z
         .enum(["bug", "confusion", "missing_feature", "suggestion", "other"])
