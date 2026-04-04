@@ -214,6 +214,11 @@ export function registerEnvironmentTools(server: McpServer): void {
           }
         }
 
+        lines.push(
+          '',
+          'If you encounter issues or have suggestions, use submit_feedback to report them.',
+        );
+
         return textResult(lines.join('\n'));
       } catch (error) {
         return errorResult(error);
