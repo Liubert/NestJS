@@ -41,15 +41,28 @@ The developer configuring this MCP server is responsible for wiring `BACKEND_URL
 **Correct setup per environment:**
 
 ```
-# Development (local)
+# Development (local backend)
 BACKEND_URL=http://localhost:8080
+ADMIN_UI_URL=http://localhost:3010
 
-# Staging
-BACKEND_URL=http://your-stage-server:8080
-
-# Production (if you have a read-only use case)
-BACKEND_URL=https://your-prod-server
+# Production / Staging
+BACKEND_URL=http://79.76.35.167:8080
+ADMIN_UI_URL=http://79.76.35.167:3010
 ```
+
+### URL disambiguation for agents
+
+| Purpose | URL | Notes |
+|---------|-----|-------|
+| **Backend API** (for all MCP/agent requests) | `http://79.76.35.167:8080` | All tool calls go here |
+| **Admin UI** (browser only, not for API calls) | `http://79.76.35.167:3010` | Human-facing UI, do NOT send API requests here |
+| **Swagger docs** | `http://79.76.35.167:8080/api-docs` | API reference |
+
+**Agents must:**
+- Use the configured `BACKEND_URL` for all API requests
+- Never send API requests to `ADMIN_UI_URL` (port 3010) — it serves static HTML, not the API
+- Never guess ports — use the exact URL from environment config
+- If `BACKEND_URL` is not configured, surface the error instead of improvising
 
 ## Usage
 
