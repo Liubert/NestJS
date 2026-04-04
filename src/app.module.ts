@@ -13,6 +13,7 @@ import { FilesModule } from './modules/files/files.module';
 import { TranslationsModule } from './modules/translations/translations.module';
 import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
 import { QualityWorkerModule } from './modules/translations/quality-worker.module';
 
 @Module({
@@ -37,6 +38,7 @@ import { QualityWorkerModule } from './modules/translations/quality-worker.modul
     UsersModule,
     FilesModule,
     WebhooksModule,
+    FeedbackModule,
     TranslationsModule,
     McpPromptsModule,
     QualityWorkerModule,
