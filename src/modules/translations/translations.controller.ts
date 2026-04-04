@@ -111,8 +111,9 @@ export class TranslationsController {
         dto.projectSlug,
       );
       projectId = project.id;
-      const locales =
-        await this.translationsService.getProjectLocales(dto.projectSlug);
+      const locales = await this.translationsService.getProjectLocales(
+        dto.projectSlug,
+      );
       const guidance = locales.reduce<Record<string, string>>((acc, l) => {
         if (l.guidance) acc[l.code] = l.guidance;
         return acc;
@@ -140,11 +141,10 @@ export class TranslationsController {
         dto.projectSlug,
       );
       projectId = project.id;
-      const locales =
-        await this.translationsService.getProjectLocales(dto.projectSlug);
-      const matched = locales.find(
-        (l) => l.code === dto.locale && l.guidance,
+      const locales = await this.translationsService.getProjectLocales(
+        dto.projectSlug,
       );
+      const matched = locales.find((l) => l.code === dto.locale && l.guidance);
       if (matched) localeGuidanceStr = matched.guidance!;
     }
     return this.aiTranslateService.checkQuality(

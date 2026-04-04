@@ -105,10 +105,7 @@ export class AiTranslateService {
     if (localeGuidance) {
       const guidanceLines = localeEntries
         .filter(([code]) => localeGuidance[code])
-        .map(
-          ([code, name]) =>
-            `- ${name} (${code}): ${localeGuidance[code]}`,
-        );
+        .map(([code, name]) => `- ${name} (${code}): ${localeGuidance[code]}`);
       if (guidanceLines.length) {
         prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
       }
@@ -196,10 +193,7 @@ export class AiTranslateService {
     if (localeGuidance) {
       const guidanceLines = Object.entries(targetLocales)
         .filter(([code]) => localeGuidance[code])
-        .map(
-          ([code, name]) =>
-            `- ${name} (${code}): ${localeGuidance[code]}`,
-        );
+        .map(([code, name]) => `- ${name} (${code}): ${localeGuidance[code]}`);
       if (guidanceLines.length) {
         prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
       }
