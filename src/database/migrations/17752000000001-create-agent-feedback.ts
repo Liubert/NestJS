@@ -1,9 +1,9 @@
 import { MigrationInterface, QueryRunner } from 'typeorm';
 
-export class CreateAgentFeedback17175000000001 implements MigrationInterface {
+export class CreateAgentFeedback17752000000001 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(`
-      CREATE TABLE agent_feedback (
+      CREATE TABLE IF NOT EXISTS agent_feedback (
         id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
         user_id       uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
         project_id    uuid REFERENCES translation_projects(id) ON DELETE SET NULL,
@@ -25,16 +25,16 @@ export class CreateAgentFeedback17175000000001 implements MigrationInterface {
     `);
 
     await queryRunner.query(
-      `CREATE INDEX idx_agent_feedback_user_id ON agent_feedback (user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_agent_feedback_user_id ON agent_feedback (user_id)`,
     );
     await queryRunner.query(
-      `CREATE INDEX idx_agent_feedback_project_id ON agent_feedback (project_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_agent_feedback_project_id ON agent_feedback (project_id)`,
     );
     await queryRunner.query(
-      `CREATE INDEX idx_agent_feedback_category ON agent_feedback (category)`,
+      `CREATE INDEX IF NOT EXISTS idx_agent_feedback_category ON agent_feedback (category)`,
     );
     await queryRunner.query(
-      `CREATE INDEX idx_agent_feedback_created_at ON agent_feedback (created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS idx_agent_feedback_created_at ON agent_feedback (created_at DESC)`,
     );
   }
 
