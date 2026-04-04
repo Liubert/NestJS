@@ -31,7 +31,7 @@ export class AiTranslateDto {
   })
   @IsOptional()
   @IsString()
-  @MaxLength(500)
+  @MaxLength(1000)
   context?: string;
 
   @ApiPropertyOptional({

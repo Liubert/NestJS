@@ -90,7 +90,7 @@ export class SandboxValueEntity {
     | 'expected'
     | 'skipped';
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ type: 'varchar', length: 1000, nullable: true })
   context!: string | null;
 
   @Column({ name: 'context_need', type: 'varchar', length: 10, nullable: true })

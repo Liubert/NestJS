@@ -25,7 +25,7 @@ export class TranslationKeyEntity {
   @Column({ type: 'text' })
   key!: string;
 
-  @Column({ type: 'varchar', length: 500, nullable: true, default: null })
+  @Column({ type: 'varchar', length: 1000, nullable: true, default: null })
   context!: string | null;
 
   @Column({
