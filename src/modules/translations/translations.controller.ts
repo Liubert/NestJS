@@ -281,6 +281,7 @@ export class TranslationsController {
       user.userId,
       user.role,
       dto.aliases,
+      dto.guidance,
     );
   }
 
@@ -300,6 +301,7 @@ export class TranslationsController {
       dto.aliases ?? [],
       user.userId,
       user.role,
+      dto.guidance,
     );
   }
 

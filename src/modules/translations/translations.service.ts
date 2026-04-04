@@ -69,6 +69,7 @@ export interface LocaleInfo {
   code: string;
   isDefault: boolean;
   aliases: string[];
+  guidance: string | null;
 }
 
 export interface ProjectDetails {
@@ -306,6 +307,7 @@ export class TranslationsService {
         code: l.code,
         isDefault: l.isDefault,
         aliases: l.aliases ?? [],
+        guidance: l.guidance ?? null,
       })),
       namespaces: namespaces.map((ns) => ns.slug),
       autoTranslateEnabled: project.autoTranslateEnabled,
@@ -452,6 +454,7 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
     aliases: string[] = [],
+    guidance?: string | null,
   ): Promise<LocaleEntity> {
     const project = await this.requireProject(projectSlug);
     await this.assertManageAccess(project, userId, userRole);
@@ -472,6 +475,7 @@ export class TranslationsService {
         code,
         isDefault,
         aliases,
+        guidance: guidance ?? null,
       }),
     );
   }
@@ -482,6 +486,7 @@ export class TranslationsService {
     aliases: string[],
     userId: string,
     userRole: UserRole,
+    guidance?: string | null,
   ): Promise<LocaleEntity> {
     const project = await this.requireProject(projectSlug);
     await this.assertManageAccess(project, userId, userRole);
@@ -492,6 +497,7 @@ export class TranslationsService {
     if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
 
     locale.aliases = aliases;
+    if (guidance !== undefined) locale.guidance = guidance;
     return this.localeRepo.save(locale);
   }
 

@@ -27,4 +27,7 @@ export class LocaleEntity {
 
   @Column({ type: 'text', array: true, default: '{}' })
   aliases!: string[];
+
+  @Column({ type: 'text', nullable: true })
+  guidance!: string | null;
 }
