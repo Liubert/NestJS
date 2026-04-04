@@ -202,6 +202,7 @@ export function registerProjectManagementTools(server: McpServer): void {
       "Use full BCP 47 codes: 'nb-NO', 'da-DK', 'sv', 'en', 'uk'.",
       "Do NOT use short codes like 'no' or 'da' — they are not stored on the server.",
       'After adding a locale, use get_namespace_coverage to see fill gaps, then bulk_set_locale to fill them.',
+      'Locale guidance (translation style rules) can be set via the guidance param — if omitted, known locales get auto-filled defaults.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug'),
@@ -212,8 +213,15 @@ export function registerProjectManagementTools(server: McpServer): void {
         .boolean()
         .default(false)
         .describe('Whether this is the default locale for the project'),
+      guidance: z
+        .string()
+        .max(3000)
+        .optional()
+        .describe(
+          'Translation style guidance for AI — formality, plural rules, style notes. If omitted, server auto-fills from built-in defaults for known locales.',
+        ),
     },
-    async ({ projectSlug, code, isDefault }) => {
+    async ({ projectSlug, code, isDefault, guidance }) => {
       try {
         // Fetch existing namespaces to guide the next step.
         let namespaces: string[] = [];
@@ -226,11 +234,13 @@ export function registerProjectManagementTools(server: McpServer): void {
           // Non-fatal — just skip the hint.
         }
 
+        const body: Record<string, unknown> = { code, isDefault };
+        if (guidance) body.guidance = guidance;
         const created = await apiPost<LocaleCreated>(
           `/translations/projects/${projectSlug}/locales`,
-          { code, isDefault },
+          body,
         );
-        logWrite('create_locale', { projectSlug, code, isDefault }, created);
+        logWrite('create_locale', { projectSlug, code, isDefault, guidance }, created);
 
         const nextSteps =
           namespaces.length > 0
@@ -248,9 +258,14 @@ export function registerProjectManagementTools(server: McpServer): void {
                 `No namespaces exist yet — create a namespace first, then add translations.`,
               ];
 
+        const guidanceNote = guidance
+          ? 'Guidance: custom (provided)'
+          : 'Guidance: auto-filled from defaults (if available)';
+
         return textResult(
           [
             `Added locale: ${code}${isDefault ? ' (default)' : ''} to project ${projectSlug}`,
+            guidanceNote,
             ...nextSteps,
           ].join('\n'),
         );
