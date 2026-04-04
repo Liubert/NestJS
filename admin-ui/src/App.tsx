@@ -10,6 +10,7 @@ import {
   TeamOutlined,
   RobotOutlined,
   KeyOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 import TranslationsPage from './pages/translations/TranslationsPage';
 import AiSettingsPage from './pages/ai-settings/AiSettingsPage';
@@ -17,6 +18,7 @@ import ProjectsPage from './pages/projects/ProjectsPage';
 import ProjectSettingsPage from './pages/projects/ProjectSettingsPage';
 import UsersPage from './pages/users/UsersPage';
 import ApiTokensPage from './pages/api-tokens/ApiTokensPage';
+import FeedbackPage from './pages/feedback/FeedbackPage';
 import LoginPage from './pages/LoginPage';
 import ForgotPasswordPage from './pages/auth/ForgotPasswordPage';
 import ResetPasswordPage from './pages/auth/ResetPasswordPage';
@@ -102,6 +104,11 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
             icon: <RobotOutlined />,
             label: <Link to="/ai-settings">AI Settings</Link>,
           },
+          {
+            key: '/feedback',
+            icon: <MessageOutlined />,
+            label: <Link to="/feedback">Feedback</Link>,
+          },
         ]
       : []),
   ];
@@ -111,7 +118,9 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     ? '/projects'
     : location.pathname.startsWith('/ai-settings')
       ? '/ai-settings'
-      : location.pathname;
+      : location.pathname.startsWith('/feedback')
+        ? '/feedback'
+        : location.pathname;
 
   return (
     <Layout style={{ minHeight: '100vh' }}>
@@ -182,6 +191,7 @@ function App() {
                       <Route path="/ai-config" element={<Navigate to="/ai-settings" replace />} />
                       <Route path="/mcp-prompts" element={<Navigate to="/ai-settings?tab=mcp-prompts" replace />} />
                       <Route path="/api-tokens" element={<ApiTokensPage />} />
+                      <Route path="/feedback" element={<FeedbackPage />} />
                       <Route path="/locales" element={<Navigate to="/projects" replace />} />
                     </Routes>
                   </AppLayout>
