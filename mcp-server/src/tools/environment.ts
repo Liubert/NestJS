@@ -132,8 +132,8 @@ export function registerEnvironmentTools(server: McpServer): void {
     },
     async ({ projectSlug }) => {
       try {
-        const backendUrl = process.env.BACKEND_URL ?? 'http://localhost:8080';
-        const adminUiUrl = process.env.ADMIN_UI_URL ?? 'http://localhost:3010';
+        const backendUrl = process.env.BACKEND_URL ?? '(NOT SET — configure BACKEND_URL)';
+        const adminUiUrl = process.env.ADMIN_UI_URL ?? '(NOT SET — configure ADMIN_UI_URL)';
 
         // Fetch projects, optional project details, and agent guide in parallel.
         // The project list already includes sandboxHasChanges + sandboxInitializedAt — no extra status calls needed.

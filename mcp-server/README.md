@@ -12,11 +12,44 @@ npm install -g localization-mcp-server
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `MCP_TOKEN` | Yes | API token for backend authentication |
-| `BACKEND_URL` | Yes | Base URL of the localization backend (e.g. `http://localhost:8080`) |
+| `MCP_TOKEN` | **Yes** | API token for backend authentication |
+| `BACKEND_URL` | **Yes** | Base URL of the localization backend (e.g. `http://localhost:8080`) |
+| `ADMIN_UI_URL` | No | Admin UI URL for links in tool responses |
 | `NODE_ENV` | No | In non-production mode, loads `.env` from the package directory |
+| `AUDIT_LOG_PATH` | No | Path for write-operation audit log (default: `./mcp-audit.log`) |
 
 Copy `.env.example` as a starting point.
+
+### Environment safety (mandatory)
+
+**Dynamic environment resolution is a core requirement**, not optional.
+
+The developer configuring this MCP server is responsible for wiring `BACKEND_URL` to the correct environment. The server does **not** auto-detect which environment it should target.
+
+**Rules:**
+
+1. **`BACKEND_URL` must always be set explicitly.** If missing, the server logs a loud warning and falls back to `http://localhost:8080`. This fallback exists only to avoid a hard crash — it is not a safe default for your setup.
+
+2. **Never hardcode production URLs** in MCP config that is also used during development. Use environment-specific `.env` files or inject `BACKEND_URL` from your CI/runtime config.
+
+3. **Development agents should work with sandbox.** All MCP write tools target sandbox only — production is read-only. But `BACKEND_URL` still determines *which server's* sandbox you hit.
+
+4. **If environment is unknown, fail safely.** Do not silently guess production. The server will show `(NOT SET)` in diagnostic output if `BACKEND_URL` is missing, making misconfiguration visible.
+
+5. **Each environment needs its own `MCP_TOKEN`.** Tokens are server-specific — a dev token won't work on production and vice versa.
+
+**Correct setup per environment:**
+
+```
+# Development (local)
+BACKEND_URL=http://localhost:8080
+
+# Staging
+BACKEND_URL=http://your-stage-server:8080
+
+# Production (if you have a read-only use case)
+BACKEND_URL=https://your-prod-server
+```
 
 ## Usage
 

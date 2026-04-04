@@ -28,7 +28,8 @@ if (!process.env.MCP_TOKEN) {
 
 if (!process.env.BACKEND_URL) {
   process.stderr.write(
-    "[localization-mcp] BACKEND_URL not set, defaulting to http://localhost:3000\n",
+    "[localization-mcp] WARNING: BACKEND_URL is not set. Falling back to http://localhost:8080.\n" +
+      "  Set BACKEND_URL explicitly to avoid accidentally targeting the wrong environment.\n",
   );
 }
 

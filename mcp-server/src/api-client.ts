@@ -1,7 +1,18 @@
 import axios, { AxiosError } from "axios";
 
+const BACKEND_URL = process.env.BACKEND_URL;
+
+if (!BACKEND_URL) {
+  process.stderr.write(
+    "[localization-mcp] FATAL: BACKEND_URL is not set.\n" +
+      "  The MCP server requires an explicit backend URL to function.\n" +
+      "  Set BACKEND_URL in your environment or .env file.\n" +
+      "  Example: BACKEND_URL=http://localhost:8080\n",
+  );
+}
+
 const client = axios.create({
-  baseURL: process.env.BACKEND_URL ?? "http://localhost:8080",
+  baseURL: BACKEND_URL ?? "http://localhost:8080",
   headers: {
     "Content-Type": "application/json",
     Authorization: `Bearer ${process.env.MCP_TOKEN ?? ""}`,

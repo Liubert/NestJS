@@ -200,7 +200,7 @@ export function registerPrompts(server: McpServer): void {
       const lines: string[] = ["## Localization MCP — Diagnostic", ""];
 
       // 1. Config
-      const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8080 (default)";
+      const backendUrl = process.env.BACKEND_URL ?? "(NOT SET — configure BACKEND_URL)";
       const tokenSet = !!process.env.MCP_TOKEN;
       lines.push("### Config");
       lines.push(`- BACKEND_URL: \`${backendUrl}\``);
