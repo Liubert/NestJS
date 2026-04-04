@@ -38,6 +38,7 @@ import {
   WebhooksService,
   WebhookEventPayload,
 } from '../webhooks/webhooks.service.js';
+import { LOCALE_GUIDELINES } from './locale-guidelines.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -184,6 +185,12 @@ export class TranslationsService {
   /** Public accessor for project by slug (used by controllers). */
   async getProjectBySlug(slug: string): Promise<ProjectEntity> {
     return this.requireProject(slug);
+  }
+
+  /** Fetch all locales for a project by slug. Used by AI endpoints to inject guidance. */
+  async getProjectLocales(projectSlug: string): Promise<LocaleEntity[]> {
+    const project = await this.requireProject(projectSlug);
+    return this.localeRepo.findBy({ projectId: project.id });
   }
 
   /** Public accessor for namespace by projectId + slug (used by controllers). */
@@ -475,7 +482,7 @@ export class TranslationsService {
         code,
         isDefault,
         aliases,
-        guidance: guidance ?? null,
+        guidance: guidance ?? LOCALE_GUIDELINES[code] ?? null,
       }),
     );
   }

@@ -70,6 +70,7 @@ export class AiTranslateService {
     projectId?: string,
     context?: string,
     targetLocales?: string[],
+    localeGuidance?: Record<string, string>,
   ): Promise<Record<string, string>> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
@@ -98,7 +99,20 @@ export class AiTranslateService {
 
     const translateVars: Record<string, string> = { text, languages };
     if (context) translateVars.context = context;
-    const prompt = interpolate(aiCfg.translatePrompt, translateVars);
+    let prompt = interpolate(aiCfg.translatePrompt, translateVars);
+
+    // Inject locale-specific guidance when available
+    if (localeGuidance) {
+      const guidanceLines = localeEntries
+        .filter(([code]) => localeGuidance[code])
+        .map(
+          ([code, name]) =>
+            `- ${name} (${code}): ${localeGuidance[code]}`,
+        );
+      if (guidanceLines.length) {
+        prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
+      }
+    }
 
     let raw: string;
     try {
@@ -159,6 +173,7 @@ export class AiTranslateService {
     text: string,
     targetLocales: Record<string, string>,
     projectId?: string,
+    localeGuidance?: Record<string, string>,
   ): Promise<Record<string, string>> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
@@ -175,7 +190,20 @@ export class AiTranslateService {
       .map(([code, name]) => `${name} (${code})`)
       .join(', ');
 
-    const prompt = interpolate(aiCfg.translatePrompt, { text, languages });
+    let prompt = interpolate(aiCfg.translatePrompt, { text, languages });
+
+    // Inject locale-specific guidance when available
+    if (localeGuidance) {
+      const guidanceLines = Object.entries(targetLocales)
+        .filter(([code]) => localeGuidance[code])
+        .map(
+          ([code, name]) =>
+            `- ${name} (${code}): ${localeGuidance[code]}`,
+        );
+      if (guidanceLines.length) {
+        prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
+      }
+    }
 
     let raw: string;
     try {
@@ -244,6 +272,7 @@ export class AiTranslateService {
     chunkSize = 5,
     chunkTimeoutMs = 90_000,
     projectId?: string,
+    localeGuidance?: Record<string, string>,
   ): Promise<{
     results: Record<
       string,
@@ -287,6 +316,7 @@ export class AiTranslateService {
       const prompt = this.buildBulkQualityPrompt(
         chunk,
         aiCfg.contextDetectionPrompt,
+        localeGuidance,
       );
 
       let raw: string;
@@ -411,10 +441,31 @@ export class AiTranslateService {
       translations: Record<string, string>;
     }>,
     contextDetectionPrompt: string | null,
+    localeGuidance?: Record<string, string>,
   ): string {
     const contextSection = contextDetectionPrompt
       ? `\n${contextDetectionPrompt}\n`
       : '';
+
+    // Collect all locale codes from items and build guidance section
+    let guidanceSection = '';
+    if (localeGuidance) {
+      const allLocales = new Set<string>();
+      for (const item of items) {
+        for (const code of Object.keys(item.translations)) {
+          allLocales.add(code);
+        }
+      }
+      const guidanceLines = [...allLocales]
+        .filter((code) => localeGuidance[code])
+        .map(
+          (code) =>
+            `- ${LOCALE_NAMES[code] ?? code} (${code}): ${localeGuidance[code]}`,
+        );
+      if (guidanceLines.length) {
+        guidanceSection = `\nLanguage-specific guidance:\n${guidanceLines.join('\n')}\n`;
+      }
+    }
 
     return `You are a professional translation quality reviewer. Evaluate each translation below.
 
@@ -423,7 +474,7 @@ IMPORTANT — Ambiguity and multiple meanings:
 - If the translation is correct for ANY valid interpretation that makes sense in a software/product UI, treat it as accurate.
 - Only flag errors when the translation genuinely cannot correspond to any valid interpretation of the source.
 - If "context" is present, use it to determine the correct meaning and evaluate more precisely.
-${contextSection}
+${contextSection}${guidanceSection}
 Score each translation on a 1–100 scale:
 - 95–100: Excellent — accurate, natural, production-ready
 - 80–94: Very strong — minor improvement opportunities
@@ -460,6 +511,7 @@ ${JSON.stringify(items, null, 2)}`;
     mode: 'translation_quality' | 'language_quality' = 'translation_quality',
     projectId?: string,
     context?: string,
+    localeGuidance?: string,
   ): Promise<{
     score: number;
     level: 'green' | 'yellow' | 'red';
@@ -492,7 +544,11 @@ ${JSON.stringify(items, null, 2)}`;
         ? `\n\nIMPORTANT: The translation is IDENTICAL to the English source text. This is often a sign that the text was not translated at all. Some words (like "taxi", "hotel", "internet") are legitimately the same across languages — if so, score normally. But if this is a phrase or word that should differ in ${locale}, score it very low (1-3) and comment that it appears untranslated.`
         : '';
 
-    const prompt = interpolate(template, vars) + identicalHint;
+    const guidanceHint = localeGuidance
+      ? `\n\nLanguage-specific guidance for ${locale}: ${localeGuidance}`
+      : '';
+
+    const prompt = interpolate(template, vars) + identicalHint + guidanceHint;
 
     let raw: string;
     try {

@@ -150,6 +150,18 @@ export class QualityWorkerService
     const defaultLocale = projectLocales.find((l) => l.isDefault);
     const localeById = new Map(projectLocales.map((l) => [l.id, l]));
 
+    // Build locale guidance map for AI quality checks
+    const localeGuidance = projectLocales.reduce<Record<string, string>>(
+      (acc, l) => {
+        if (l.guidance) acc[l.code] = l.guidance;
+        return acc;
+      },
+      {},
+    );
+    const guidanceParam = Object.keys(localeGuidance).length
+      ? localeGuidance
+      : undefined;
+
     // Load key entities (including context and contextNeed)
     const keys = await this.keyRepo.findBy({ id: In(keyIds) });
     const keyById = new Map(keys.map((k) => [k.id, k]));
@@ -262,6 +274,7 @@ export class QualityWorkerService
               5,
               90_000,
               projectId,
+              guidanceParam,
             )
           : Promise.resolve(emptyResult),
         defaultItems.length

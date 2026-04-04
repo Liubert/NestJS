@@ -105,17 +105,26 @@ export class TranslationsController {
     @Body() dto: AiTranslateDto,
   ): Promise<Record<string, string>> {
     let projectId: string | undefined;
+    let localeGuidance: Record<string, string> | undefined;
     if (dto.projectSlug) {
       const project = await this.translationsService.getProjectBySlug(
         dto.projectSlug,
       );
       projectId = project.id;
+      const locales =
+        await this.translationsService.getProjectLocales(dto.projectSlug);
+      const guidance = locales.reduce<Record<string, string>>((acc, l) => {
+        if (l.guidance) acc[l.code] = l.guidance;
+        return acc;
+      }, {});
+      if (Object.keys(guidance).length) localeGuidance = guidance;
     }
     return this.aiTranslateService.translate(
       dto.text,
       projectId,
       dto.context,
       dto.targetLocales,
+      localeGuidance,
     );
   }
 
@@ -125,11 +134,18 @@ export class TranslationsController {
   @ApiOperation({ summary: 'Check translation quality using AI' })
   async checkQuality(@Body() dto: CheckQualityDto) {
     let projectId: string | undefined;
+    let localeGuidanceStr: string | undefined;
     if (dto.projectSlug) {
       const project = await this.translationsService.getProjectBySlug(
         dto.projectSlug,
       );
       projectId = project.id;
+      const locales =
+        await this.translationsService.getProjectLocales(dto.projectSlug);
+      const matched = locales.find(
+        (l) => l.code === dto.locale && l.guidance,
+      );
+      if (matched) localeGuidanceStr = matched.guidance!;
     }
     return this.aiTranslateService.checkQuality(
       dto.source,
@@ -138,6 +154,7 @@ export class TranslationsController {
       dto.mode,
       projectId,
       dto.context,
+      localeGuidanceStr,
     );
   }
 

@@ -205,6 +205,15 @@ export class AutoTranslateWorkerService
       targetLocales[locale.code] = LOCALE_NAMES[locale.code] ?? locale.code;
     }
 
+    // Build locale guidance from locale entities
+    const localeGuidance = missingLocales.reduce<Record<string, string>>(
+      (acc, l) => {
+        if (l.guidance) acc[l.code] = l.guidance;
+        return acc;
+      },
+      {},
+    );
+
     this.logger.debug(
       `Translating key "${keyName}" to ${Object.keys(targetLocales).join(', ')}`,
     );
@@ -213,6 +222,7 @@ export class AutoTranslateWorkerService
       sourceText,
       targetLocales,
       projectId,
+      Object.keys(localeGuidance).length ? localeGuidance : undefined,
     );
 
     // Write results to sandbox_values
