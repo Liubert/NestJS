@@ -110,10 +110,14 @@ export function registerSandboxWriteTools(server: McpServer): void {
         ),
       context: z
         .string()
-        .max(500)
+        .max(1000)
         .optional()
         .describe(
-          'Short context about where/how this key is used (max 500 chars). Helps translators and AI produce better translations.',
+          'Context improves translation quality and reduces ambiguity (max 1000 chars). ' +
+            'Describe: where the text appears (screen, dialog, notification), UI element type (button, title, placeholder, error), ' +
+            'what the text means here, and what action it represents. ' +
+            'Critical for short/generic strings like "Save", "Apply", "Close". ' +
+            'Do NOT include secrets, personal data, or vague filler like "used in app".',
         ),
     },
     async ({ projectSlug, namespace, key, values, context }) => {
@@ -254,11 +258,20 @@ export function registerSandboxWriteTools(server: McpServer): void {
                 'Key must contain only letters, digits, dots, underscores or dashes',
               ),
             value: z.string(),
+            context: z
+              .string()
+              .max(1000)
+              .optional()
+              .describe(
+                'Context improves translation quality (max 1000 chars). ' +
+                  'Describe: where text appears, UI element type, what it means here. ' +
+                  'Critical for short/generic strings. No secrets or vague filler.',
+              ),
           }),
         )
         .min(1)
         .describe(
-          'Array of { key, value } pairs to upsert for the given locale.',
+          'Array of { key, value, context? } pairs to upsert for the given locale.',
         ),
       dryRun: z
         .boolean()
@@ -310,9 +323,10 @@ export function registerSandboxWriteTools(server: McpServer): void {
 
       // Try batch endpoint first
       const batchPayload = {
-        entries: entries.map(({ key, value }) => ({
+        entries: entries.map(({ key, value, context }) => ({
           key,
           values: { [locale]: value },
+          ...(context ? { context } : {}),
         })),
       };
 
@@ -333,12 +347,15 @@ export function registerSandboxWriteTools(server: McpServer): void {
       }
 
       if (!usedBatch) {
-        for (const { key, value } of entries) {
+        for (const { key, value, context } of entries) {
           try {
             try {
               await apiPatch<unknown>(
                 `${basePath}/${encodeURIComponent(key)}`,
-                { values: { [locale]: value } },
+                {
+                  values: { [locale]: value },
+                  ...(context ? { context } : {}),
+                },
               );
               updated++;
             } catch (patchErr) {
@@ -346,6 +363,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
                 await apiPost<unknown>(basePath, {
                   key,
                   values: { [locale]: value },
+                  ...(context ? { context } : {}),
                 });
                 created++;
               } else {

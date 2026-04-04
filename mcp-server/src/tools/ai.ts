@@ -78,10 +78,12 @@ export function registerAiTools(server: McpServer): void {
         ),
       context: z
         .string()
-        .max(500)
+        .max(1000)
         .optional()
         .describe(
-          'Optional context about where/how this key is used. Helps AI evaluate accuracy for ambiguous terms.',
+          'Context about where/how this key is used (max 1000 chars). ' +
+            'Helps AI evaluate accuracy — especially for short/ambiguous strings. ' +
+            'Describe: screen, UI element type, meaning in this place.',
         ),
     },
     async ({ projectSlug, source, translation, locale, mode, context }) => {

@@ -381,7 +381,12 @@ export function registerProjectManagementTools(server: McpServer): void {
         .record(z.string(), z.string())
         .optional()
         .describe(
-          'Optional key -> context map. Context is a short description (max 500 chars) of where/how each key is used. Example: { "button.save": "Save button in expense form footer" }',
+          'Optional key -> context map (max 1000 chars per value). Context improves translation quality and reduces ambiguity. ' +
+            'Good context describes: where the text appears (screen, dialog), UI element type (button, title, placeholder), ' +
+            'what the text means in this specific place, and what action it represents. ' +
+            'Especially important for short/generic strings like "Save", "Apply", "Close" where meaning depends on usage. ' +
+            'Do NOT include secrets, personal data, or vague text like "used in app". ' +
+            'Example: { "button.save": "Button in settings form — saves user preferences and closes the dialog" }',
         ),
       useBatchEndpoint: z
         .boolean()
