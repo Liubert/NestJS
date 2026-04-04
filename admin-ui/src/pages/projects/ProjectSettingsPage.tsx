@@ -16,12 +16,14 @@ import {
   Breadcrumb,
   Table,
   Alert,
+  Tooltip,
 } from 'antd';
 import {
   PlusOutlined,
   DeleteOutlined,
   TranslationOutlined,
   EditOutlined,
+  InfoCircleOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -31,6 +33,7 @@ import {
   LANGUAGE_BY_CODE,
   getFlagForCode,
 } from '../../constants/supported-languages';
+import { LOCALE_GUIDELINES } from '../../constants/locale-guidelines';
 
 const { Title, Text } = Typography;
 
@@ -38,6 +41,7 @@ interface LocaleEntry {
   code: string;
   isDefault: boolean;
   aliases: string[];
+  guidance?: string | null;
 }
 
 interface ProjectDetails {
@@ -240,7 +244,7 @@ const ProjectSettingsPage: React.FC = () => {
   };
 
   const addLocaleMutation = useMutation({
-    mutationFn: (vals: { code: string; aliases?: string[] }) =>
+    mutationFn: (vals: { code: string; aliases?: string[]; guidance?: string }) =>
       apiClient.post(`/translations/projects/${slug}/locales`, vals),
     onSuccess: () => {
       message.success('Locale added');
@@ -253,9 +257,18 @@ const ProjectSettingsPage: React.FC = () => {
   });
 
   const updateLocaleMutation = useMutation({
-    mutationFn: ({ code, aliases }: { code: string; aliases: string[] }) =>
+    mutationFn: ({
+      code,
+      aliases,
+      guidance,
+    }: {
+      code: string;
+      aliases: string[];
+      guidance?: string;
+    }) =>
       apiClient.patch(`/translations/projects/${slug}/locales/${code}`, {
         aliases,
+        guidance,
       }),
     onSuccess: () => {
       message.success('Locale updated');
@@ -491,7 +504,7 @@ const ProjectSettingsPage: React.FC = () => {
               No locales yet — add at least one to start translating
             </Text>
           )}
-          {p.locales.map(({ code, isDefault, aliases }) => {
+          {p.locales.map(({ code, isDefault, aliases, guidance }) => {
             const flag = getFlagForCode(code);
             const lang = LANGUAGE_BY_CODE[code];
             return (
@@ -508,11 +521,19 @@ const ProjectSettingsPage: React.FC = () => {
                     [{aliases.join(', ')}]
                   </Text>
                 )}
+                {guidance && (
+                  <Tooltip title="Translation guidance configured">
+                    <InfoCircleOutlined style={{ fontSize: 10, color: '#1890ff' }} />
+                  </Tooltip>
+                )}
                 <EditOutlined
                   style={{ cursor: 'pointer', fontSize: 10 }}
                   onClick={() => {
                     setEditLocaleCode(code);
-                    editLocaleForm.setFieldsValue({ aliases: aliases || [] });
+                    editLocaleForm.setFieldsValue({
+                      aliases: aliases || [],
+                      guidance: guidance ?? '',
+                    });
                     setEditLocaleModalOpen(true);
                   }}
                 />
@@ -635,6 +656,7 @@ const ProjectSettingsPage: React.FC = () => {
             addLocaleMutation.mutate({
               code: v.code,
               aliases: v.aliases ?? lang?.aliases ?? [],
+              guidance: v.guidance || undefined,
             });
           })
         }
@@ -654,6 +676,9 @@ const ProjectSettingsPage: React.FC = () => {
               onChange={(code: string) => {
                 const lang = LANGUAGE_BY_CODE[code];
                 if (lang) localeForm.setFieldsValue({ aliases: lang.aliases });
+                localeForm.setFieldsValue({
+                  guidance: LOCALE_GUIDELINES[code] ?? '',
+                });
               }}
               options={SUPPORTED_LANGUAGES.map((l) => {
                 const alreadyAdded = p.locales.some(
@@ -674,6 +699,18 @@ const ProjectSettingsPage: React.FC = () => {
           >
             <Select mode="tags" placeholder="e.g. en-US, en-GB" />
           </Form.Item>
+          <Form.Item
+            name="guidance"
+            label="Translation guidance"
+            extra="Style rules for AI translations — formality, plural forms, common pitfalls"
+          >
+            <Input.TextArea
+              rows={6}
+              maxLength={3000}
+              showCount
+              placeholder="e.g. Use formal 'vi' (not 'ty'). Ukrainian has 3 plural forms..."
+            />
+          </Form.Item>
         </Form>
       </Modal>
 
@@ -690,6 +727,7 @@ const ProjectSettingsPage: React.FC = () => {
             updateLocaleMutation.mutate({
               code: editLocaleCode,
               aliases: v.aliases ?? [],
+              guidance: v.guidance || undefined,
             }),
           )
         }
@@ -703,6 +741,18 @@ const ProjectSettingsPage: React.FC = () => {
             extra="Alternative locale codes that map to this language"
           >
             <Select mode="tags" placeholder="e.g. en-US, en-GB" />
+          </Form.Item>
+          <Form.Item
+            name="guidance"
+            label="Translation guidance"
+            extra="Style rules for AI translations — formality, plural forms, common pitfalls"
+          >
+            <Input.TextArea
+              rows={6}
+              maxLength={3000}
+              showCount
+              placeholder="e.g. Use formal 'vi' (not 'ty'). Ukrainian has 3 plural forms..."
+            />
           </Form.Item>
         </Form>
       </Modal>
