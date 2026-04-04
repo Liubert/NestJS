@@ -159,6 +159,10 @@ jobs:
             printf 'APP_IMAGE=%s\nADMIN_UI_IMAGE=%s\nGEMINI_API_KEY=%s\n' \
               "${IMAGE_REF}" "${ADMIN_UI_IMAGE_REF}" "${GEMINI_API_KEY}" > .env.cicd
 
+            echo "[0/4] Pruning unused Docker images to free disk space..."
+            docker image prune -af --filter "until=24h" || true
+            echo "[0/4] Prune done ($(df -h / | awk 'NR==2{print $4}') free)"
+
             echo "[1/4] Pulling images: ${SERVICES} migrate"
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd --profile tools pull ${SERVICES} migrate
             echo "[1/4] Pull done"
