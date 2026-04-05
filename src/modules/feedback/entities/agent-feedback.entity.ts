@@ -1,11 +1,19 @@
 import {
   Column,
   CreateDateColumn,
+  DeleteDateColumn,
   Entity,
   JoinColumn,
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+
+export type FeedbackStatus =
+  | 'new'
+  | 'planned'
+  | 'done'
+  | 'deferred'
+  | 'rejected';
 import { UserEntity } from '../../users/user.entity.js';
 import { ProjectEntity } from '../../translations/entities/project.entity.js';
 
@@ -89,6 +97,16 @@ export class AgentFeedbackEntity {
 
   @Column({ type: 'text', name: 'reviewer_note', nullable: true })
   reviewerNote!: string | null;
+
+  // ─── Workflow status ──────────────────────────────────────────────────────
+
+  @Column({ type: 'varchar', length: 20, default: 'new' })
+  status!: FeedbackStatus;
+
+  @DeleteDateColumn({ name: 'deleted_at', type: 'timestamptz', nullable: true })
+  deletedAt!: Date | null;
+
+  // ─── Relations ────────────────────────────────────────────────────────────
 
   @ManyToOne(() => UserEntity, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'user_id' })

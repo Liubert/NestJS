@@ -1,14 +1,40 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
-  Table, Typography, Tag, Collapse, Badge, Space, Select,
-  Row, Col, Spin, Pagination, Modal, Input, Button, Descriptions,
-  message, Tooltip,
+  Table,
+  Typography,
+  Tag,
+  Space,
+  Select,
+  Row,
+  Col,
+  Spin,
+  Pagination,
+  Modal,
+  Input,
+  Button,
+  Descriptions,
+  message,
+  Tooltip,
+  Dropdown,
+  Popconfirm,
+  Radio,
 } from 'antd';
-import { RobotOutlined, UserOutlined } from '@ant-design/icons';
+import type { MenuProps } from 'antd';
+import {
+  RobotOutlined,
+  UserOutlined,
+  CheckCircleOutlined,
+  ClockCircleOutlined,
+  StopOutlined,
+  DeleteOutlined,
+  MoreOutlined,
+} from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../api/client';
 
 const { Title } = Typography;
+
+type FeedbackStatus = 'new' | 'planned' | 'done' | 'deferred' | 'rejected';
 
 interface FeedbackItem {
   id: string;
@@ -29,6 +55,7 @@ interface FeedbackItem {
   createdAt: string;
   reviewed: boolean;
   reviewerNote: string | null;
+  status: FeedbackStatus;
   user: { id: string; email: string };
   project: { id: string; slug: string } | null;
 }
@@ -46,12 +73,30 @@ const SEVERITY_COLORS: Record<string, string> = {
   low: 'green',
 };
 
+const STATUS_COLORS: Record<FeedbackStatus, string> = {
+  new: 'blue',
+  planned: 'geekblue',
+  done: 'green',
+  deferred: 'gold',
+  rejected: 'default',
+};
+
+const STATUS_LABELS: Record<FeedbackStatus, string> = {
+  new: 'New',
+  planned: 'Planned',
+  done: 'Done',
+  deferred: 'Deferred',
+  rejected: 'Rejected',
+};
+
+type StatusFilter = 'active' | FeedbackStatus;
+
 const FeedbackPage: React.FC = () => {
   const qc = useQueryClient();
 
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [severity, setSeverity] = useState<string | undefined>(undefined);
-  const [reviewed, setReviewed] = useState<boolean | undefined>(undefined);
   const [page, setPage] = useState(1);
   const [limit] = useState(50);
 
@@ -59,11 +104,13 @@ const FeedbackPage: React.FC = () => {
   const [reviewingItem, setReviewingItem] = useState<FeedbackItem | null>(null);
   const [reviewerNote, setReviewerNote] = useState('');
 
+  const queryStatus = statusFilter === 'active' ? undefined : statusFilter;
+
   const { data, isLoading } = useQuery({
-    queryKey: ['feedback', category, severity, reviewed, page, limit],
+    queryKey: ['feedback', statusFilter, category, severity, page, limit],
     queryFn: async () => {
       const res = await apiClient.get('/feedback', {
-        params: { category, severity, reviewed, page, limit },
+        params: { category, severity, status: queryStatus, page, limit },
       });
       return res.data as { items: FeedbackItem[]; total: number };
     },
@@ -89,22 +136,101 @@ const FeedbackPage: React.FC = () => {
       message.error(e.response?.data?.message ?? 'Error reviewing feedback'),
   });
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, FeedbackItem[]>();
-    for (const item of items) {
-      const key = item.user?.email ?? 'Unknown';
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(item);
-    }
-    return map;
-  }, [items]);
+  const statusMutation = useMutation({
+    mutationFn: (args: { id: string; status: FeedbackStatus }) =>
+      apiClient.patch(`/feedback/${args.id}/status`, { status: args.status }),
+    onSuccess: () => {
+      message.success('Status updated');
+      qc.invalidateQueries({ queryKey: ['feedback'] });
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Failed to update status'),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => apiClient.delete(`/feedback/${id}`),
+    onSuccess: () => {
+      message.success('Feedback deleted');
+      qc.invalidateQueries({ queryKey: ['feedback'] });
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Failed to delete feedback'),
+  });
+
+  const buildActionMenu = (record: FeedbackItem): MenuProps => ({
+    items: [
+      {
+        key: 'done',
+        icon: <CheckCircleOutlined />,
+        label: 'Mark as Done',
+        disabled: record.status === 'done',
+        onClick: () => statusMutation.mutate({ id: record.id, status: 'done' }),
+      },
+      {
+        key: 'planned',
+        icon: <ClockCircleOutlined />,
+        label: 'Mark as Planned',
+        disabled: record.status === 'planned',
+        onClick: () =>
+          statusMutation.mutate({ id: record.id, status: 'planned' }),
+      },
+      {
+        key: 'deferred',
+        icon: <ClockCircleOutlined />,
+        label: 'Move to Deferred',
+        disabled: record.status === 'deferred',
+        onClick: () =>
+          statusMutation.mutate({ id: record.id, status: 'deferred' }),
+      },
+      {
+        key: 'rejected',
+        icon: <StopOutlined />,
+        label: 'Reject',
+        disabled: record.status === 'rejected',
+        onClick: () =>
+          statusMutation.mutate({ id: record.id, status: 'rejected' }),
+      },
+      { type: 'divider' },
+      {
+        key: 'review',
+        label: 'Review...',
+        onClick: () => {
+          setReviewingItem(record);
+          setReviewerNote(record.reviewerNote || '');
+          setReviewModalOpen(true);
+        },
+      },
+    ],
+  });
+
+  const expandedRowRender = (record: FeedbackItem) => (
+    <Descriptions column={1} size="small" bordered>
+      <Descriptions.Item label="Full Message">{record.message}</Descriptions.Item>
+      {record.actionAttempted && (
+        <Descriptions.Item label="Action Attempted">
+          {record.actionAttempted}
+        </Descriptions.Item>
+      )}
+      {record.suggestion && (
+        <Descriptions.Item label="Suggestion">{record.suggestion}</Descriptions.Item>
+      )}
+      <Descriptions.Item label="Agent Name">{record.agentName || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Agent Version">{record.agentVersion || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Agent Model">{record.agentModel || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Session ID">{record.sessionId || '—'}</Descriptions.Item>
+      <Descriptions.Item label="Project">{record.project?.slug || '—'}</Descriptions.Item>
+      {record.reviewerNote && (
+        <Descriptions.Item label="Reviewer Note">{record.reviewerNote}</Descriptions.Item>
+      )}
+    </Descriptions>
+  );
 
   const columns = [
     {
       title: 'Date',
       dataIndex: 'createdAt',
       key: 'date',
-      width: 160,
+      width: 150,
       render: (val: string) => {
         const d = new Date(val);
         return `${d.toLocaleDateString()} ${d.toLocaleTimeString()}`;
@@ -122,13 +248,21 @@ const FeedbackPage: React.FC = () => {
         return (
           <Tooltip title={label}>
             {isAgent ? (
-              <Tag icon={<RobotOutlined />} color="purple">{record.agentName || 'MCP'}</Tag>
+              <Tag icon={<RobotOutlined />} color="purple">
+                {record.agentName || 'MCP'}
+              </Tag>
             ) : (
               <Tag icon={<UserOutlined />}>User</Tag>
             )}
           </Tooltip>
         );
       },
+    },
+    {
+      title: 'Submitter',
+      key: 'submitter',
+      width: 160,
+      render: (_: unknown, record: FeedbackItem) => record.user?.email ?? '—',
     },
     {
       title: 'Category',
@@ -143,118 +277,91 @@ const FeedbackPage: React.FC = () => {
       title: 'Severity',
       dataIndex: 'severity',
       key: 'severity',
-      width: 100,
+      width: 90,
       render: (val: string) => (
         <Tag color={SEVERITY_COLORS[val] ?? 'default'}>{val}</Tag>
+      ),
+    },
+    {
+      title: 'Status',
+      dataIndex: 'status',
+      key: 'workflowStatus',
+      width: 100,
+      render: (val: FeedbackStatus) => (
+        <Tag color={STATUS_COLORS[val] ?? 'default'}>
+          {STATUS_LABELS[val] ?? val}
+        </Tag>
       ),
     },
     {
       title: 'Tool/Endpoint',
       dataIndex: 'toolOrEndpoint',
       key: 'tool',
-      width: 160,
-      render: (val: string | null) => val || '\u2014',
+      width: 150,
+      render: (val: string | null) => val || '—',
     },
     {
       title: 'Message',
       dataIndex: 'message',
       key: 'message',
       render: (val: string) =>
-        val?.length > 500 ? val.slice(0, 500) + '...' : val,
+        val?.length > 300 ? val.slice(0, 300) + '...' : val,
     },
     {
-      title: 'Status',
-      dataIndex: 'resultStatus',
-      key: 'status',
-      width: 100,
-      render: (val: string | null) =>
-        val ? <Tag>{val}</Tag> : '\u2014',
-    },
-    {
-      title: 'Reviewed',
-      dataIndex: 'reviewed',
-      key: 'reviewed',
-      width: 90,
-      render: (val: boolean) =>
-        val ? <Tag color="green">Yes</Tag> : <Tag>No</Tag>,
-    },
-    {
-      title: '',
-      key: 'action',
-      width: 80,
+      title: 'Actions',
+      key: 'actions',
+      width: 120,
       render: (_: unknown, record: FeedbackItem) => (
-        <Button
-          size="small"
-          onClick={() => {
-            setReviewingItem(record);
-            setReviewerNote(record.reviewerNote || '');
-            setReviewModalOpen(true);
-          }}
-        >
-          Review
-        </Button>
+        <Space>
+          <Dropdown menu={buildActionMenu(record)} trigger={['click']}>
+            <Button size="small" icon={<MoreOutlined />}>
+              Actions
+            </Button>
+          </Dropdown>
+          <Popconfirm
+            title="Delete this feedback?"
+            description="This action soft-deletes the item. It won't appear in normal views."
+            onConfirm={() => deleteMutation.mutate(record.id)}
+            okText="Delete"
+            okButtonProps={{ danger: true }}
+            cancelText="Cancel"
+          >
+            <Button
+              size="small"
+              danger
+              icon={<DeleteOutlined />}
+              loading={deleteMutation.isPending}
+            />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
 
-  const expandedRowRender = (record: FeedbackItem) => (
-    <Descriptions column={1} size="small" bordered>
-      <Descriptions.Item label="Full Message">{record.message}</Descriptions.Item>
-      {record.actionAttempted && (
-        <Descriptions.Item label="Action Attempted">{record.actionAttempted}</Descriptions.Item>
-      )}
-      {record.suggestion && (
-        <Descriptions.Item label="Suggestion">{record.suggestion}</Descriptions.Item>
-      )}
-      <Descriptions.Item label="Agent Name">
-        {record.agentName || '\u2014'}
-      </Descriptions.Item>
-      <Descriptions.Item label="Agent Version">
-        {record.agentVersion || '\u2014'}
-      </Descriptions.Item>
-      <Descriptions.Item label="Agent Model">
-        {record.agentModel || '\u2014'}
-      </Descriptions.Item>
-      <Descriptions.Item label="Session ID">
-        {record.sessionId || '\u2014'}
-      </Descriptions.Item>
-      <Descriptions.Item label="Project">
-        {record.project?.slug || '\u2014'}
-      </Descriptions.Item>
-      {record.reviewerNote && (
-        <Descriptions.Item label="Reviewer Note">
-          {record.reviewerNote}
-        </Descriptions.Item>
-      )}
-    </Descriptions>
-  );
-
-  const collapseItems = Array.from(grouped.entries()).map(([email, groupItems]) => ({
-    key: email,
-    label: (
-      <Space>
-        <span>{email}</span>
-        <Badge count={groupItems.length} />
-        {groupItems.some((i) => i.isMcpToken) && (
-          <Tag color="green">MCP</Tag>
-        )}
-      </Space>
-    ),
-    children: (
-      <Table
-        rowKey="id"
-        size="small"
-        columns={columns}
-        dataSource={groupItems}
-        pagination={false}
-        expandable={{ expandedRowRender }}
-      />
-    ),
-  }));
-
   return (
     <div>
       <Title level={3}>Feedback</Title>
+
+      <Row style={{ marginBottom: 16 }}>
+        <Col>
+          <Radio.Group
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value as StatusFilter);
+              setPage(1);
+            }}
+            optionType="button"
+            buttonStyle="solid"
+          >
+            <Radio.Button value="active">All Active</Radio.Button>
+            <Radio.Button value="new">New</Radio.Button>
+            <Radio.Button value="planned">Planned</Radio.Button>
+            <Radio.Button value="done">Done</Radio.Button>
+            <Radio.Button value="deferred">Deferred</Radio.Button>
+            <Radio.Button value="rejected">Rejected</Radio.Button>
+          </Radio.Group>
+        </Col>
+      </Row>
 
       <Row gutter={16} style={{ marginBottom: 16 }}>
         <Col>
@@ -293,28 +400,19 @@ const FeedbackPage: React.FC = () => {
             ]}
           />
         </Col>
-        <Col>
-          <Select
-            style={{ width: 180 }}
-            placeholder="Reviewed"
-            allowClear
-            value={reviewed}
-            onChange={(val) => {
-              setReviewed(val);
-              setPage(1);
-            }}
-            options={[
-              { value: true, label: 'Yes' },
-              { value: false, label: 'No' },
-            ]}
-          />
-        </Col>
       </Row>
 
       {isLoading ? (
         <Spin />
       ) : (
-        <Collapse accordion items={collapseItems} />
+        <Table
+          rowKey="id"
+          size="small"
+          columns={columns}
+          dataSource={items}
+          pagination={false}
+          expandable={{ expandedRowRender }}
+        />
       )}
 
       <Pagination
@@ -336,10 +434,7 @@ const FeedbackPage: React.FC = () => {
         }}
         onOk={() => {
           if (reviewingItem) {
-            reviewMutation.mutate({
-              id: reviewingItem.id,
-              reviewerNote,
-            });
+            reviewMutation.mutate({ id: reviewingItem.id, reviewerNote });
           }
         }}
         confirmLoading={reviewMutation.isPending}

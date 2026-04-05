@@ -11,6 +11,7 @@ import { ProjectEntity } from '../translations/entities/project.entity.js';
 import { CreateFeedbackDto } from './dto/create-feedback.dto.js';
 import { QueryFeedbackDto } from './dto/query-feedback.dto.js';
 import { ReviewFeedbackDto } from './dto/review-feedback.dto.js';
+import { UpdateStatusDto } from './dto/update-status.dto.js';
 
 @Injectable()
 export class FeedbackService {
@@ -58,6 +59,7 @@ export class FeedbackService {
       userId: currentUser.userId,
       projectId,
       isMcpToken: !!currentUser.isMcpToken,
+      status: 'new',
     });
 
     return this.feedbackRepo.save(entity);
@@ -90,6 +92,10 @@ export class FeedbackService {
       qb.andWhere('project.slug = :slug', { slug: query.projectSlug });
     }
 
+    if (query.status) {
+      qb.andWhere('fb.status = :status', { status: query.status });
+    }
+
     qb.orderBy('fb.createdAt', 'DESC')
       .skip((page - 1) * limit)
       .take(limit);
@@ -111,5 +117,25 @@ export class FeedbackService {
     entity.reviewerNote = dto.reviewerNote ?? null;
 
     return this.feedbackRepo.save(entity);
+  }
+
+  async updateStatus(
+    id: string,
+    dto: UpdateStatusDto,
+  ): Promise<AgentFeedbackEntity> {
+    const entity = await this.feedbackRepo.findOne({ where: { id } });
+    if (!entity) {
+      throw new NotFoundException(`Feedback "${id}" not found`);
+    }
+    entity.status = dto.status;
+    return this.feedbackRepo.save(entity);
+  }
+
+  async softDelete(id: string): Promise<void> {
+    const entity = await this.feedbackRepo.findOne({ where: { id } });
+    if (!entity) {
+      throw new NotFoundException(`Feedback "${id}" not found`);
+    }
+    await this.feedbackRepo.softDelete(id);
   }
 }

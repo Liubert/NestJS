@@ -1,4 +1,5 @@
 import { IsIn, IsOptional, IsString, Max } from 'class-validator';
+import type { FeedbackStatus } from '../entities/agent-feedback.entity.js';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 
@@ -34,6 +35,15 @@ export class QueryFeedbackDto {
   @IsOptional()
   @IsIn(['low', 'medium', 'high'])
   severity?: string;
+
+  @ApiPropertyOptional({
+    example: 'new',
+    description: 'Filter by workflow status',
+    enum: ['new', 'planned', 'done', 'deferred', 'rejected'],
+  })
+  @IsOptional()
+  @IsIn(['new', 'planned', 'done', 'deferred', 'rejected'])
+  status?: FeedbackStatus;
 
   @ApiPropertyOptional({ example: 1, default: 1 })
   @IsOptional()

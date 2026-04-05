@@ -1,7 +1,10 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
+  HttpCode,
+  HttpStatus,
   Param,
   Patch,
   Post,
@@ -19,6 +22,7 @@ import { FeedbackService } from './feedback.service.js';
 import { CreateFeedbackDto } from './dto/create-feedback.dto.js';
 import { QueryFeedbackDto } from './dto/query-feedback.dto.js';
 import { ReviewFeedbackDto } from './dto/review-feedback.dto.js';
+import { UpdateStatusDto } from './dto/update-status.dto.js';
 
 @ApiTags('feedback')
 @Controller('feedback')
@@ -50,5 +54,24 @@ export class FeedbackController {
   @ApiOperation({ summary: 'Review feedback (admin)' })
   async markReviewed(@Param('id') id: string, @Body() dto: ReviewFeedbackDto) {
     return this.feedbackService.markReviewed(id, dto);
+  }
+
+  @Patch(':id/status')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({
+    summary: 'Update workflow status of a feedback item (admin)',
+  })
+  async updateStatus(@Param('id') id: string, @Body() dto: UpdateStatusDto) {
+    return this.feedbackService.updateStatus(id, dto);
+  }
+
+  @Delete(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Soft-delete a feedback item (admin)' })
+  async remove(@Param('id') id: string): Promise<void> {
+    return this.feedbackService.softDelete(id);
   }
 }
