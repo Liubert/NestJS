@@ -104,31 +104,10 @@ const FeedbackPage: React.FC = () => {
   const [reviewingItem, setReviewingItem] = useState<FeedbackItem | null>(null);
   const [reviewerNote, setReviewerNote] = useState('');
 
-  const queryStatus = statusFilter === 'all' ? undefined : statusFilter === 'open' ? undefined : statusFilter;
+  const queryStatus =
+    statusFilter === 'open' || statusFilter === 'all' ? undefined : statusFilter;
 
-  const { data: newData, isLoading: loadingNew } = useQuery({
-    queryKey: ['feedback', 'new', category, severity, page, limit],
-    queryFn: async () => {
-      const res = await apiClient.get('/feedback', {
-        params: { category, severity, status: 'new', page, limit: 100 },
-      });
-      return res.data as { items: FeedbackItem[]; total: number };
-    },
-    enabled: statusFilter === 'open',
-  });
-
-  const { data: plannedData, isLoading: loadingPlanned } = useQuery({
-    queryKey: ['feedback', 'planned', category, severity],
-    queryFn: async () => {
-      const res = await apiClient.get('/feedback', {
-        params: { category, severity, status: 'planned', limit: 100 },
-      });
-      return res.data as { items: FeedbackItem[]; total: number };
-    },
-    enabled: statusFilter === 'open',
-  });
-
-  const { data, isLoading: loadingSingle } = useQuery({
+  const { data, isLoading } = useQuery({
     queryKey: ['feedback', statusFilter, category, severity, page, limit],
     queryFn: async () => {
       const res = await apiClient.get('/feedback', {
@@ -136,18 +115,14 @@ const FeedbackPage: React.FC = () => {
       });
       return res.data as { items: FeedbackItem[]; total: number };
     },
-    enabled: statusFilter !== 'open',
   });
 
-  const isLoading = statusFilter === 'open' ? (loadingNew || loadingPlanned) : loadingSingle;
-
-  const items: FeedbackItem[] =
+  const rawItems: FeedbackItem[] = data?.items ?? [];
+  const items =
     statusFilter === 'open'
-      ? [...(newData?.items ?? []), ...(plannedData?.items ?? [])]
-      : (data?.items ?? []);
-  const total = statusFilter === 'open'
-    ? (newData?.total ?? 0) + (plannedData?.total ?? 0)
-    : (data?.total ?? 0);
+      ? rawItems.filter((i) => i.status === 'new' || i.status === 'planned')
+      : rawItems;
+  const total = data?.total ?? 0;
 
   const reviewMutation = useMutation({
     mutationFn: (args: { id: string; reviewerNote: string }) =>
