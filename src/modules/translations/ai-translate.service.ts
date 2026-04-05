@@ -670,7 +670,7 @@ ${JSON.stringify(items, null, 2)}`;
         : aiCfg.qualityLanguagePrompt;
 
     const vars: Record<string, string> = { source, translation, locale };
-    if (context) vars.context = context;
+    if (context) vars.context = `Context: ${context}`;
 
     // When source and translation are identical, hint the AI to check for untranslated text
     const identicalHint =

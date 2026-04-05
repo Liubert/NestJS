@@ -45,9 +45,7 @@ IMPORTANT — Ambiguity and multiple meanings:
 - When the source is genuinely ambiguous, give the benefit of the doubt to the translator.
 - Only flag a meaning error if the translation cannot reasonably correspond to any valid interpretation of the source.
 
-Context (if provided): "{{context}}"
-- If context is present, use it to determine the intended meaning and evaluate more precisely.
-- If context is empty or not provided, evaluate using all reasonable interpretations as described above.
+{{context}}
 
 Additional checks:
 - Does the translation accurately convey the meaning of the source (for at least one valid interpretation)?
@@ -175,7 +173,7 @@ export function interpolate(
 ): string {
   return template.replace(
     /\{\{(\w[\w-]*)\}\}/g,
-    (match, key: string) => vars[key] ?? match,
+    (_match, key: string) => vars[key] ?? '',
   );
 }
 
