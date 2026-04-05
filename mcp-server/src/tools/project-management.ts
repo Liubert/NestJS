@@ -126,6 +126,7 @@ export function registerProjectManagementTools(server: McpServer): void {
   server.tool(
     'create_namespace',
     [
+      'Before writing to a project for the first time in a session, call assess_integration_state to understand client URL patterns and integration state.',
       'Create a new namespace in a project.',
       'IMPORTANT: Call get_project_details first and check existing namespaces before using this tool.',
       'Reuse an existing namespace whenever context makes the target clear.',
@@ -366,6 +367,7 @@ export function registerProjectManagementTools(server: McpServer): void {
   server.tool(
     'bulk_import',
     [
+      'Before writing to a project for the first time in a session, call assess_integration_state to understand client URL patterns and integration state.',
       'Import multiple translation keys into the sandbox at once.',
       'Accepts either inline JSON (translations parameter) or a path to a JSON file on disk (filePath parameter).',
       'File format: { "locale": { "key": "value" } } — same as inline translations.',

@@ -80,6 +80,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
   server.tool(
     'set_translation',
     [
+      'Before writing to a project for the first time in a session, call assess_integration_state to understand client URL patterns and integration state.',
       'Create or update a translation key in the sandbox (upsert).',
       'PARTIAL LOCALE UPDATE: Pass only the locale(s) you want to update — other locales are untouched.',
       "Example: values={ 'nb-NO': 'Lagre' } updates only Norwegian, leaving en/sv/da-DK unchanged.",
@@ -234,6 +235,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
   server.tool(
     'bulk_set_locale',
     [
+      'Before writing to a project for the first time in a session, call assess_integration_state to understand client URL patterns and integration state.',
       'Bulk upsert multiple keys for a SINGLE locale in the sandbox.',
       'Designed for the new-locale fill workflow: after adding a locale, use this to fill many keys at once.',
       'Only the specified locale is written — all other locales on each key remain untouched.',
