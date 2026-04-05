@@ -94,7 +94,7 @@ type StatusFilter = 'active' | FeedbackStatus;
 const FeedbackPage: React.FC = () => {
   const qc = useQueryClient();
 
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('new');
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [severity, setSeverity] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
