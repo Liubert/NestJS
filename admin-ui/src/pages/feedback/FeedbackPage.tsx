@@ -89,12 +89,12 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
   rejected: 'Rejected',
 };
 
-type StatusFilter = 'active' | FeedbackStatus;
+type StatusFilter = 'open' | 'all' | FeedbackStatus;
 
 const FeedbackPage: React.FC = () => {
   const qc = useQueryClient();
 
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('active');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('open');
   const [category, setCategory] = useState<string | undefined>(undefined);
   const [severity, setSeverity] = useState<string | undefined>(undefined);
   const [page, setPage] = useState(1);
@@ -104,7 +104,8 @@ const FeedbackPage: React.FC = () => {
   const [reviewingItem, setReviewingItem] = useState<FeedbackItem | null>(null);
   const [reviewerNote, setReviewerNote] = useState('');
 
-  const queryStatus = statusFilter === 'active' ? undefined : statusFilter;
+  const queryStatus =
+    statusFilter === 'open' || statusFilter === 'all' ? undefined : statusFilter;
 
   const { data, isLoading } = useQuery({
     queryKey: ['feedback', statusFilter, category, severity, page, limit],
@@ -116,7 +117,11 @@ const FeedbackPage: React.FC = () => {
     },
   });
 
-  const items: FeedbackItem[] = data?.items ?? [];
+  const rawItems: FeedbackItem[] = data?.items ?? [];
+  const items =
+    statusFilter === 'open'
+      ? rawItems.filter((i) => i.status === 'new' || i.status === 'planned')
+      : rawItems;
   const total = data?.total ?? 0;
 
   const reviewMutation = useMutation({
@@ -353,12 +358,13 @@ const FeedbackPage: React.FC = () => {
             optionType="button"
             buttonStyle="solid"
           >
-            <Radio.Button value="active">All Active</Radio.Button>
+            <Radio.Button value="open">Open (new + planned)</Radio.Button>
             <Radio.Button value="new">New</Radio.Button>
             <Radio.Button value="planned">Planned</Radio.Button>
             <Radio.Button value="done">Done</Radio.Button>
             <Radio.Button value="deferred">Deferred</Radio.Button>
             <Radio.Button value="rejected">Rejected</Radio.Button>
+            <Radio.Button value="all">All</Radio.Button>
           </Radio.Group>
         </Col>
       </Row>
