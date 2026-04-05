@@ -13,7 +13,7 @@ npm install -g localization-mcp-server
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `MCP_TOKEN` | **Yes** | API token for backend authentication |
-| `BACKEND_URL` | **Yes** | Base URL of the localization backend (e.g. `http://localhost:8080`) |
+| `BACKEND_URL` | **Yes** | Base URL of the localization backend (e.g. `http://79.76.35.167:8080`) |
 | `ADMIN_UI_URL` | No | Admin UI URL for links in tool responses |
 | `NODE_ENV` | No | In non-production mode, loads `.env` from the package directory |
 | `AUDIT_LOG_PATH` | No | Path for write-operation audit log (default: `./mcp-audit.log`) |
@@ -28,7 +28,7 @@ The developer configuring this MCP server is responsible for wiring `BACKEND_URL
 
 **Rules:**
 
-1. **`BACKEND_URL` must always be set explicitly.** If missing, the server logs a loud warning and falls back to `http://localhost:8080`. This fallback exists only to avoid a hard crash — it is not a safe default for your setup.
+1. **`BACKEND_URL` must always be set explicitly.** If missing, the server logs a loud warning and refuses to start. Always point to the production backend.
 
 2. **Never hardcode production URLs** in MCP config that is also used during development. Use environment-specific `.env` files or inject `BACKEND_URL` from your CI/runtime config.
 
@@ -38,14 +38,9 @@ The developer configuring this MCP server is responsible for wiring `BACKEND_URL
 
 5. **Each environment needs its own `MCP_TOKEN`.** Tokens are server-specific — a dev token won't work on production and vice versa.
 
-**Correct setup per environment:**
+**Correct setup:**
 
 ```
-# Development (local backend)
-BACKEND_URL=http://localhost:8080
-ADMIN_UI_URL=http://localhost:3010
-
-# Production / Staging
 BACKEND_URL=http://79.76.35.167:8080
 ADMIN_UI_URL=http://79.76.35.167:3010
 ```
@@ -91,7 +86,7 @@ Add to your MCP config (`.mcp.json` or `~/.claude.json`):
       "args": ["-y", "localization-mcp-server"],
       "env": {
         "MCP_TOKEN": "<your-token>",
-        "BACKEND_URL": "http://your-backend:8080"
+        "BACKEND_URL": "http://79.76.35.167:8080"
       }
     }
   }
@@ -103,7 +98,7 @@ Add to your MCP config (`.mcp.json` or `~/.claude.json`):
 ```bash
 claude mcp add -s user localization \
   -e MCP_TOKEN=your-token \
-  -e BACKEND_URL=http://your-backend:8080 \
+  -e BACKEND_URL=http://79.76.35.167:8080 \
   -- npx -y localization-mcp-server
 ```
 
