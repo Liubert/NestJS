@@ -1,6 +1,7 @@
 import {
   BadGatewayException,
   Injectable,
+  Logger,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -57,8 +58,12 @@ const LOCALE_NAMES: Record<string, string> = {
   ru: 'Russian',
 };
 
+const BULK_CHUNK_SIZE = 10;
+
 @Injectable()
 export class AiTranslateService {
+  private readonly logger = new Logger(AiTranslateService.name);
+
   constructor(
     private readonly config: ConfigService,
     private readonly aiConfig: AiConfigService,
@@ -159,6 +164,141 @@ export class AiTranslateService {
     }
 
     return filtered;
+  }
+
+  /**
+   * Translate multiple entries (key + text) to all target locales in a single bulk call.
+   * Processes entries in chunks of BULK_CHUNK_SIZE (10) per Gemini request.
+   * On parse failure for a chunk, skips those keys and continues.
+   */
+  async bulkTranslate(
+    entries: Array<{ key: string; text: string; context?: string }>,
+    projectId?: string,
+    targetLocales?: string[],
+    localeGuidance?: Record<string, string>,
+  ): Promise<Record<string, Record<string, string>>> {
+    const apiKey = this.config.get<string>('GEMINI_API_KEY');
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'GEMINI_API_KEY is not configured on this server',
+      );
+    }
+
+    const aiCfg = await this.aiConfig.getConfig();
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const model = genAI.getGenerativeModel({ model: aiCfg.model });
+
+    // Build locale entries — fall back to DEFAULT_TARGET_LOCALES when undefined
+    const localeEntries = targetLocales
+      ? targetLocales.map((code) => [code, LOCALE_NAMES[code] ?? code])
+      : Object.entries(DEFAULT_TARGET_LOCALES);
+
+    if (localeEntries.length === 0) {
+      return {};
+    }
+
+    const languages = localeEntries
+      .map(([code, name]) => `${name} (${code})`)
+      .join(', ');
+
+    const requestedCodes = new Set(localeEntries.map(([code]) => code));
+    const merged: Record<string, Record<string, string>> = {};
+    const skippedKeys: string[] = [];
+    let totalInputTokens = 0;
+    let totalOutputTokens = 0;
+    let chunksProcessed = 0;
+
+    for (let i = 0; i < entries.length; i += BULK_CHUNK_SIZE) {
+      const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
+
+      // Build context lines for entries that have context
+      const contextLines = chunk
+        .filter((e) => e.context)
+        .map((e) => `Context for key '${e.key}': ${e.context}`);
+
+      const entriesMap = Object.fromEntries(chunk.map((e) => [e.key, e.text]));
+
+      let prompt =
+        `Translate these English UI strings to ${languages}.\n` +
+        `Return ONLY valid JSON with no markdown, no explanation:\n` +
+        `{ "key1": { "uk": "...", "nb-NO": "..." }, "key2": { ... } }\n\n` +
+        `Strings to translate:\n` +
+        `${JSON.stringify(entriesMap)}`;
+
+      if (contextLines.length) {
+        prompt += `\n\n${contextLines.join('\n')}`;
+      }
+
+      if (localeGuidance) {
+        const guidanceLines = localeEntries
+          .filter(([code]) => localeGuidance[code])
+          .map(
+            ([code, name]) => `- ${name} (${code}): ${localeGuidance[code]}`,
+          );
+        if (guidanceLines.length) {
+          prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
+        }
+      }
+
+      let raw: string;
+      try {
+        const result = await model.generateContent(prompt);
+        raw = result.response.text().trim();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        throw new BadGatewayException(`Gemini API error: ${msg}`);
+      }
+
+      totalInputTokens += Math.ceil(prompt.length / 4);
+      totalOutputTokens += Math.ceil(raw.length / 4);
+      chunksProcessed++;
+
+      const cleaned = raw
+        .replace(/^```(?:json)?\s*/i, '')
+        .replace(/\s*```$/, '')
+        .trim();
+
+      let parsed: Record<string, Record<string, string>>;
+      try {
+        parsed = JSON.parse(cleaned) as Record<string, Record<string, string>>;
+      } catch {
+        this.logger.warn(
+          `bulkTranslate: failed to parse chunk ${chunksProcessed} response, skipping ${chunk.length} keys`,
+        );
+        chunk.forEach((e) => skippedKeys.push(e.key));
+        continue;
+      }
+
+      // Merge chunk results — filter each key's locale map to only include requested locales
+      for (const [key, localeMap] of Object.entries(parsed)) {
+        if (!localeMap || typeof localeMap !== 'object') continue;
+        merged[key] = Object.fromEntries(
+          Object.entries(localeMap).filter(([code]) =>
+            requestedCodes.has(code),
+          ),
+        );
+      }
+    }
+
+    if (projectId) {
+      await this.aiUsageService
+        .logUsage({
+          projectId,
+          operation: 'bulk_translate',
+          inputTokens: totalInputTokens,
+          outputTokens: totalOutputTokens,
+          model: aiCfg.model,
+          metadata: {
+            keyCount: entries.length,
+            localeCount: localeEntries.length,
+            chunksProcessed,
+            skippedKeys,
+          },
+        })
+        .catch(() => {});
+    }
+
+    return merged;
   }
 
   /**
