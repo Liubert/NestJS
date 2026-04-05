@@ -13,12 +13,22 @@ export function registerAiTools(server: McpServer): void {
       'Returns translations for each configured locale.',
       'Usage is tracked per project. Requires a project slug for accounting.',
       'Use this to quickly generate translations for new keys.',
+      'Optionally accepts context (where the text appears in UI) to improve translation quality for short or ambiguous strings.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug for usage tracking'),
       text: z.string().min(1).describe('English text to translate'),
+      context: z
+        .string()
+        .max(1000)
+        .optional()
+        .describe(
+          'Context about where/how this key is used (max 1000 chars). ' +
+            'Helps AI translate ambiguous strings accurately. ' +
+            'Describe: screen, UI element type, meaning in this place.',
+        ),
     },
-    async ({ projectSlug, text }) => {
+    async ({ projectSlug, text, context }) => {
       try {
         // Fetch project locales to translate only into project's configured locales
         const project = await apiGet<{
@@ -34,6 +44,7 @@ export function registerAiTools(server: McpServer): void {
             text,
             projectSlug,
             targetLocales,
+            ...(context ? { context } : {}),
           },
         );
         logWrite('ai_translate', { projectSlug, text }, result);
