@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 Phase: 05
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-05 - Completed quick task 260405-ng9: Fix ai_translate save guidance and sandbox warning condition
+Last activity: 2026-04-05 - Completed quick task 260405-p2j: implement bulk_translate_and_save MCP tool and backend endpoint
 
 Progress: [░░░░░░░░░░] 0%
 
