@@ -74,7 +74,8 @@ export class FeedbackService {
     const qb = this.feedbackRepo
       .createQueryBuilder('fb')
       .leftJoinAndSelect('fb.user', 'user')
-      .leftJoinAndSelect('fb.project', 'project');
+      .leftJoinAndSelect('fb.project', 'project')
+      .where('fb.deletedAt IS NULL');
 
     if (query.category) {
       qb.andWhere('fb.category = :category', { category: query.category });
