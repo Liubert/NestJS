@@ -195,6 +195,120 @@ export function registerAiTools(server: McpServer): void {
     },
   );
 
+  // ─── bulk_translate_and_save ──────────────────────────────────────
+  server.tool(
+    'bulk_translate_and_save',
+    [
+      'Translate, save to sandbox, and quality-check in one step.',
+      'Replaces the 3-step flow: bulk_ai_translate -> bulk_import -> check_entry_quality.',
+      'Saves translations directly to sandbox (not production).',
+      'With skipQuality=false (default): returns per-key per-locale quality scores inline.',
+      'With skipQuality=true: saves translations, queues quality check, returns immediately.',
+      'Max 200 entries per call.',
+    ].join(' '),
+    {
+      projectSlug: z.string().describe('Project slug'),
+      namespace: z.string().describe('Namespace slug'),
+      entries: z
+        .array(
+          z.object({
+            key: z.string().describe('Translation key'),
+            text: z.string().min(1).describe('English source text'),
+            context: z
+              .string()
+              .max(1000)
+              .optional()
+              .describe('Context for this key'),
+          }),
+        )
+        .min(1)
+        .max(200)
+        .describe('Array of entries to translate and save (1–200)'),
+      targetLocales: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Optional list of locale codes. When omitted, translates to all non-default project locales.',
+        ),
+      skipQuality: z
+        .boolean()
+        .optional()
+        .describe(
+          'Skip sync quality check; results queued for background worker (default: false)',
+        ),
+    },
+    async ({ projectSlug, namespace, entries, targetLocales, skipQuality }) => {
+      try {
+        const result = await apiPost<
+          | {
+              translations: Record<string, Record<string, string>>;
+              quality: Record<
+                string,
+                Record<string, { score: number; level: string; comment: string }>
+              >;
+              saved: { created: number; updated: number };
+            }
+          | {
+              translations: Record<string, Record<string, string>>;
+              saved: { created: number; updated: number };
+              qualityStatus: 'queued';
+            }
+        >('/translations/ai-translate/bulk-and-save', {
+          projectSlug,
+          namespace,
+          entries,
+          targetLocales,
+          skipQuality,
+        });
+        logWrite(
+          'bulk_translate_and_save',
+          { projectSlug, namespace, entryCount: entries.length },
+          result,
+        );
+
+        const translatedCount = Object.keys(result.translations).length;
+        const lines = [
+          `Translated and saved ${translatedCount} keys to sandbox (${namespace}) in project ${projectSlug}`,
+          `Saved: ${result.saved.created} created, ${result.saved.updated} updated`,
+        ];
+
+        if ('quality' in result && result.quality) {
+          lines.push('');
+          lines.push('Quality results:');
+          for (const [key, localeMap] of Object.entries(result.quality)) {
+            lines.push(`  ${key}:`);
+            for (const [locale, r] of Object.entries(localeMap)) {
+              lines.push(
+                `    [${locale}] ${r.score}/100 (${r.level})${r.comment ? ` -- ${r.comment}` : ''}`,
+              );
+            }
+          }
+          lines.push('');
+          lines.push('Agent guidance:');
+          lines.push('  - green (85+): No action needed');
+          lines.push(
+            '  - yellow (60-84): Review optional — consider improving if context available',
+          );
+          lines.push(
+            '  - red (<60): Must fix — use set_translation to correct, then check_entry_quality to re-check',
+          );
+        } else if ('qualityStatus' in result && result.qualityStatus === 'queued') {
+          lines.push('');
+          lines.push(
+            'Quality check: queued (background worker will process within ~30s)',
+          );
+          lines.push(
+            'Use check_entry_quality per key to see results after processing.',
+          );
+        }
+
+        return textResult(lines.join('\n'));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
   // ─── ai_quality_check ─────────────────────────────────────────────
   server.tool(
     'ai_quality_check',
