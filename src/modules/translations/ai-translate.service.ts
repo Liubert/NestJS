@@ -669,8 +669,21 @@ ${JSON.stringify(items, null, 2)}`;
         ? aiCfg.qualityTranslatePrompt
         : aiCfg.qualityLanguagePrompt;
 
+    const AMBIGUITY_RULE =
+      `IMPORTANT — Ambiguity and multiple meanings:\n` +
+      `- Many English words have multiple valid meanings (e.g. "train" = rail vehicle or exercise; "light" = illumination, weight, or color).\n` +
+      `- If the translation is correct for ANY valid interpretation that makes sense in a software UI, treat it as accurate.\n` +
+      `- Give the benefit of the doubt; only flag errors when no valid interpretation fits.`;
+
     const vars: Record<string, string> = { source, translation, locale };
-    if (context) vars.context = `Context: ${context}`;
+    if (context) {
+      vars.context = `Context: ${context}`;
+      vars.meaning_rule =
+        `The context above is DEFINITIVE — it specifies the exact intended meaning.\n` +
+        `Evaluate the translation against this meaning ONLY. Do not apply benefit-of-doubt for other interpretations.`;
+    } else {
+      vars.meaning_rule = AMBIGUITY_RULE;
+    }
 
     // When source and translation are identical, hint the AI to check for untranslated text
     const identicalHint =

@@ -37,13 +37,7 @@ You are evaluating a translation. Check both translation accuracy AND writing qu
 Source (English): "{{source}}"
 Translation ({{locale}}): "{{translation}}"
 
-IMPORTANT — Ambiguity and multiple meanings:
-- Many English words have multiple valid meanings depending on context (e.g. "train" can mean a rail vehicle or to practice/exercise; "moon" can mean the celestial body or a proper name; "light" can mean illumination, lightweight, or a pale color).
-- Before judging accuracy, consider ALL reasonable meanings of the source text.
-- If the translation is correct for ANY valid interpretation of the source that makes sense in a software/product UI context, treat it as accurate.
-- Do NOT penalize a translation that uses a less common but valid interpretation.
-- When the source is genuinely ambiguous, give the benefit of the doubt to the translator.
-- Only flag a meaning error if the translation cannot reasonably correspond to any valid interpretation of the source.
+{{meaning_rule}}
 
 {{context}}
 
