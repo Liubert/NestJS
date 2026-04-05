@@ -1742,4 +1742,154 @@ export class TranslationsService {
     }
     return result;
   }
+
+  // ─── Bulk operations ──────────────────────────────────────────────────────
+
+  async bulkQualityCheck(
+    projectSlug: string,
+    nsSlug: string,
+    keys: string[] | undefined,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<{
+    results: Array<
+      | {
+          key: string;
+          status: 'ok';
+          results: Record<string, QualityInfo | null>;
+        }
+      | { key: string; status: 'error'; error: string }
+    >;
+  }> {
+    const project = await this.requireProject(projectSlug);
+    await this.assertAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    let targetKeys: string[];
+    if (!keys || keys.length === 0) {
+      const allKeyEntities = await this.keyRepo.find({
+        where: { namespaceId: ns.id },
+        select: ['key'],
+      });
+      targetKeys = allKeyEntities.map((k) => k.key);
+    } else {
+      targetKeys = keys;
+    }
+
+    const results: Array<
+      | {
+          key: string;
+          status: 'ok';
+          results: Record<string, QualityInfo | null>;
+        }
+      | { key: string; status: 'error'; error: string }
+    > = [];
+
+    for (const key of targetKeys) {
+      try {
+        const checkResult = await this.runQualityCheck(
+          projectSlug,
+          nsSlug,
+          key,
+          userId,
+          userRole,
+        );
+        results.push({ key, status: 'ok', results: checkResult });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({ key, status: 'error', error: message });
+      }
+    }
+
+    return { results };
+  }
+
+  async bulkMarkExpected(
+    projectSlug: string,
+    nsSlug: string,
+    keys: string[],
+    locale: string | undefined,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<{ marked: number }> {
+    const project = await this.requireProject(projectSlug);
+    await this.assertAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    let marked = 0;
+
+    if (locale) {
+      for (const key of keys) {
+        try {
+          await this.markAsExpected(
+            projectSlug,
+            nsSlug,
+            key,
+            locale,
+            userId,
+            userRole,
+          );
+          marked++;
+        } catch {
+          // skip failures, count only successes
+        }
+      }
+    } else {
+      const locales = await this.localeRepo.findBy({ projectId: project.id });
+      for (const key of keys) {
+        for (const loc of locales) {
+          try {
+            await this.markAsExpected(
+              projectSlug,
+              nsSlug,
+              key,
+              loc.code,
+              userId,
+              userRole,
+            );
+            marked++;
+          } catch {
+            // skip failures, count only successes
+          }
+        }
+      }
+    }
+
+    return { marked };
+  }
+
+  async bulkUpdateContext(
+    projectSlug: string,
+    nsSlug: string,
+    updates: Array<{ key: string; context: string }>,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<{ updated: number }> {
+    const project = await this.requireProject(projectSlug);
+    await this.assertAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    let updated = 0;
+    for (const item of updates) {
+      const result = await this.keyRepo.update(
+        { namespaceId: ns.id, key: item.key },
+        { context: item.context },
+      );
+      updated += result.affected ?? 0;
+    }
+
+    return { updated };
+  }
 }
