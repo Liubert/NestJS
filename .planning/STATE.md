@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 Phase: 05
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-04 - Completed quick task 260404-gm9: Implement locale guidance feature
+Last activity: 2026-04-05 - Completed quick task 260405-ng9: Fix ai_translate save guidance and sandbox warning condition
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -119,9 +119,10 @@ None yet.
 | 260405-jop | Fix per-project MCP config footgun: -s user flag, README warning, 401 errors, startup validation | 2026-04-05 | 7f7ce56 | [260405-jop-fix-per-project-mcp-config-issue-s-user-](./quick/260405-jop-fix-per-project-mcp-config-issue-s-user-/) |
 | 260405-ms8 | Add optional context parameter to ai_translate MCP tool | 2026-04-05 | 3184a2a | [260405-ms8-add-context-parameter-to-mcp-ai-translat](./quick/260405-ms8-add-context-parameter-to-mcp-ai-translat/) |
 | 260405-n49 | Add optional targetLocales parameter to ai_translate MCP tool | 2026-04-05 | b018387 | [260405-n49-add-targetlocales-parameter-to-mcp-ai-tr](./quick/260405-n49-add-targetlocales-parameter-to-mcp-ai-tr/) |
+| 260405-ng9 | Fix ai_translate save guidance and sandbox warning condition | 2026-04-05 | 82b976b | [260405-ng9-fix-ai-translate-save-guidance-and-sandb](./quick/260405-ng9-fix-ai-translate-save-guidance-and-sandb/) |
 
 ## Session Continuity
 
-Last session: 2026-04-05T13:45:00Z
-Stopped at: Completed quick task 260405-n49: Add targetLocales parameter to ai_translate MCP tool
+Last session: 2026-04-05T14:00:00Z
+Stopped at: Completed quick task 260405-ng9: Fix ai_translate save guidance and sandbox warning condition
 Resume file: None
