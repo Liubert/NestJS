@@ -221,7 +221,15 @@ export function registerEnvironmentTools(server: McpServer): void {
           `Before writing any client code, ask the user which i18n library they want to use, or confirm they are OK with a minimal implementation.`,
           ``,
           `### Client-side integration`,
-          `If no i18n library is detected in the local project: for React apps, install i18next + react-i18next + i18next-http-backend, configure the backend URL to the client URL pattern above, and use the t() hook. Do NOT write a custom fetch — use the standard library instead.`,
+          `If no i18n library is detected in the local project, use a well-known library for the target platform — do NOT write a custom fetch implementation:`,
+          `  • React / React Native — i18next + react-i18next + i18next-http-backend`,
+          `  • Vue — i18next + i18next-vue, or vue-i18n`,
+          `  • Angular — i18next + angular-i18next, or @ngx-translate/core`,
+          `  • Svelte — i18next + i18next-http-backend`,
+          `  • Node.js / server-side — i18next + i18next-http-backend`,
+          `  • Flutter — flutter_localizations + intl (ARB format, adapt URL fetch)`,
+          `  • Other — prefer i18next where possible (widest ecosystem); always load translations from the client URL pattern above.`,
+          `Ask the user to confirm the library choice before writing any integration code.`,
         );
 
         lines.push(
