@@ -25,42 +25,6 @@ interface DiffResponse {
 
 export function registerProductionTools(server: McpServer): void {
   server.tool(
-    'init_sandbox',
-    'Re-sync the sandbox with current production state. Sandbox is auto-initialized on project creation. Use force: true to wipe sandbox and re-copy from production (discards all pending sandbox changes).',
-    {
-      projectSlug: z.string().describe('Project slug'),
-      force: z
-        .boolean()
-        .default(false)
-        .describe(
-          'If true, wipe existing sandbox and re-copy from production (owner/admin only)',
-        ),
-    },
-    async ({ projectSlug, force }) => {
-      try {
-        const result = await apiPost<{
-          initialized: boolean;
-          copiedRows: number;
-        }>(`/translations/projects/${projectSlug}/sandbox/init`, { force });
-
-        if (!result.initialized) {
-          return textResult(
-            `Sandbox for "${projectSlug}" is already initialized. Use force: true to re-initialize.`,
-          );
-        }
-
-        logWrite('init_sandbox', { projectSlug, force }, result);
-
-        return textResult(
-          `Sandbox initialized for "${projectSlug}". Copied ${result.copiedRows} translation values from production.`,
-        );
-      } catch (error) {
-        return errorResult(error);
-      }
-    },
-  );
-
-  server.tool(
     'reset_sandbox',
     'Discard all sandbox changes and re-copy from current production state. This destroys all pending sandbox edits. Requires confirmed: true.',
     {

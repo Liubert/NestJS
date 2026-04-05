@@ -52,7 +52,6 @@ export const TOOL_REGISTRY = {
   list_snapshots: { env: "both", access: "read" },
   preview_push_to_production: { env: "both", access: "read" },
   // ── Write — sandbox only; no production-write tools exist ───────────
-  init_sandbox: { env: "sandbox", access: "write" },
   reset_sandbox: { env: "sandbox", access: "write" },
   set_translation: { env: "sandbox", access: "write" },
   delete_translation: { env: "sandbox", access: "write" },

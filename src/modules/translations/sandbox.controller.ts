@@ -12,7 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
+import { IsUUID } from 'class-validator';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
@@ -29,12 +29,6 @@ import { BatchTranslateDto } from './dto/batch-translate.dto.js';
 import { BatchRevertDto } from './dto/batch-revert.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
-
-class InitSandboxDto {
-  @IsOptional()
-  @IsBoolean()
-  force?: boolean;
-}
 
 class RevertDto {
   @IsUUID()
@@ -55,24 +49,6 @@ export class SandboxController {
   @ApiOperation({ summary: 'Get sandbox status for a project' })
   status(@Param('slug') slug: string) {
     return this.sandboxService.getSandboxStatus(slug);
-  }
-
-  @Post('init')
-  @ApiOperation({
-    summary:
-      'Initialize sandbox (copy production to sandbox). force=true resets.',
-  })
-  init(
-    @Param('slug') slug: string,
-    @Body() dto: InitSandboxDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.sandboxService.initSandbox(
-      slug,
-      user.userId,
-      user.role,
-      dto.force ?? false,
-    );
   }
 
   @Get('diff')
