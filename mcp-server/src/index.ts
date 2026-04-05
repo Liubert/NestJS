@@ -43,9 +43,10 @@ const server = createServer();
   } catch (err: unknown) {
     if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 401) {
       process.stderr.write(
-        "[localization-mcp] ERROR: Token validation failed (401). The MCP_TOKEN is invalid or expired.\n" +
-          "  Most likely cause: localization-mcp is registered per-project (.mcp.json), overriding the global config.\n" +
-          "  Fix: claude mcp remove localization && claude mcp add -s user localization -e MCP_TOKEN=<token> -e BACKEND_URL=<url> -- npx -y localization-mcp-server\n",
+        "[localization-mcp] ERROR: Token validation failed (401). Common causes:\n" +
+          "  1. MCP_TOKEN was revoked — generate a new token in the Admin UI and update your MCP config.\n" +
+          "  2. localization-mcp is registered per-project (.mcp.json), overriding the global config token.\n" +
+          "     Fix: claude mcp remove localization && claude mcp add -s user localization -e MCP_TOKEN=<token> -e BACKEND_URL=<url> -- npx -y localization-mcp-server\n",
       );
     } else {
       process.stderr.write(

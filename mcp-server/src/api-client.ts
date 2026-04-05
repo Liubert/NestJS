@@ -37,8 +37,10 @@ function handleError(error: unknown): never {
     if (status === 401) {
       throw new ApiError(
         401,
-        "Authentication failed (401). Most likely cause: localization-mcp is registered per-project (.mcp.json), which overrides the global config token.\n" +
-          "Fix: claude mcp remove localization && claude mcp add -s user localization -e MCP_TOKEN=<token> -e BACKEND_URL=<url> -- npx -y localization-mcp-server",
+        "Authentication failed (401). Common causes:\n" +
+          "1. MCP_TOKEN was revoked — generate a new token in the Admin UI and update your MCP config.\n" +
+          "2. localization-mcp is registered per-project (.mcp.json), which overrides the global config token.\n" +
+          "   Fix: claude mcp remove localization && claude mcp add -s user localization -e MCP_TOKEN=<token> -e BACKEND_URL=<url> -- npx -y localization-mcp-server",
         error.response?.data,
       );
     }
