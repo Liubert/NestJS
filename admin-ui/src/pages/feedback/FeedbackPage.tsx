@@ -2,8 +2,9 @@ import React, { useState, useMemo } from 'react';
 import {
   Table, Typography, Tag, Collapse, Badge, Space, Select,
   Row, Col, Spin, Pagination, Modal, Input, Button, Descriptions,
-  message,
+  message, Tooltip,
 } from 'antd';
+import { RobotOutlined, UserOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import apiClient from '../../api/client';
 
@@ -23,6 +24,7 @@ interface FeedbackItem {
   suggestion: string | null;
   agentName: string | null;
   agentVersion: string | null;
+  agentModel: string | null;
   sessionId: string | null;
   createdAt: string;
   reviewed: boolean;
@@ -109,6 +111,26 @@ const FeedbackPage: React.FC = () => {
       },
     },
     {
+      title: 'Source',
+      key: 'source',
+      width: 90,
+      render: (_: unknown, record: FeedbackItem) => {
+        const isAgent = !!record.agentName || record.isMcpToken;
+        const label = isAgent
+          ? record.agentModel || record.agentName || 'Agent'
+          : 'User';
+        return (
+          <Tooltip title={label}>
+            {isAgent ? (
+              <Tag icon={<RobotOutlined />} color="purple">{record.agentName || 'MCP'}</Tag>
+            ) : (
+              <Tag icon={<UserOutlined />}>User</Tag>
+            )}
+          </Tooltip>
+        );
+      },
+    },
+    {
       title: 'Category',
       dataIndex: 'category',
       key: 'category',
@@ -189,6 +211,9 @@ const FeedbackPage: React.FC = () => {
       </Descriptions.Item>
       <Descriptions.Item label="Agent Version">
         {record.agentVersion || '\u2014'}
+      </Descriptions.Item>
+      <Descriptions.Item label="Agent Model">
+        {record.agentModel || '\u2014'}
       </Descriptions.Item>
       <Descriptions.Item label="Session ID">
         {record.sessionId || '\u2014'}

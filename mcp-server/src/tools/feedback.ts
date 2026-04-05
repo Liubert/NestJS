@@ -20,7 +20,7 @@ This feedback is read by the system maintainer and directly drives improvements.
         .describe("Type of feedback"),
       message: z
         .string()
-        .max(2000)
+        .max(10000)
         .describe("Detailed description of the issue or suggestion"),
       toolOrEndpoint: z
         .string()
@@ -59,6 +59,13 @@ This feedback is read by the system maintainer and directly drives improvements.
         .max(50)
         .optional()
         .describe("Your agent/tool version"),
+      agentModel: z
+        .string()
+        .max(100)
+        .optional()
+        .describe(
+          "AI model powering the agent (e.g. claude-opus-4-6, gpt-4o, gemini-2.0-flash)",
+        ),
       sessionId: z
         .string()
         .max(100)

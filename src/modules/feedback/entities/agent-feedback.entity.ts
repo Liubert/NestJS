@@ -70,6 +70,14 @@ export class AgentFeedbackEntity {
   })
   agentVersion!: string | null;
 
+  @Column({
+    type: 'varchar',
+    length: 100,
+    name: 'agent_model',
+    nullable: true,
+  })
+  agentModel!: string | null;
+
   @Column({ type: 'varchar', length: 100, name: 'session_id', nullable: true })
   sessionId!: string | null;
 

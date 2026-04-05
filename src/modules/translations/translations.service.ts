@@ -300,7 +300,10 @@ export class TranslationsService {
     await this.assertAccess(project, userId, userRole);
 
     const [locales, namespaces] = await Promise.all([
-      this.localeRepo.findBy({ projectId: project.id }),
+      this.localeRepo.find({
+        where: { projectId: project.id },
+        order: { isDefault: 'DESC', code: 'ASC' },
+      }),
       this.namespaceRepo.findBy({ projectId: project.id }),
     ]);
 

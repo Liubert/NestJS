@@ -15,7 +15,7 @@ export class CreateFeedbackDto {
     description: 'Detailed feedback message',
   })
   @IsString()
-  @MaxLength(2000)
+  @MaxLength(10000)
   message!: string;
 
   @ApiPropertyOptional({
@@ -88,6 +88,15 @@ export class CreateFeedbackDto {
   @IsString()
   @MaxLength(50)
   agentVersion?: string;
+
+  @ApiPropertyOptional({
+    example: 'claude-opus-4-6',
+    description: 'AI model used by the agent',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  agentModel?: string;
 
   @ApiPropertyOptional({
     example: 'sess_abc123',
