@@ -32,50 +32,32 @@ Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "...
 export const DEFAULT_QUALITY_TRANSLATE_PROMPT = `\
 You are a strict software localization and language quality reviewer.
 
-Mode: translation_quality
-You are evaluating a translation. Check both translation accuracy AND writing quality.
 Source (English): "{{source}}"
 Translation ({{locale}}): "{{translation}}"
 
 {{meaning_rule}}
 
-{{context}}
+Checks:
+- Grammar, spelling, punctuation ({{locale}} conventions)
+- Natural, idiomatic phrasing for software/product UI
+- Nuance and meaning preserved
+- Placeholders ({{name}}, %s, {count}, {0}) preserved exactly
 
-Additional checks:
-- Does the translation accurately convey the meaning of the source (for at least one valid interpretation)?
-- Is nuance preserved correctly?
-- Does the translation sound natural in UI/product context?
-- Meaning errors or lost nuance must reduce the score significantly — but only when the translation is genuinely wrong, not merely using an alternative valid meaning.
+Scoring (1–100):
+- 95–100: excellent, production-ready
+- 80–94: strong, minor improvements only
+- 60–79: understandable but imperfect
+- below 60: significant errors
 
-Checks to apply (all modes):
-- Grammar: correct forms, agreement, case, verb forms
-- Spelling: correctly spelled in {{locale}}
-- Punctuation: follows conventions of {{locale}}
-- Comma usage: correct placement
-- Unnatural or awkward phrasing
-- Clumsy sentence structure
-- Natural wording for software/product UI
-- Placeholders, variables, interpolation tokens ({{name}}, %s, {count}, {0}) and markup must be preserved exactly
+Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).
 
-Scoring rules — be strict on real errors, fair on ambiguity. Score on a 1–100 scale:
-- 95–100: excellent, production-ready, no meaningful issues
-- 80–94: very strong, minor improvement opportunities
-- 60–79: understandable, but clearly imperfect
-- below 60: noticeable quality problems
+Evaluate whether context about this key's usage would help:
+- "contextNeed": "required" — text is genuinely ambiguous (e.g. "Train", "Light", "Save")
+- "contextNeed": "useful" — short/generic, context would improve confidence
+- "contextNeed": "none" — meaning is clear
+Add "contextReason" if required or useful (1 sentence, max 30 words).
 
-Comment rules:
-- score 95–100: comment should be empty string
-- score 80–94: comment must explain what could still be improved
-- score below 80: comment must explain the main issue
-- keep comment practical and concise, up to 60 words
-
-Additionally, evaluate whether context about where/how this key is used would improve this evaluation:
-- "contextNeed": "required" if the source text is genuinely ambiguous — multiple meanings lead to different translations and a translator cannot confidently choose without context
-- "contextNeed": "useful" if the text is short/generic and business intent or usage location would improve confidence, even though a reasonable default exists
-- "contextNeed": "none" if the meaning is universally clear
-If contextNeed is "required" or "useful", add "contextReason" — a short plain-language explanation (1 sentence, max 30 words).
-
-Return ONLY valid JSON, no markdown, no extra text:
+Return ONLY valid JSON:
 {"score": <1-100>, "comment": "<string>", "contextNeed": "<required|useful|none>", "contextReason": "<string or null>"}`;
 
 export const DEFAULT_QUALITY_LANGUAGE_PROMPT = `\

@@ -447,11 +447,7 @@ export class AiTranslateService {
 
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
-      const prompt = this.buildBulkQualityPrompt(
-        chunk,
-        aiCfg.contextDetectionPrompt,
-        localeGuidance,
-      );
+      const prompt = this.buildBulkQualityPrompt(chunk, localeGuidance);
 
       let raw: string;
       try {
@@ -574,13 +570,8 @@ export class AiTranslateService {
       context: string | null;
       translations: Record<string, string>;
     }>,
-    contextDetectionPrompt: string | null,
     localeGuidance?: Record<string, string>,
   ): string {
-    const contextSection = contextDetectionPrompt
-      ? `\n${contextDetectionPrompt}\n`
-      : '';
-
     // Collect all locale codes from items and build guidance section
     let guidanceSection = '';
     if (localeGuidance) {
@@ -603,25 +594,23 @@ export class AiTranslateService {
 
     return `You are a professional translation quality reviewer. Evaluate each translation below.
 
-IMPORTANT — Context vs ambiguity:
-- If a key has a "context" field, it is DEFINITIVE — it specifies the exact intended meaning. Evaluate the translation against that meaning ONLY. Do not apply benefit-of-doubt for other interpretations.
-- If a key has NO "context" field, many English words have multiple valid meanings. Treat a translation as accurate if it fits ANY reasonable interpretation in a software/product UI. Give the benefit of the doubt; only flag errors when no valid interpretation fits.
-${contextSection}${guidanceSection}
-Score each translation on a 1–100 scale:
-- 95–100: Excellent — accurate, natural, production-ready
-- 80–94: Very strong — minor improvement opportunities
-- 60–79: Understandable but clearly imperfect
-- 1–59: Significant errors, needs rework
+Context rule:
+- If a key has a "context" field: it is DEFINITIVE — evaluate against that meaning ONLY.
+- If a key has no "context" field: accept any translation that fits standard software UI usage.
+${guidanceSection}
+Scoring (1–100):
+- 95–100: excellent, production-ready
+- 80–94: strong, minor improvements only
+- 60–79: understandable but imperfect
+- 1–59: significant errors
 
-If "source" is present, compare translation accuracy to it. If "source" is null, evaluate language quality alone.
+If "source" is present, compare translation accuracy to it. If "source" is null, evaluate language quality only.
 
-Comment rules:
-- score 95–100: comment should be empty string
-- score 80–94: comment must explain what could still be improved
-- score below 80: comment must explain the main issue
-- keep comment practical and concise, up to 60 words
+Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).
 
-Return ONLY valid JSON with no markdown, no explanation, no extra keys:
+For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.
+
+Return ONLY valid JSON:
 {
   "<key>": {
     "contextNeed": "<required|useful|none>",
@@ -667,20 +656,13 @@ ${JSON.stringify(items, null, 2)}`;
         ? aiCfg.qualityTranslatePrompt
         : aiCfg.qualityLanguagePrompt;
 
-    const AMBIGUITY_RULE =
-      `IMPORTANT — Ambiguity and multiple meanings:\n` +
-      `- Many English words have multiple valid meanings (e.g. "train" = rail vehicle or exercise; "light" = illumination, weight, or color).\n` +
-      `- If the translation is correct for ANY valid interpretation that makes sense in a software UI, treat it as accurate.\n` +
-      `- Give the benefit of the doubt; only flag errors when no valid interpretation fits.`;
-
     const vars: Record<string, string> = { source, translation, locale };
-    if (context) {
-      vars.context = `Context: ${context}`;
+    if (context?.trim()) {
       vars.meaning_rule =
-        `The context above is DEFINITIVE — it specifies the exact intended meaning.\n` +
-        `Evaluate the translation against this meaning ONLY. Do not apply benefit-of-doubt for other interpretations.`;
+        `Context: "${context.trim()}"\n` +
+        `This context is DEFINITIVE — evaluate the translation against it ONLY.`;
     } else {
-      vars.meaning_rule = AMBIGUITY_RULE;
+      vars.meaning_rule = `No context provided. Accept any translation that fits standard software UI usage.`;
     }
 
     // When source and translation are identical, hint the AI to check for untranslated text
