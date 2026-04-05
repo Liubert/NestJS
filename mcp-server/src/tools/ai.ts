@@ -83,9 +83,111 @@ export function registerAiTools(server: McpServer): void {
           ``,
         ];
         if (ignoredLocales.length > 0) {
-          lines.push(`Note: ignored unknown locales: ${ignoredLocales.join(', ')}`);
+          lines.push(
+            `Note: ignored unknown locales: ${ignoredLocales.join(', ')}`,
+          );
         }
-        lines.push(`To save: use bulk_import for all locales at once ({ "locale": { "key": "value" } } format), or bulk_set_locale for a single locale only.`);
+        lines.push(
+          `To save: use bulk_import for all locales at once ({ "locale": { "key": "value" } } format), or bulk_set_locale for a single locale only.`,
+        );
+        return textResult(lines.join('\n'));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── bulk_ai_translate ────────────────────────────────────────────
+  server.tool(
+    'bulk_ai_translate',
+    [
+      'Translate multiple English texts to all project locales in one call using AI (Gemini).',
+      'Processes in batches of 10 keys per AI call. Max 200 entries.',
+      'Use for bulk new-namespace translation or filling a new locale.',
+      'Replaces N separate ai_translate calls with one bulk operation.',
+    ].join(' '),
+    {
+      projectSlug: z
+        .string()
+        .describe(
+          'Project slug (required for locale resolution and usage tracking)',
+        ),
+      entries: z
+        .array(
+          z.object({
+            key: z.string().describe('Translation key'),
+            text: z.string().min(1).describe('English source text'),
+            context: z
+              .string()
+              .max(1000)
+              .optional()
+              .describe('Context for this key'),
+          }),
+        )
+        .min(1)
+        .max(200)
+        .describe('Array of entries to translate'),
+      targetLocales: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Optional list of locale codes. When omitted, translates to all non-default project locales.',
+        ),
+    },
+    async ({ projectSlug, entries, targetLocales: callerLocales }) => {
+      try {
+        // Fetch project locales to resolve and validate caller-provided locales
+        const project = await apiGet<{
+          locales: { code: string; isDefault: boolean }[];
+        }>(`/translations/projects/${projectSlug}`);
+        const allProjectLocales = project.locales
+          .filter((l) => !l.isDefault)
+          .map((l) => l.code);
+
+        let targetLocales: string[];
+        let ignoredLocales: string[] = [];
+
+        if (callerLocales && callerLocales.length > 0) {
+          const projectLocaleSet = new Set(allProjectLocales);
+          targetLocales = callerLocales.filter((code) =>
+            projectLocaleSet.has(code),
+          );
+          ignoredLocales = callerLocales.filter(
+            (code) => !projectLocaleSet.has(code),
+          );
+        } else {
+          targetLocales = allProjectLocales;
+        }
+
+        const result = await apiPost<Record<string, Record<string, string>>>(
+          '/translations/ai-translate/bulk',
+          {
+            entries,
+            projectSlug,
+            targetLocales,
+          },
+        );
+        logWrite(
+          'bulk_ai_translate',
+          { projectSlug, entryCount: entries.length },
+          result,
+        );
+
+        const translatedCount = Object.keys(result).length;
+        const lines = [
+          `Translated ${translatedCount} keys to [${targetLocales.join(', ')}]:`,
+          ``,
+          JSON.stringify(result, null, 2),
+          ``,
+        ];
+        if (ignoredLocales.length > 0) {
+          lines.push(
+            `Note: ignored unknown locales: ${ignoredLocales.join(', ')}`,
+          );
+        }
+        lines.push(
+          `Use bulk_import to save — pass as data parameter: { "locale": { "key": "value" } }`,
+        );
         return textResult(lines.join('\n'));
       } catch (error) {
         return errorResult(error);

@@ -30,6 +30,7 @@ import { TranslationsService } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiUsageService } from './ai-usage.service.js';
 import { AiTranslateDto } from './dto/ai-translate.dto.js';
+import { BulkAiTranslateDto } from './dto/bulk-ai-translate.dto.js';
 import { CheckQualityDto } from './dto/check-quality.dto.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
@@ -128,6 +129,53 @@ export class TranslationsController {
       projectId,
       dto.context,
       dto.targetLocales,
+      localeGuidance,
+    );
+  }
+
+  @Post('ai-translate/bulk')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk AI-translate multiple keys' })
+  async bulkAiTranslate(
+    @Body() dto: BulkAiTranslateDto,
+  ): Promise<Record<string, Record<string, string>>> {
+    let projectId: string | undefined;
+    let localeGuidance: Record<string, string> | undefined;
+    let targetLocales: string[] | undefined = dto.targetLocales;
+
+    if (dto.projectSlug) {
+      const project = await this.translationsService.getProjectBySlug(
+        dto.projectSlug,
+      );
+      projectId = project.id;
+      const locales = await this.translationsService.getProjectLocales(
+        dto.projectSlug,
+      );
+      const guidance = locales.reduce<Record<string, string>>((acc, l) => {
+        if (l.guidance) acc[l.code] = l.guidance;
+        return acc;
+      }, {});
+      if (Object.keys(guidance).length) localeGuidance = guidance;
+
+      // Filter targetLocales to only include codes that exist in the project (excluding default)
+      if (dto.targetLocales && dto.targetLocales.length > 0) {
+        const projectLocaleCodes = new Set(
+          locales.filter((l) => !l.isDefault).map((l) => l.code),
+        );
+        targetLocales = dto.targetLocales.filter((code) =>
+          projectLocaleCodes.has(code),
+        );
+      } else if (!dto.targetLocales) {
+        // No targetLocales provided — use all non-default project locales
+        targetLocales = locales.filter((l) => !l.isDefault).map((l) => l.code);
+      }
+    }
+
+    return this.aiTranslateService.bulkTranslate(
+      dto.entries,
+      projectId,
+      targetLocales,
       localeGuidance,
     );
   }
