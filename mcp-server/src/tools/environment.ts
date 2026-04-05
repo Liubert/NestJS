@@ -215,6 +215,16 @@ export function registerEnvironmentTools(server: McpServer): void {
         }
 
         lines.push(
+          ``,
+          `### Important: MCP is for AI agents only`,
+          `MCP tools manage translations on the server. The client app (React/Vue/etc.) must NOT use MCP at runtime — it fetches translations via the client URL pattern above using a standard i18n library.`,
+          `Before writing any client code, ask the user which i18n library they want to use, or confirm they are OK with a minimal implementation.`,
+          ``,
+          `### Client-side integration`,
+          `If no i18n library is detected in the local project: for React apps, install i18next + react-i18next + i18next-http-backend, configure the backend URL to the client URL pattern above, and use the t() hook. Do NOT write a custom fetch — use the standard library instead.`,
+        );
+
+        lines.push(
           '',
           'If you encounter issues or have suggestions, use submit_feedback to report them.',
         );
