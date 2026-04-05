@@ -118,9 +118,10 @@ None yet.
 | 260405-jfc | Fix MCP agent guidance pre-flight warning and boundary guidance | 2026-04-05 | 5dffe71 | [260405-jfc-fix-mcp-agent-guidance-pre-flight-warnin](./quick/260405-jfc-fix-mcp-agent-guidance-pre-flight-warnin/) |
 | 260405-jop | Fix per-project MCP config footgun: -s user flag, README warning, 401 errors, startup validation | 2026-04-05 | 7f7ce56 | [260405-jop-fix-per-project-mcp-config-issue-s-user-](./quick/260405-jop-fix-per-project-mcp-config-issue-s-user-/) |
 | 260405-ms8 | Add optional context parameter to ai_translate MCP tool | 2026-04-05 | 3184a2a | [260405-ms8-add-context-parameter-to-mcp-ai-translat](./quick/260405-ms8-add-context-parameter-to-mcp-ai-translat/) |
+| 260405-n49 | Add optional targetLocales parameter to ai_translate MCP tool | 2026-04-05 | b018387 | [260405-n49-add-targetlocales-parameter-to-mcp-ai-tr](./quick/260405-n49-add-targetlocales-parameter-to-mcp-ai-tr/) |
 
 ## Session Continuity
 
-Last session: 2026-04-05T13:25:00Z
-Stopped at: Completed quick task 260405-ms8: Add context parameter to ai_translate MCP tool
+Last session: 2026-04-05T13:45:00Z
+Stopped at: Completed quick task 260405-n49: Add targetLocales parameter to ai_translate MCP tool
 Resume file: None
