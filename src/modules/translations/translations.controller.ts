@@ -43,6 +43,7 @@ import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
 import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
+import { BulkQualityCheckAiDto } from './dto/bulk-quality-check-ai.dto.js';
 import { BulkMarkExpectedDto } from './dto/bulk-mark-expected.dto.js';
 import { BulkContextUpdateDto } from './dto/bulk-context.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
@@ -207,6 +208,49 @@ export class TranslationsController {
       dto.context,
       localeGuidanceStr,
     );
+  }
+
+  @Post('ai-quality-check/bulk')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk AI quality check for multiple locales' })
+  async bulkCheckQualityAi(
+    @Body() dto: BulkQualityCheckAiDto,
+  ): Promise<
+    Record<string, { score: number; level: string; comment: string }>
+  > {
+    let projectId: string | undefined;
+    let localeGuidance: Record<string, string> | undefined;
+    if (dto.projectSlug) {
+      const project = await this.translationsService.getProjectBySlug(
+        dto.projectSlug,
+      );
+      projectId = project.id;
+      const locales = await this.translationsService.getProjectLocales(
+        dto.projectSlug,
+      );
+      const guidance = locales.reduce<Record<string, string>>((acc, l) => {
+        if (l.guidance) acc[l.code] = l.guidance;
+        return acc;
+      }, {});
+      if (Object.keys(guidance).length) localeGuidance = guidance;
+    }
+    const items = [
+      {
+        key: 'input',
+        source: dto.source,
+        context: dto.context ?? null,
+        translations: dto.translations,
+      },
+    ];
+    const bulkResult = await this.aiTranslateService.bulkCheckQuality(
+      items,
+      undefined,
+      undefined,
+      projectId,
+      localeGuidance,
+    );
+    return bulkResult.results['input'] ?? {};
   }
 
   // ─── Projects (protected) ─────────────────────────────────────────────────
