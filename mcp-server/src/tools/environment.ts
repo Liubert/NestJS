@@ -71,6 +71,7 @@ export function registerEnvironmentTools(server: McpServer): void {
       'ALWAYS call this before writing to a project — you need the exact locale codes and namespace list.',
       'Locale codes returned here are the only valid codes for set_translation, bulk_import, bulk_set_locale, and create_locale.',
       'Use the namespace list to decide whether to reuse an existing namespace or justify creating a new one.',
+      'Client apps fetch translations via REST GET /translations/{slug}/{namespace}/{locale} — MCP is for AI agents only.',
     ].join(' '),
     { projectSlug: z.string().describe("Project slug (e.g. 'my-app')") },
     async ({ projectSlug }) => {
@@ -264,11 +265,12 @@ The following actions are **irreversible or high-impact**. Never call them unles
 
 ## ⚠️ MANDATORY PRE-FLIGHT — Do This Before Every Write Session
 
-Before calling \`set_translation\`, \`bulk_set_locale\`, \`bulk_import\`, or \`delete_translation\`:
+**Step 1 (new session or unknown project):** Call \`assess_integration_state\` first.
+This establishes the correct backend URL, client REST URL patterns, and project list in one call.
 
-\`\`\`
-get_project_details({ projectSlug: "travis" })
-\`\`\`
+**Step 2 (before any write):** Call \`get_project_details({ projectSlug: "..." })\` to confirm locale codes and sandbox state.
+
+Skip Step 1 only if \`assess_integration_state\` was already called earlier in this same session.
 
 | \`get_project_details\` sandbox line | What to do |
 |------------------------------------|------------|
@@ -295,6 +297,14 @@ get_project_details({ projectSlug: "travis" })
 | **Non-production (dev/staging)** | \`{BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}?env=sandbox\` |
 
 Non-production environments MUST use \`?env=sandbox\`. Without it, dev/staging tests run against live production data.
+
+## REST URL for client apps (READ-ONLY, not MCP)
+
+The client app fetches translations at runtime via HTTP GET — never via MCP:
+  GET {BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}          ← production
+  GET {BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}?env=sandbox  ← non-production
+
+MCP tools are for AI agents only. Client apps (React/Vue/Flutter/etc.) use the REST URL above with their i18n library.
 
 ## BACKEND_URL is the only source of truth for client config
 

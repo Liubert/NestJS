@@ -199,6 +199,7 @@ export function registerAiTools(server: McpServer): void {
   server.tool(
     'bulk_translate_and_save',
     [
+      'ALWAYS call assess_integration_state at the start of a new session before writing.',
       'Translate, save to sandbox, and quality-check in one step.',
       'Replaces the 3-step flow: bulk_ai_translate -> bulk_import -> check_entry_quality.',
       'Saves translations directly to sandbox (not production).',
