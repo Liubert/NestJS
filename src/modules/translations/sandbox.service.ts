@@ -1329,8 +1329,15 @@ export class SandboxService {
     });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
-    // Track whether context changed (for quality reset)
-    const oldContext = keyEntity.context;
+    // Track whether context changed (for quality reset).
+    // Read from sandbox_values (where edits live), not from translation_keys
+    // (which holds production context). They diverge when the sandbox context
+    // was edited but not yet promoted.
+    const sandboxCtxRow = await this.sandboxRepo.findOne({
+      where: { keyId: keyEntity.id, projectId: project.id, isDeleted: false },
+      select: ['context'],
+    });
+    const oldContext = sandboxCtxRow?.context ?? keyEntity.context;
     const newContext =
       dto.context !== undefined ? (dto.context ?? null) : keyEntity.context;
     const contextChanged =
