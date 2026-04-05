@@ -180,8 +180,10 @@ All writes go to the sandbox. Production is read-only from MCP.
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `ai_translate` | Translate text to all project locales via Gemini | `projectSlug`, `text` |
-| `ai_quality_check` | Stateless quality check — score, level, comment (not persisted) | `projectSlug`, `source`, `translation`, `locale`, `mode?`, `context?` |
+| `ai_translate` | Translate one text to project locales via Gemini (does not save) | `projectSlug`, `text`, `context?`, `targetLocales?` |
+| `bulk_ai_translate` | Translate N keys in one call — batches of 10 (does not save) | `projectSlug`, `entries`, `targetLocales?` |
+| `bulk_translate_and_save` | Translate N keys, save to sandbox, and quality-check in one step | `projectSlug`, `namespace`, `entries`, `targetLocales?`, `skipQuality?` |
+| `ai_quality_check` | Stateless multi-locale quality check — score, level, comment (not persisted) | `projectSlug`, `source`, `translations: {locale: string}`, `context?` |
 | `check_entry_quality` | Quality check all locales of a key and persist results to DB | `projectSlug`, `namespace`, `key` |
 | `get_ai_usage` | AI token usage statistics for a project | `projectSlug` |
 
@@ -232,6 +234,17 @@ Before writing to any project:
 3. bulk_import("my-app", "common", { filePath: "/path/to/translations.json" })
    → actually import
 4. get_translation_diff("my-app")         → verify changes
+```
+
+### Bulk translate and save new keys
+
+```
+1. get_project_details("my-app")          → confirm namespace + locales
+2. init_sandbox("my-app")                 → if sandbox not initialized
+3. bulk_translate_and_save("my-app", "common", entries)
+   → translates, saves to sandbox, and returns inline quality scores
+4. Fix any red translations via set_translation
+5. preview_push_to_production("my-app")   → review before promoting
 ```
 
 ### Quality improvement workflow

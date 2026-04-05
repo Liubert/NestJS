@@ -18,7 +18,9 @@ The following actions are **irreversible or high-impact**. Never call them unles
 | `bulk_import` with overwrite | Can silently overwrite existing translations |
 | `check_entry_quality` | Writes quality scores to DB — may overwrite manual "expected" overrides |
 
-AI read-like operations (`ai_translate`, `ai_quality_check`) are safe — they generate data but do not mutate anything.
+AI read-like operations (`ai_translate`, `bulk_ai_translate`, `ai_quality_check`) are safe — they generate data but do not mutate anything.
+
+`bulk_translate_and_save` **writes to sandbox** — it is an autonomous save action. Only call it when the user has asked to populate or fill translations.
 
 **Investigating a problem ≠ permission to fix it.** If the user asks "why does X show Y", that is a diagnostic question — answer it, do not take action. Only act when the user says to.
 
@@ -452,35 +454,76 @@ Read-only preview of what would happen if sandbox were promoted to production ri
 ---
 
 ### `ai_translate`
-Translate English text to all project locales using AI (Gemini). Does not persist results — use `set_translation` or `bulk_import` to save.
+Translate English text to project locales using AI (Gemini). Does not persist results — use `bulk_translate_and_save`, `set_translation`, or `bulk_import` to save.
 
 **Params:**
 - `projectSlug` (required) — project slug for usage tracking
 - `text` (required) — English text to translate
+- `context` (optional) — where/how this text is used in the UI (helps for ambiguous strings)
+- `targetLocales` (optional) — restrict to specific locale codes; defaults to all non-default project locales
 
 ```
-ai_translate({ projectSlug: "travis", text: "Save changes" })
+ai_translate({ projectSlug: "travis", text: "Save changes", context: "Primary action button on form" })
 ```
 
-**Returns:** translations for each configured locale. Use the output with `set_translation` or `bulk_import`.
+**Returns:** `{ "uk": "Зберегти зміни", "de": "Änderungen speichern", ... }` — feed directly into `ai_quality_check` or `bulk_import`.
+
+---
+
+### `bulk_ai_translate`
+Translate multiple English texts to project locales in one call. Processes in batches of 10 per Gemini call. Does not save results.
+
+**Params:**
+- `projectSlug` (required)
+- `entries` (required) — `[{ key, text, context? }]`, max 200
+- `targetLocales` (optional) — restrict to specific locale codes
+
+```
+bulk_ai_translate({ projectSlug: "travis", entries: [{ key: "button.save", text: "Save" }, { key: "button.cancel", text: "Cancel" }] })
+```
+
+**Returns:** `{ "button.save": { "uk": "Зберегти", ... }, "button.cancel": { "uk": "Скасувати", ... } }`. Save via `bulk_import` with `{ locale: { key: value } }` format.
+
+---
+
+### `bulk_translate_and_save`
+Translate N keys, save to sandbox, and run quality check — all in one step. Replaces the 3-step flow: `bulk_ai_translate` → `bulk_import` → `check_entry_quality`.
+
+**Params:**
+- `projectSlug` (required)
+- `namespace` (required) — target namespace slug
+- `entries` (required) — `[{ key, text, context? }]`, max 200
+- `targetLocales` (optional) — restrict to specific locale codes
+- `skipQuality` (optional, default `false`) — when `true`, skips inline quality check and queues background processing instead
+
+```
+bulk_translate_and_save({ projectSlug: "travis", namespace: "common", entries: [{ key: "button.save", text: "Save" }] })
+```
+
+**Returns (skipQuality=false):** `{ translations, quality: { key: { locale: { score, level, comment } } }, saved: { created, updated } }`
+**Returns (skipQuality=true):** `{ translations, saved: { created, updated }, qualityStatus: "queued" }`
+
+**Agent guidance on quality results:**
+- `green` (85+) — no action needed
+- `yellow` (60-84) — review optional; consider improving if context is available
+- `red` (<60) — must fix: use `set_translation` to correct, then `check_entry_quality` to re-check
 
 ---
 
 ### `ai_quality_check`
-Stateless AI quality check. Compares source English text against a translation for a specific locale. Does NOT persist results.
+Stateless multi-locale quality check. Accepts source text and a map of locale→translation. Does NOT persist results.
 
 **Params:**
 - `projectSlug` (required) — project slug for usage tracking
 - `source` (required) — source English text
-- `translation` (required) — translation to evaluate
-- `locale` (required) — target locale code (e.g. `nb-NO`, `uk`)
-- `mode` (optional, default `translation_quality`) — `translation_quality` compares to source, `language_quality` evaluates standalone
+- `translations` (required) — `{ locale: translation }` map, e.g. `{ "uk": "Зберегти", "de": "Speichern" }`
+- `context` (optional) — where/how this text is used in the UI
 
 ```
-ai_quality_check({ projectSlug: "travis", source: "Save", translation: "Lagre", locale: "nb-NO" })
+ai_quality_check({ projectSlug: "travis", source: "Save", translations: { "uk": "Зберегти", "de": "Speichern" } })
 ```
 
-**Returns:** score (1-100), level (green/yellow/red), comment.
+**Returns:** `{ "uk": { score: 95, level: "green", comment: "" }, "de": { score: 72, level: "yellow", comment: "..." } }`. Output of `ai_translate` feeds directly into `translations` param without parsing.
 
 ---
 
@@ -793,7 +836,9 @@ Translation keys are **decoupled from code deployments**. They are fetched at ru
 | `export_namespace` | ✅ | Auto-paginates |
 | `bulk_import` | ✅ | PATCH→POST upsert; locale validation; batch endpoint support; contexts |
 | `ai_translate` | ✅ | Stateless — does not persist |
-| `ai_quality_check` | ✅ | Stateless — does not persist |
+| `bulk_ai_translate` | ✅ | Stateless — does not persist |
+| `bulk_translate_and_save` | ✅ | Writes to sandbox + persists quality |
+| `ai_quality_check` | ✅ | Stateless multi-locale — does not persist |
 | `check_entry_quality` | ✅ | Persists results to DB |
 | `rename_key` | ✅ | Sandbox only |
 
