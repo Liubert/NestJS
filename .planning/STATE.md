@@ -124,9 +124,10 @@ None yet.
 | 260405-ogo | Fix AI quality check — symmetric multi-locale support | 2026-04-05 | 3be35bf | [260405-ogo-fix-ai-quality-check-symmetric-multi-loc](./quick/260405-ogo-fix-ai-quality-check-symmetric-multi-loc/) |
 | 260405-p2j | Implement bulk_translate_and_save MCP tool and backend endpoint | 2026-04-05 | cf5669f | [260405-p2j-implement-bulk-translate-and-save-mcp-to](./quick/260405-p2j-implement-bulk-translate-and-save-mcp-to/) |
 | 260405-q5q | Remove init_sandbox dead tool — replaced by auto-init | 2026-04-05 | 20f4e6a | [260405-q5q-remove-init-sandbox-dead-tool-replaced-b](./quick/260405-q5q-remove-init-sandbox-dead-tool-replaced-b/) |
+| 260405-uvr | Fix sandbox quality reset bug and MCP pre-flight / REST URL guidance | 2026-04-05 | decce64 | [260405-uvr-fix-sandbox-quality-reset-bug-and-mcp-pr](./quick/260405-uvr-fix-sandbox-quality-reset-bug-and-mcp-pr/) |
 
 ## Session Continuity
 
-Last session: 2026-04-05T16:00:27.528Z
-Stopped at: Completed quick task 260405-q5q: Remove init_sandbox dead tool replaced by auto-init
+Last session: 2026-04-05T19:27:00.000Z
+Stopped at: Completed quick task 260405-uvr: Fix sandbox quality reset bug and MCP pre-flight / REST URL guidance
 Resume file: None
