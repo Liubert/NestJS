@@ -110,7 +110,7 @@ claude mcp add -s user localization \
 
 ---
 
-## Available Tools (39 total)
+## Available Tools (38 total)
 
 ### Discovery
 
@@ -185,7 +185,6 @@ All writes go to the sandbox. Production is read-only from MCP.
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `init_sandbox` | Initialize sandbox by copying production state | `projectSlug`, `force?` |
 | `reset_sandbox` | Discard all sandbox changes (requires `confirmed: true`) | `projectSlug`, `confirmed` |
 | `get_translation_diff` | Full diff between sandbox and production | `projectSlug`, `namespace?`, `locale?`, `statusFilter?` |
 | `validate_translations` | Analyze diff for empty values, partial translations, deletions | `projectSlug`, `namespace?` |
@@ -205,8 +204,8 @@ Before writing to any project:
 ```
 1. list_projects                          → confirm project exists
 2. get_project_details(projectSlug)       → get namespaces, locales, sandbox state
-3. init_sandbox(projectSlug)              → if sandbox not initialized
-4. [start writing]
+   → sandbox auto-initializes on project creation; use reset_sandbox if re-sync needed
+3. [start writing]
 ```
 
 ### Adding translations for a new locale
@@ -237,11 +236,11 @@ Before writing to any project:
 
 ```
 1. get_project_details("my-app")          → confirm namespace + locales
-2. init_sandbox("my-app")                 → if sandbox not initialized
-3. bulk_translate_and_save("my-app", "common", entries)
+   → sandbox auto-initializes on project creation; use reset_sandbox to re-sync if needed
+2. bulk_translate_and_save("my-app", "common", entries)
    → translates, saves to sandbox, and returns inline quality scores
-4. Fix any red translations via set_translation
-5. preview_push_to_production("my-app")   → review before promoting
+3. Fix any red translations via set_translation
+4. preview_push_to_production("my-app")   → review before promoting
 ```
 
 ### Quality improvement workflow

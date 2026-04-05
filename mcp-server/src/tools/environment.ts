@@ -272,7 +272,7 @@ get_project_details({ projectSlug: "travis" })
 
 | \`get_project_details\` sandbox line | What to do |
 |------------------------------------|------------|
-| \`NOT initialized\` | Call \`init_sandbox({ projectSlug })\` before any write |
+| \`NOT initialized\` | Sandbox auto-initializes on project creation. Use \`reset_sandbox\` to re-sync if needed |
 | \`initialized — no pending changes\` | Safe to write |
 | \`initialized — HAS PENDING CHANGES\` | Call \`get_translation_diff\` first. Do not discard without explicit user instruction. |
 

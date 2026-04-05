@@ -16,7 +16,7 @@ const DEFAULT_SETUP_CONTENT = [
   "",
   "### ⚠️ Pre-flight (mandatory before any write)",
   "`get_project_details <slug>` — returns locale codes + sandbox state in one call",
-  "- `NOT initialized` → call `init_sandbox` first",
+  "- `NOT initialized` → sandbox auto-initializes on project creation; use `reset_sandbox` if re-sync needed",
   "- `HAS PENDING CHANGES` → call `get_translation_diff` to review before adding more",
   "",
   "### 1. Discover",
@@ -96,7 +96,7 @@ const DEFAULT_ASSESS_CONTENT = [
   "→ Ask: \"Should I update these files for you, or would you prefer to do it manually?\"",
   "→ If user approves: propose specific file edits, apply with approval per file",
   "→ If user prefers manual: show exactly what to change and where",
-  "→ After fixing: call init_sandbox if sandbox is not initialized",
+  "→ After fixing: sandbox auto-initializes; use `reset_sandbox` to re-sync if needed",
   "",
   "**S3 — Not integrated, remote project available:**",
   "→ Tell the user which remote projects exist",
@@ -109,7 +109,7 @@ const DEFAULT_ASSESS_CONTENT = [
   "→ Ask: \"Would you like to create a new localization project?\"",
   "→ Suggest a project name based on: package.json name field, git remote URL, or directory name",
   "→ Present options: create now / I'll create manually in Admin UI",
-  "→ If create now: ask for slug confirmation, then call create_project, create_namespace, create_locale, init_sandbox",
+  "→ If create now: ask for slug confirmation, then call create_project, create_namespace, create_locale",
   "→ Then help configure local integration",
   "",
   "**S5 — Project exists but empty/incomplete:**",
@@ -137,7 +137,7 @@ const DEFAULT_ASSESS_CONTENT = [
   "### Rules for all paths",
   "",
   "- All writes go to sandbox only — never to production",
-  "- init_sandbox must be called before any sandbox writes",
+  "- Sandbox is auto-initialized on project creation; no manual init needed",
   "- Never create a project, namespace, or locale without user confirmation",
   "- Always show what you're about to do before doing it",
   "- If uncertain about the local project structure, ask rather than assume",
@@ -243,7 +243,7 @@ export function registerPrompts(server: McpServer): void {
               snapshotCount: number;
             }>(`/translations/projects/${projectSlug}/sandbox/status`);
 
-            lines.push(`- Initialized: ${status.initialized ? `✅ yes (since ${status.initializedAt})` : "❌ NO — call init_sandbox before writing"}`);
+            lines.push(`- Initialized: ${status.initialized ? `✅ yes (since ${status.initializedAt})` : "❌ NO — use reset_sandbox to re-sync from production"}`);
             lines.push(`- Has pending changes: ${status.hasChanges ? "⚠️  YES" : "✅ no"}`);
             lines.push(`- Snapshots available: ${status.snapshotCount}`);
           } catch (err) {

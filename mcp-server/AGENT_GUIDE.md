@@ -54,7 +54,7 @@ This single call returns locale codes (required for every write) **and** full sa
 
 | `get_project_details` sandbox line | What to do |
 |------------------------------------|------------|
-| `NOT initialized` | Call `init_sandbox({ projectSlug })` before any write |
+| `NOT initialized` | Sandbox auto-initializes on project creation. Use `reset_sandbox({ projectSlug, confirmed: true })` to re-sync |
 | `initialized — no pending changes` | Safe to write |
 | `initialized — HAS PENDING CHANGES` | Call `get_translation_diff` first to understand existing changes. Do not discard without explicit user instruction. |
 
@@ -234,7 +234,7 @@ assess_integration_state({ projectSlug: "travis" })
 ### `create_project`
 Creates a new translation project. **Only call after explicit user confirmation.** The slug must be unique.
 
-After creating a project you must also call `create_namespace`, `create_locale`, and `init_sandbox` before the project can be used.
+After creating a project you must also call `create_namespace` and `create_locale` (sandbox auto-initializes on project creation).
 
 **Params:**
 - `slug` (required) — lowercase, hyphens allowed, e.g. `my-app`, `travis-v2`
@@ -274,15 +274,6 @@ Project: travis — "TRAVIS"
 Locales (5): en, da-DK (default), nb-NO, sv, uk
 Namespaces (2): backoffice-translations, mobile
 ```
-
----
-
-### `init_sandbox`
-Copies current production into sandbox. Safe to call if already initialized (returns early unless `force: true`).
-
-**Params:** `projectSlug`, `force` (optional, default false)
-
-⚠️ `force: true` wipes existing sandbox changes. Do not use unless intentional.
 
 ---
 
@@ -351,7 +342,7 @@ Creates a new namespace in a project. Required before using `set_translation` or
 create_namespace({ projectSlug: "travis", namespace: "expenses" })
 ```
 
-Returns an error if the namespace already exists. After creating, call `init_sandbox` if you plan to use the sandbox workflow.
+Returns an error if the namespace already exists. Sandbox auto-initializes on project creation — no manual init needed.
 
 ---
 
@@ -643,15 +634,7 @@ create_namespace({ projectSlug: "travis", namespace: "expenses" })
 
 Use the module name as the namespace slug (lowercase, dashes only).
 
-### Step 2 — Initialize sandbox
-
-```
-init_sandbox({ projectSlug: "travis" })
-```
-
-Safe to call if already initialized.
-
-### Step 3 — Dry-run the import
+### Step 2 — Dry-run the import
 
 ```
 bulk_import({
@@ -664,13 +647,13 @@ bulk_import({
 
 Verify key counts look correct before writing.
 
-### Step 4 — Run the real import
+### Step 3 — Run the real import
 
 ```
 bulk_import({ projectSlug: "travis", namespace: "expenses", translations: { ... } })
 ```
 
-### Step 5 — Verify and review
+### Step 4 — Verify and review
 
 ```
 list_translations({ projectSlug: "travis", namespace: "expenses", env: "sandbox" })
@@ -680,7 +663,7 @@ validate_translations({ projectSlug: "travis", namespace: "expenses" })
 
 Fix any partial translations before handing off to the developer.
 
-### Step 6 — Developer tests against sandbox HTTP endpoint
+### Step 5 — Developer tests against sandbox HTTP endpoint
 
 The developer can test their code against the sandbox without promoting to production:
 
@@ -690,7 +673,7 @@ GET http://localhost:8080/translations/travis/expenses/en?env=sandbox
 
 This returns sandbox values (production base + sandbox overrides). No caching. Safe for local dev.
 
-### Step 7 — Human promotes via Admin UI
+### Step 6 — Human promotes via Admin UI
 
 Admin UI → Translations → Sandbox tab → Push to Production.
 
@@ -710,7 +693,7 @@ Note the exact locale codes. You will use them in every `set_translation` call.
 
 `get_project_details` already includes sandbox state — no separate call needed.
 
-- `NOT initialized` → call `init_sandbox({ projectSlug: "travis" })` before writing
+- `NOT initialized` → sandbox auto-initializes on project creation; use `reset_sandbox` to re-sync if needed
 - `HAS PENDING CHANGES` → call `get_translation_diff` to review existing changes before adding more
 
 ### Step 3 — Add or edit keys
@@ -820,7 +803,6 @@ Translation keys are **decoupled from code deployments**. They are fetched at ru
 | `create_project` | ✅ | Requires user confirmation first |
 | `list_projects` | ✅ | |
 | `get_project_details` | ✅ | Returns locale objects `{ code, isDefault }` + full sandbox state |
-| `init_sandbox` | ✅ | |
 | `list_translations` (sandbox) | ✅ | Default env |
 | `list_translations` (production) | ✅ | Pass `env: "production"` |
 | `set_translation` (create) | ✅ | |

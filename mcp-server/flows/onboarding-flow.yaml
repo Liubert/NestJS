@@ -106,7 +106,7 @@ steps:
     description: >
       Agent inspects the localization config files, shows the user what needs to change
       (non-production config must add ?env=sandbox), and applies each change after
-      user approval. If sandbox is not initialized, calls init_sandbox after repair.
+      user approval. Sandbox auto-initializes on project creation; no init step needed after repair.
     next: verify_repair
 
   explain_repair:
@@ -124,8 +124,7 @@ steps:
       For production environment config — keep the base URL as-is (no change needed):
           {backendUrl}/translations/{slug}/{namespace}/{locale}
 
-      After making these changes, make sure sandbox is initialized:
-        Call: init_sandbox (project: {slug})
+      Sandbox auto-initializes on project creation — no manual init needed.
     next: done_skip
 
   verify_repair:
@@ -260,7 +259,7 @@ steps:
       1. create_project(slug: project_slug, name: project_name)
       2. create_namespace(projectSlug: project_slug, namespace: namespace_slug, reason: "Initial namespace created during project setup")
       3. create_locale(projectSlug: project_slug, code: primary_locale)
-      4. init_sandbox(projectSlug: project_slug)
+      (sandbox auto-initializes on project creation — no manual init step needed)
     next: apply_local_integration
 
   explain_admin_ui_create:
@@ -360,12 +359,12 @@ steps:
       Agent runs these steps, skipping any that are already done (idempotent):
       1. Ensure namespace exists (create if missing, ask for name if multiple local namespaces detected)
       2. Ensure locale exists (create if missing, ask for BCP 47 code)
-      3. Ensure sandbox is initialized (init_sandbox if not done)
-      4. Scan local project for translation files (JSON, common i18n paths)
-      5. If local files found: validate locale codes and key format, then bulk_import
-      6. Run compare_local_vs_server to show import summary
-      7. Run validate_translations to surface any gaps
-      8. Offer preview_push_to_production to show what would be promoted
+      (sandbox auto-initializes on project creation — no manual init needed)
+      3. Scan local project for translation files (JSON, common i18n paths)
+      4. If local files found: validate locale codes and key format, then bulk_import
+      5. Run compare_local_vs_server to show import summary
+      6. Run validate_translations to surface any gaps
+      7. Offer preview_push_to_production to show what would be promoted
     next: done_success
 
   run_structure_only:
@@ -375,7 +374,7 @@ steps:
       Agent runs these steps, skipping any that are already done:
       1. Ensure namespace exists
       2. Ensure locale exists
-      3. Ensure sandbox is initialized
+      (sandbox auto-initializes on project creation)
     next: done_success
 
   # ── S6: No localization at all ────────────────────────────────────────────
