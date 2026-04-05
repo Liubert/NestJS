@@ -129,6 +129,9 @@ export class FeedbackService {
       throw new NotFoundException(`Feedback "${id}" not found`);
     }
     entity.status = dto.status;
+    if (dto.reviewerNote !== undefined) {
+      entity.reviewerNote = dto.reviewerNote;
+    }
     return this.feedbackRepo.save(entity);
   }
 
