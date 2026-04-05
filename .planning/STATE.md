@@ -5,7 +5,7 @@ milestone_name: milestone
 status: verifying
 stopped_at: "Completed quick task 260405-q5q: Remove init_sandbox dead tool replaced by auto-init"
 last_updated: "2026-04-05T16:00:27.538Z"
-last_activity: "2026-04-05 - Completed quick task 260405-p2j: implement bulk_translate_and_save MCP tool and backend endpoint"
+last_activity: "2026-04-05 - Completed quick task 260405-q5q: remove init_sandbox dead tool replaced by reset_sandbox and auto-init"
 progress:
   total_phases: 1
   completed_phases: 0
