@@ -85,7 +85,7 @@ export function registerAiTools(server: McpServer): void {
         if (ignoredLocales.length > 0) {
           lines.push(`Note: ignored unknown locales: ${ignoredLocales.join(', ')}`);
         }
-        lines.push(`Use set_translation or bulk_import to save these translations.`);
+        lines.push(`To save: use bulk_import for all locales at once ({ "locale": { "key": "value" } } format), or bulk_set_locale for a single locale only.`);
         return textResult(lines.join('\n'));
       } catch (error) {
         return errorResult(error);

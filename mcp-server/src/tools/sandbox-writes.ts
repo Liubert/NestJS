@@ -38,7 +38,7 @@ async function getSandboxWarning(projectSlug: string): Promise<string | null> {
     const status = await apiGet<SandboxStatus>(
       `/translations/projects/${projectSlug}/sandbox/status`,
     );
-    if (status.hasChanges) {
+    if (status.hasChanges && status.snapshotCount > 0) {
       const snapshots = status.snapshotCount;
       return [
         `⚠️  Sandbox already has pending changes (${snapshots} snapshot${snapshots !== 1 ? 's' : ''} available).`,
