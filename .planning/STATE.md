@@ -120,9 +120,10 @@ None yet.
 | 260405-ms8 | Add optional context parameter to ai_translate MCP tool | 2026-04-05 | 3184a2a | [260405-ms8-add-context-parameter-to-mcp-ai-translat](./quick/260405-ms8-add-context-parameter-to-mcp-ai-translat/) |
 | 260405-n49 | Add optional targetLocales parameter to ai_translate MCP tool | 2026-04-05 | b018387 | [260405-n49-add-targetlocales-parameter-to-mcp-ai-tr](./quick/260405-n49-add-targetlocales-parameter-to-mcp-ai-tr/) |
 | 260405-ng9 | Fix ai_translate save guidance and sandbox warning condition | 2026-04-05 | 82b976b | [260405-ng9-fix-ai-translate-save-guidance-and-sandb](./quick/260405-ng9-fix-ai-translate-save-guidance-and-sandb/) |
+| 260405-nmt | Add bulk AI translate endpoint and MCP tool | 2026-04-05 | ec6fecc | [260405-nmt-add-bulk-ai-translate-mcp-tool-and-backe](./quick/260405-nmt-add-bulk-ai-translate-mcp-tool-and-backe/) |
 
 ## Session Continuity
 
-Last session: 2026-04-05T14:00:00Z
-Stopped at: Completed quick task 260405-ng9: Fix ai_translate save guidance and sandbox warning condition
+Last session: 2026-04-05T14:10:00Z
+Stopped at: Completed quick task 260405-nmt: Add bulk AI translate endpoint and MCP tool
 Resume file: None
