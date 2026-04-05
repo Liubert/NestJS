@@ -7,9 +7,7 @@ import { LOCALE_GUIDELINES } from '../../modules/translations/locale-guidelines'
  * (i.e. still has the old short version). Locales with custom user-written
  * guidance that is already longer are left untouched.
  */
-export class BackfillEnrichedGuidance17753000000001
-  implements MigrationInterface
-{
+export class BackfillEnrichedGuidance17753000000001 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
     for (const [code, guidance] of Object.entries(LOCALE_GUIDELINES)) {
       await queryRunner.query(
