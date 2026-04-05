@@ -10,6 +10,7 @@ if (args[0] === "setup") {
 
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { createServer } from "./server.js";
+import { apiGet } from "./api-client.js";
 
 // Load .env from the mcp-server directory (one level above dist/)
 if (process.env.NODE_ENV !== "production") {
@@ -34,6 +35,27 @@ if (!process.env.BACKEND_URL) {
 }
 
 const server = createServer();
+
+// Non-blocking startup token validation
+(async () => {
+  try {
+    await apiGet("/translations/projects", { limit: 1 });
+  } catch (err: unknown) {
+    if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 401) {
+      process.stderr.write(
+        "[localization-mcp] ERROR: Token validation failed (401). The MCP_TOKEN is invalid or expired.\n" +
+          "  Most likely cause: localization-mcp is registered per-project (.mcp.json), overriding the global config.\n" +
+          "  Fix: claude mcp remove localization && claude mcp add -s user localization -e MCP_TOKEN=<token> -e BACKEND_URL=<url> -- npx -y localization-mcp-server\n",
+      );
+    } else {
+      process.stderr.write(
+        "[localization-mcp] WARNING: Startup health check failed. BACKEND_URL may be misconfigured or the server is unreachable.\n" +
+          `  Error: ${err instanceof Error ? err.message : String(err)}\n`,
+      );
+    }
+  }
+})();
+
 const transport = new StdioServerTransport();
 
 await server.connect(transport);

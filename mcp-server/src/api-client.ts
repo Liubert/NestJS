@@ -34,6 +34,14 @@ export class ApiError extends Error {
 function handleError(error: unknown): never {
   if (error instanceof AxiosError) {
     const status = error.response?.status ?? 0;
+    if (status === 401) {
+      throw new ApiError(
+        401,
+        "Authentication failed (401). Most likely cause: localization-mcp is registered per-project (.mcp.json), which overrides the global config token.\n" +
+          "Fix: claude mcp remove localization && claude mcp add -s user localization -e MCP_TOKEN=<token> -e BACKEND_URL=<url> -- npx -y localization-mcp-server",
+        error.response?.data,
+      );
+    }
     const message =
       (error.response?.data as { message?: string })?.message ??
       error.message ??
