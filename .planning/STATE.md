@@ -122,9 +122,10 @@ None yet.
 | 260405-ng9 | Fix ai_translate save guidance and sandbox warning condition | 2026-04-05 | 82b976b | [260405-ng9-fix-ai-translate-save-guidance-and-sandb](./quick/260405-ng9-fix-ai-translate-save-guidance-and-sandb/) |
 | 260405-nmt | Add bulk AI translate endpoint and MCP tool | 2026-04-05 | ec6fecc | [260405-nmt-add-bulk-ai-translate-mcp-tool-and-backe](./quick/260405-nmt-add-bulk-ai-translate-mcp-tool-and-backe/) |
 | 260405-ogo | Fix AI quality check — symmetric multi-locale support | 2026-04-05 | 3be35bf | [260405-ogo-fix-ai-quality-check-symmetric-multi-loc](./quick/260405-ogo-fix-ai-quality-check-symmetric-multi-loc/) |
+| 260405-p2j | Implement bulk_translate_and_save MCP tool and backend endpoint | 2026-04-05 | cf5669f | [260405-p2j-implement-bulk-translate-and-save-mcp-to](./quick/260405-p2j-implement-bulk-translate-and-save-mcp-to/) |
 
 ## Session Continuity
 
-Last session: 2026-04-05T14:41:00Z
-Stopped at: Completed quick task 260405-ogo: Fix AI quality check symmetric multi-locale
+Last session: 2026-04-05T15:10:00Z
+Stopped at: Completed quick task 260405-p2j: Implement bulk_translate_and_save MCP tool and backend endpoint
 Resume file: None
