@@ -112,15 +112,34 @@ claude mcp add -s user localization \
 
 ## Available Tools (39 total)
 
-### Environment & Discovery
+### Discovery
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
+| `assess_integration_state` | Full integration assessment with agent guide, URL patterns, and project details | `projectSlug?` |
 | `list_projects` | List all projects with sandbox state | — |
 | `get_project_details` | Namespaces, locales, sandbox status for a project | `projectSlug` |
-| `assess_integration_state` | Full integration assessment with agent guide, URL patterns, and project details | `projectSlug?` |
 
-### Reading Translations
+### Project Structure
+
+Projects, namespaces, locales, and webhooks — structural setup, not translation content.
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `create_project` | Create a new project | `slug`, `name?` |
+| `create_namespace` | Create a namespace (requires `reason` justification) | `projectSlug`, `namespace`, `reason` |
+| `rename_namespace` | Rename an existing namespace | `projectSlug`, `currentSlug`, `newSlug` |
+| `delete_namespace` | Delete namespace with all keys (requires `confirmed: true`) | `projectSlug`, `namespace`, `confirmed` |
+| `create_locale` | Add a locale to a project | `projectSlug`, `code`, `isDefault?` |
+| `update_locale` | Update locale aliases | `projectSlug`, `code`, `aliases` |
+| `delete_locale` | Remove locale and all its values (requires `confirmed: true`) | `projectSlug`, `code`, `confirmed` |
+| `list_webhooks` | List webhook configs for a project | `projectSlug` |
+| `create_webhook` | Register outgoing webhook | `projectSlug`, `url`, `events`, `description?`, `secret?` |
+| `update_webhook` | Update webhook config | `projectSlug`, `webhookId`, `url?`, `events?`, `enabled?` |
+| `delete_webhook` | Delete a webhook | `projectSlug`, `webhookId` |
+| `list_webhook_events` | List supported event types | — |
+
+### Translations — Read
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
@@ -131,22 +150,38 @@ claude mcp add -s user localization \
 | `compare_local_vs_server` | Diff local JSON against server entries | `projectSlug`, `namespace`, `translations?`, `filePath?`, `env?` |
 | `validate_keys` | Check if a list of keys exist | `projectSlug`, `namespace`, `keys`, `env?` |
 
-### Writing Translations (sandbox only)
+### Translations — Write
 
 All writes go to the sandbox. Production is read-only from MCP.
 
 | Tool | Description | Key Parameters |
 |------|-------------|----------------|
-| `set_translation` | Create or update one key (upsert). Partial locale update — only passed locales are changed. | `projectSlug`, `namespace`, `key`, `values`, `context?` |
-| `bulk_set_locale` | Bulk upsert many keys for a single locale | `projectSlug`, `namespace`, `locale`, `entries`, `dryRun?` |
-| `bulk_import` | Multi-locale bulk upsert from inline JSON or file path | `projectSlug`, `namespace`, `translations?`, `filePath?`, `contexts?`, `dryRun?` |
+| `set_translation` | Create or update one key (upsert). Only passed locales are changed. | `projectSlug`, `namespace`, `key`, `values`, `context?` |
 | `delete_translation` | Soft delete a key in sandbox | `projectSlug`, `namespace`, `key` |
 | `rename_key` | Rename a key preserving all values | `projectSlug`, `namespace`, `oldKey`, `newKey` |
 | `mark_expected` | Mark a locale translation as manually accepted (suppresses quality warnings) | `projectSlug`, `namespace`, `key`, `locale` |
 | `unmark_expected` | Remove manual acceptance from a locale translation | `projectSlug`, `namespace`, `key`, `locale` |
 | `revert_sandbox_entry` | Revert a single key to its production value | `projectSlug`, `namespace`, `key` |
 
-### Sandbox & Production Workflow
+### Translations — Bulk Write
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `bulk_set_locale` | Bulk upsert many keys for a single locale | `projectSlug`, `namespace`, `locale`, `entries`, `dryRun?` |
+| `bulk_import` | Multi-locale bulk upsert from inline JSON or file path | `projectSlug`, `namespace`, `translations?`, `filePath?`, `contexts?`, `dryRun?` |
+
+### AI
+
+| Tool | Description | Key Parameters |
+|------|-------------|----------------|
+| `ai_translate` | Translate one text to project locales via Gemini (does not save) | `projectSlug`, `text`, `context?`, `targetLocales?` |
+| `bulk_ai_translate` | Translate N keys in one call — batches of 10 (does not save) | `projectSlug`, `entries`, `targetLocales?` |
+| `bulk_translate_and_save` | Translate N keys, save to sandbox, and quality-check in one step | `projectSlug`, `namespace`, `entries`, `targetLocales?`, `skipQuality?` |
+| `ai_quality_check` | Stateless multi-locale quality check — score, level, comment (not persisted) | `projectSlug`, `source`, `translations: {locale: string}`, `context?` |
+| `check_entry_quality` | Quality check all locales of a key and persist results to DB | `projectSlug`, `namespace`, `key` |
+| `get_ai_usage` | AI token usage statistics for a project | `projectSlug` |
+
+### Sandbox & Promotion
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
@@ -158,39 +193,6 @@ All writes go to the sandbox. Production is read-only from MCP.
 | `list_snapshots` | List available production snapshots | `projectSlug` |
 
 > **Note:** Promoting sandbox to production is intentionally not available via MCP. Use the Admin UI.
-
-### Project Management
-
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
-| `create_project` | Create a new project | `slug`, `name?` |
-| `create_namespace` | Create a namespace (requires `reason` justification) | `projectSlug`, `namespace`, `reason` |
-| `rename_namespace` | Rename an existing namespace | `projectSlug`, `currentSlug`, `newSlug` |
-| `delete_namespace` | Delete namespace with all keys (requires `confirmed: true`) | `projectSlug`, `namespace`, `confirmed` |
-| `create_locale` | Add a locale to a project | `projectSlug`, `code`, `isDefault?` |
-| `update_locale` | Update locale aliases | `projectSlug`, `code`, `aliases` |
-| `delete_locale` | Remove locale and all its values (requires `confirmed: true`) | `projectSlug`, `code`, `confirmed` |
-
-### AI Tools
-
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
-| `ai_translate` | Translate one text to project locales via Gemini (does not save) | `projectSlug`, `text`, `context?`, `targetLocales?` |
-| `bulk_ai_translate` | Translate N keys in one call — batches of 10 (does not save) | `projectSlug`, `entries`, `targetLocales?` |
-| `bulk_translate_and_save` | Translate N keys, save to sandbox, and quality-check in one step | `projectSlug`, `namespace`, `entries`, `targetLocales?`, `skipQuality?` |
-| `ai_quality_check` | Stateless multi-locale quality check — score, level, comment (not persisted) | `projectSlug`, `source`, `translations: {locale: string}`, `context?` |
-| `check_entry_quality` | Quality check all locales of a key and persist results to DB | `projectSlug`, `namespace`, `key` |
-| `get_ai_usage` | AI token usage statistics for a project | `projectSlug` |
-
-### Webhooks
-
-| Tool | Description | Key Parameters |
-|------|-------------|----------------|
-| `list_webhooks` | List webhook configs for a project | `projectSlug` |
-| `create_webhook` | Register outgoing webhook | `projectSlug`, `url`, `events`, `description?`, `secret?` |
-| `update_webhook` | Update webhook config | `projectSlug`, `webhookId`, `url?`, `events?`, `enabled?` |
-| `delete_webhook` | Delete a webhook | `projectSlug`, `webhookId` |
-| `list_webhook_events` | List supported event types | — |
 
 ---
 
