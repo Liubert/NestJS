@@ -98,6 +98,21 @@ Add to your MCP config (`.mcp.json` or `~/.claude.json`):
 }
 ```
 
+#### CLI registration (recommended)
+
+```bash
+claude mcp add -s user localization \
+  -e MCP_TOKEN=your-token \
+  -e BACKEND_URL=http://your-backend:8080 \
+  -- npx -y localization-mcp-server
+```
+
+> **Warning:** Always register globally with `-s user`. Per-project registration (without `-s user`) creates a `.mcp.json` in the current directory that overrides the global config. This causes 401 errors in every other project because they pick up the override without the correct token. If you see unexpected 401s, run:
+>
+> ```
+> claude mcp remove localization && claude mcp add -s user localization -e MCP_TOKEN=<token> -e BACKEND_URL=<url> -- npx -y localization-mcp-server
+> ```
+
 ---
 
 ## Available Tools (39 total)
