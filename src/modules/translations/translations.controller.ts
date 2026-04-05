@@ -41,6 +41,9 @@ import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
+import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
+import { BulkMarkExpectedDto } from './dto/bulk-mark-expected.dto.js';
+import { BulkContextUpdateDto } from './dto/bulk-context.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
 @ApiTags('translations')
@@ -416,6 +419,64 @@ export class TranslationsController {
       slug,
       ns,
       dto,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Post('projects/:slug/namespaces/:ns/entries/bulk-quality-check')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Run AI quality check on multiple keys' })
+  async bulkQualityCheck(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkQualityCheckDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.bulkQualityCheck(
+      slug,
+      ns,
+      dto.keys,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Post('projects/:slug/namespaces/:ns/entries/bulk-mark-expected')
+  @UseGuards(JwtAuthGuard, BlockMcpGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Mark multiple keys as expected' })
+  async bulkMarkExpected(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkMarkExpectedDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.bulkMarkExpected(
+      slug,
+      ns,
+      dto.keys,
+      dto.locale,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Patch('projects/:slug/namespaces/:ns/entries/bulk-context')
+  @UseGuards(JwtAuthGuard, BlockMcpGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Update context for multiple keys' })
+  async bulkUpdateContext(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkContextUpdateDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.translationsService.bulkUpdateContext(
+      slug,
+      ns,
+      dto.updates,
       user.userId,
       user.role,
     );
