@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { createHash } from 'crypto';
 
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
@@ -31,6 +32,7 @@ import {
 } from '../../common/dto/paginated-response.dto.js';
 import type { QualityInfo } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
+import { scoreToLevel } from './quality-constants.js';
 
 const MAX_SNAPSHOTS = 5;
 
@@ -2187,5 +2189,72 @@ export class SandboxService {
       .andWhere('tk.key = :key', { key })
       .andWhere('l.code = :locale', { locale })
       .getOne();
+  }
+
+  // ─── Persist quality results ──────────────────────────────────────────────
+
+  /**
+   * Persist AI quality results into sandbox_values after a bulk translate+save.
+   * Takes the projectId, namespace slug, and the results map from bulkCheckQuality.
+   * Updates each matching sandbox_value row with score, level, comment, hash, and state.
+   */
+  async persistQualityResults(
+    projectId: string,
+    namespaceSlug: string,
+    results: Record<
+      string,
+      Record<string, { score: number; level: string; comment: string }>
+    >,
+  ): Promise<void> {
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId, slug: namespaceSlug },
+    });
+    if (!ns) return;
+
+    const locales = await this.localeRepo.findBy({ projectId });
+    const localeByCode = new Map(locales.map((l) => [l.code, l]));
+
+    const now = new Date();
+
+    for (const [keyName, localeMap] of Object.entries(results)) {
+      const keyEntity = await this.keyRepo.findOne({
+        where: { namespaceId: ns.id, key: keyName },
+      });
+      if (!keyEntity) continue;
+
+      for (const [localeCode, r] of Object.entries(localeMap)) {
+        const locale = localeByCode.get(localeCode);
+        if (!locale) continue;
+
+        const sandboxValue = await this.sandboxRepo.findOne({
+          where: { projectId, keyId: keyEntity.id, localeId: locale.id },
+        });
+        if (!sandboxValue || !sandboxValue.value) continue;
+
+        const hash = createHash('sha256')
+          .update(sandboxValue.value)
+          .digest('hex');
+
+        const score = Math.min(100, Math.max(1, Math.round(r.score)));
+        const level = scoreToLevel(score);
+
+        await this.sandboxRepo
+          .createQueryBuilder()
+          .update()
+          .set({
+            qualityScore: score,
+            qualityLevel: level,
+            qualityComment: r.comment,
+            qualityCheckedAt: now,
+            qualityReviewState: 'checked',
+            qualityContentHash: hash,
+          })
+          .where(
+            'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
+            { projectId, keyId: keyEntity.id, localeId: locale.id },
+          )
+          .execute();
+      }
+    }
   }
 }

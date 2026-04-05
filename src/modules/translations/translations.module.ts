@@ -9,6 +9,7 @@ import { AiUsageService } from './ai-usage.service.js';
 import { AiConfigController } from './ai-config.controller.js';
 import { SandboxService } from './sandbox.service.js';
 import { SandboxController } from './sandbox.controller.js';
+import { QualityWorkerModule } from './quality-worker.module.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
@@ -38,6 +39,7 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
       UserEntity,
     ]),
     forwardRef(() => WebhooksModule),
+    QualityWorkerModule,
   ],
   controllers: [
     TranslationsController,

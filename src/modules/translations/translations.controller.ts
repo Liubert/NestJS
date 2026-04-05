@@ -29,8 +29,11 @@ import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiUsageService } from './ai-usage.service.js';
+import { SandboxService } from './sandbox.service.js';
+import { QualityWorkerService } from './quality-worker.service.js';
 import { AiTranslateDto } from './dto/ai-translate.dto.js';
 import { BulkAiTranslateDto } from './dto/bulk-ai-translate.dto.js';
+import { BulkTranslateAndSaveDto } from './dto/bulk-translate-and-save.dto.js';
 import { CheckQualityDto } from './dto/check-quality.dto.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
@@ -55,6 +58,8 @@ export class TranslationsController {
     private readonly translationsService: TranslationsService,
     private readonly aiTranslateService: AiTranslateService,
     private readonly aiUsageService: AiUsageService,
+    private readonly sandboxService: SandboxService,
+    private readonly qualityWorkerService: QualityWorkerService,
   ) {}
 
   // ─── AI Usage (must be before wildcard routes) ────────────────────────────
@@ -179,6 +184,111 @@ export class TranslationsController {
       targetLocales,
       localeGuidance,
     );
+  }
+
+  @Post('ai-translate/bulk-and-save')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Translate multiple keys, save to sandbox, and optionally run quality check — all in one step',
+  })
+  async bulkTranslateAndSave(@Body() dto: BulkTranslateAndSaveDto) {
+    const project = await this.translationsService.getProjectBySlug(
+      dto.projectSlug,
+    );
+    const namespace = await this.translationsService.requireNamespace(
+      project.id,
+      dto.namespace,
+    );
+
+    const locales = await this.translationsService.getProjectLocales(
+      dto.projectSlug,
+    );
+    const localeGuidance = locales.reduce<Record<string, string>>((acc, l) => {
+      if (l.guidance) acc[l.code] = l.guidance;
+      return acc;
+    }, {});
+    const guidanceParam = Object.keys(localeGuidance).length
+      ? localeGuidance
+      : undefined;
+
+    let targetLocales: string[] | undefined = dto.targetLocales;
+    if (dto.targetLocales && dto.targetLocales.length > 0) {
+      const projectLocaleCodes = new Set(
+        locales.filter((l) => !l.isDefault).map((l) => l.code),
+      );
+      targetLocales = dto.targetLocales.filter((code) =>
+        projectLocaleCodes.has(code),
+      );
+    } else if (!dto.targetLocales) {
+      targetLocales = locales.filter((l) => !l.isDefault).map((l) => l.code);
+    }
+
+    // Translate all entries
+    const translations = await this.aiTranslateService.bulkTranslate(
+      dto.entries,
+      project.id,
+      targetLocales,
+      guidanceParam,
+    );
+
+    // Build sandbox entries — include all translated locales
+    const sandboxEntries = dto.entries
+      .filter((e) => translations[e.key])
+      .map((e) => ({
+        key: e.key,
+        values: translations[e.key],
+        context: e.context,
+      }));
+
+    // Save to sandbox
+    const saved = await this.sandboxService.batchUpsert(
+      project,
+      namespace,
+      sandboxEntries,
+    );
+
+    if (dto.skipQuality === true) {
+      // Fire-and-forget quality check via background worker
+      void this.qualityWorkerService.triggerNow();
+      return {
+        translations,
+        saved,
+        qualityStatus: 'queued' as const,
+      };
+    }
+
+    // Run synchronous quality check and persist results
+    const qualityItems = dto.entries
+      .filter((e) => translations[e.key])
+      .map((e) => ({
+        key: e.key,
+        source: e.text,
+        context: e.context ?? null,
+        translations: translations[e.key],
+      }));
+
+    const qualityResult = await this.aiTranslateService.bulkCheckQuality(
+      qualityItems,
+      5,
+      90_000,
+      project.id,
+      guidanceParam,
+    );
+
+    // Persist quality results to sandbox
+    await this.sandboxService.persistQualityResults(
+      project.id,
+      dto.namespace,
+      qualityResult.results,
+    );
+
+    return {
+      translations,
+      quality: qualityResult.results,
+      saved,
+    };
   }
 
   @Post('ai-quality-check')

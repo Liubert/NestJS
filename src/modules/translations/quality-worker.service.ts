@@ -51,6 +51,15 @@ export class QualityWorkerService
     if (this.timer) clearInterval(this.timer);
   }
 
+  /**
+   * Immediately trigger a quality check cycle, bypassing the 30s interval.
+   * If a cycle is already in progress, returns without waiting.
+   * Fire-and-forget safe — callers need not await.
+   */
+  triggerNow(): void {
+    void this.pollAndProcess();
+  }
+
   private async pollAndProcess(): Promise<void> {
     if (this.processing) return;
     this.processing = true;
