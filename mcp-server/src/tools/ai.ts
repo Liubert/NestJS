@@ -14,6 +14,7 @@ export function registerAiTools(server: McpServer): void {
       'Usage is tracked per project. Requires a project slug for accounting.',
       'Use this to quickly generate translations for new keys.',
       'Optionally accepts context (where the text appears in UI) to improve translation quality for short or ambiguous strings.',
+      'Optionally accepts targetLocales array to restrict translation to specific locales instead of all project locales.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug for usage tracking'),
@@ -27,16 +28,39 @@ export function registerAiTools(server: McpServer): void {
             'Helps AI translate ambiguous strings accurately. ' +
             'Describe: screen, UI element type, meaning in this place.',
         ),
+      targetLocales: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Optional list of locale codes to translate into (e.g. ["uk", "nb-NO"]). ' +
+            'When omitted, translates to all non-default project locales. ' +
+            'Use this for efficiency when filling only specific locales.',
+        ),
     },
-    async ({ projectSlug, text, context }) => {
+    async ({ projectSlug, text, context, targetLocales: callerLocales }) => {
       try {
         // Fetch project locales to translate only into project's configured locales
         const project = await apiGet<{
           locales: { code: string; isDefault: boolean }[];
         }>(`/translations/projects/${projectSlug}`);
-        const targetLocales = project.locales
+        const allProjectLocales = project.locales
           .filter((l) => !l.isDefault)
           .map((l) => l.code);
+
+        let targetLocales: string[];
+        let ignoredLocales: string[] = [];
+
+        if (callerLocales && callerLocales.length > 0) {
+          const projectLocaleSet = new Set(allProjectLocales);
+          targetLocales = callerLocales.filter((code) =>
+            projectLocaleSet.has(code),
+          );
+          ignoredLocales = callerLocales.filter(
+            (code) => !projectLocaleSet.has(code),
+          );
+        } else {
+          targetLocales = allProjectLocales;
+        }
 
         const result = await apiPost<Record<string, string>>(
           '/translations/ai-translate',
@@ -57,8 +81,11 @@ export function registerAiTools(server: McpServer): void {
             ([locale, translation]) => `  [${locale}] ${translation}`,
           ),
           ``,
-          `Use set_translation or bulk_import to save these translations.`,
         ];
+        if (ignoredLocales.length > 0) {
+          lines.push(`Note: ignored unknown locales: ${ignoredLocales.join(', ')}`);
+        }
+        lines.push(`Use set_translation or bulk_import to save these translations.`);
         return textResult(lines.join('\n'));
       } catch (error) {
         return errorResult(error);
