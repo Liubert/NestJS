@@ -603,11 +603,9 @@ export class AiTranslateService {
 
     return `You are a professional translation quality reviewer. Evaluate each translation below.
 
-IMPORTANT — Ambiguity and multiple meanings:
-- Many English words have multiple valid meanings. If "source" is present, consider ALL reasonable meanings before judging accuracy.
-- If the translation is correct for ANY valid interpretation that makes sense in a software/product UI, treat it as accurate.
-- Only flag errors when the translation genuinely cannot correspond to any valid interpretation of the source.
-- If "context" is present, use it to determine the correct meaning and evaluate more precisely.
+IMPORTANT — Context vs ambiguity:
+- If a key has a "context" field, it is DEFINITIVE — it specifies the exact intended meaning. Evaluate the translation against that meaning ONLY. Do not apply benefit-of-doubt for other interpretations.
+- If a key has NO "context" field, many English words have multiple valid meanings. Treat a translation as accurate if it fits ANY reasonable interpretation in a software/product UI. Give the benefit of the doubt; only flag errors when no valid interpretation fits.
 ${contextSection}${guidanceSection}
 Score each translation on a 1–100 scale:
 - 95–100: Excellent — accurate, natural, production-ready
