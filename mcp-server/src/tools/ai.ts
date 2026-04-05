@@ -199,22 +199,19 @@ export function registerAiTools(server: McpServer): void {
   server.tool(
     'ai_quality_check',
     [
-      'Check translation quality using AI.',
-      'Compares source English text against a translation for a specific locale.',
-      'Returns a quality score (1-100), level (green/yellow/red), and a comment.',
+      'Check translation quality for multiple locales at once using AI.',
+      'Accepts source English text and a locale-to-translation map.',
+      'Returns per-locale quality score (1-100), level (green/yellow/red), and comment.',
       'Does NOT persist results — use check_entry_quality to persist.',
       'Usage is tracked per project.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug for usage tracking'),
       source: z.string().min(1).describe('Source English text'),
-      translation: z.string().min(1).describe('Translation to evaluate'),
-      locale: z.string().describe("Target locale code (e.g. 'nb-NO', 'uk')"),
-      mode: z
-        .enum(['translation_quality', 'language_quality'])
-        .default('translation_quality')
+      translations: z
+        .record(z.string(), z.string())
         .describe(
-          'Check mode: translation_quality compares to source, language_quality evaluates standalone',
+          'Locale to translation map, e.g. { "uk": "Зберегти", "de": "Speichern" }',
         ),
       context: z
         .string()
@@ -226,40 +223,30 @@ export function registerAiTools(server: McpServer): void {
             'Describe: screen, UI element type, meaning in this place.',
         ),
     },
-    async ({ projectSlug, source, translation, locale, mode, context }) => {
+    async ({ projectSlug, source, translations, context }) => {
       try {
-        const result = await apiPost<{
-          score: number;
-          level: string;
-          comment: string;
-          contextNeed?: string;
-          contextReason?: string | null;
-        }>('/translations/ai-quality-check', {
+        const result = await apiPost<
+          Record<string, { score: number; level: string; comment: string }>
+        >('/translations/ai-quality-check/bulk', {
           source,
-          translation,
-          locale,
-          mode,
+          translations,
           projectSlug,
           ...(context ? { context } : {}),
         });
         logWrite(
           'ai_quality_check',
-          { projectSlug, source, translation, locale, mode, context },
+          { projectSlug, source, localeCount: Object.keys(translations).length },
           result,
         );
 
         const lines = [
-          `Quality Check (${locale}):`,
-          `  Source: "${source}"`,
-          `  Translation: "${translation}"`,
-          `  Score: ${result.score}/100 (${result.level})`,
-          `  Comment: ${result.comment}`,
+          `Quality check results:`,
+          `Source: "${source}"`,
+          ``,
+          ...Object.entries(result).map(([locale, r]) =>
+            `  [${locale}] ${r.score}/100 (${r.level})${r.comment ? ` — ${r.comment}` : ''}`,
+          ),
         ];
-        if (result.contextNeed && result.contextNeed !== 'none') {
-          lines.push(
-            `  Context: ${result.contextNeed}${result.contextReason ? ` — ${result.contextReason}` : ''}`,
-          );
-        }
         return textResult(lines.join('\n'));
       } catch (error) {
         return errorResult(error);
