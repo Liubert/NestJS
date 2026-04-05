@@ -115,9 +115,10 @@ None yet.
 | 260404-eqq | Add FeedbackPage to admin UI with grouped layout | 2026-04-04 | aecc2da | [260404-eqq-add-feedbackpage-to-admin-ui-with-groupi](./quick/260404-eqq-add-feedbackpage-to-admin-ui-with-groupi/) |
 | 260404-gm9 | Implement locale guidance feature for AI translations | 2026-04-04 | 4f21a2b | [260404-gm9-implement-locale-guidance-feature-add-gu](./quick/260404-gm9-implement-locale-guidance-feature-add-gu/) |
 | 260405-j3w | Add bulk quality check, bulk mark-expected, bulk context endpoints | 2026-04-05 | b3cd917 | [260405-j3w-add-bulk-quality-check-bulk-mark-expecte](./quick/260405-j3w-add-bulk-quality-check-bulk-mark-expecte/) |
+| 260405-jfc | Fix MCP agent guidance pre-flight warning and boundary guidance | 2026-04-05 | 5dffe71 | [260405-jfc-fix-mcp-agent-guidance-pre-flight-warnin](./quick/260405-jfc-fix-mcp-agent-guidance-pre-flight-warnin/) |
 
 ## Session Continuity
 
-Last session: 2026-04-05T10:51:01Z
-Stopped at: Completed quick task 260405-j3w: Add bulk quality check, bulk mark-expected, bulk context endpoints
+Last session: 2026-04-05T11:02:00Z
+Stopped at: Completed quick task 260405-jfc: Fix MCP agent guidance pre-flight warning and boundary guidance
 Resume file: None
