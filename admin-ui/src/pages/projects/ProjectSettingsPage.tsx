@@ -28,12 +28,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import apiClient from '../../api/client';
-import {
-  SUPPORTED_LANGUAGES,
-  LANGUAGE_BY_CODE,
-  getFlagForCode,
-} from '../../constants/supported-languages';
-import { LOCALE_GUIDELINES } from '../../constants/locale-guidelines';
+import { useSupportedLocales } from '../../hooks/useSupportedLocales';
 
 const { Title, Text } = Typography;
 
@@ -41,7 +36,7 @@ interface LocaleEntry {
   code: string;
   isDefault: boolean;
   aliases: string[];
-  guidance?: string | null;
+  localeSkill?: string | null;
 }
 
 interface ProjectDetails {
@@ -209,6 +204,11 @@ const ProjectSettingsPage: React.FC = () => {
   const { slug } = useParams<{ slug: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
+  const { data: supportedLocales = [] } = useSupportedLocales();
+  const localeMap = React.useMemo(
+    () => new Map(supportedLocales.map((l) => [l.code, l])),
+    [supportedLocales],
+  );
   const [localeForm] = Form.useForm();
   const [nsForm] = Form.useForm();
   const [memberForm] = Form.useForm();
@@ -244,8 +244,11 @@ const ProjectSettingsPage: React.FC = () => {
   };
 
   const addLocaleMutation = useMutation({
-    mutationFn: (vals: { code: string; aliases?: string[]; guidance?: string }) =>
-      apiClient.post(`/translations/projects/${slug}/locales`, vals),
+    mutationFn: (vals: {
+      code: string;
+      aliases?: string[];
+      localeSkill?: string;
+    }) => apiClient.post(`/translations/projects/${slug}/locales`, vals),
     onSuccess: () => {
       message.success('Locale added');
       invalidateProject();
@@ -260,15 +263,15 @@ const ProjectSettingsPage: React.FC = () => {
     mutationFn: ({
       code,
       aliases,
-      guidance,
+      localeSkill,
     }: {
       code: string;
       aliases: string[];
-      guidance?: string;
+      localeSkill?: string;
     }) =>
       apiClient.patch(`/translations/projects/${slug}/locales/${code}`, {
         aliases,
-        guidance,
+        localeSkill,
       }),
     onSuccess: () => {
       message.success('Locale updated');
@@ -504,9 +507,9 @@ const ProjectSettingsPage: React.FC = () => {
               No locales yet — add at least one to start translating
             </Text>
           )}
-          {p.locales.map(({ code, isDefault, aliases, guidance }) => {
-            const flag = getFlagForCode(code);
-            const lang = LANGUAGE_BY_CODE[code];
+          {p.locales.map(({ code, isDefault, aliases, localeSkill }) => {
+            const locEntry = localeMap.get(code);
+            const flag = locEntry?.flag ?? '';
             return (
               <Tag
                 key={code}
@@ -514,15 +517,15 @@ const ProjectSettingsPage: React.FC = () => {
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
                 {flag && <span>{flag}</span>}
-                {lang ? `${lang.name} (${code})` : code}
+                {locEntry ? `${locEntry.name} (${code})` : code}
                 {isDefault ? ' — default' : ''}
                 {aliases?.length > 0 && (
                   <Text type="secondary" style={{ fontSize: 11 }}>
                     [{aliases.join(', ')}]
                   </Text>
                 )}
-                {guidance && (
-                  <Tooltip title="Translation guidance configured">
+                {localeSkill && (
+                  <Tooltip title="Locale skill configured">
                     <InfoCircleOutlined style={{ fontSize: 10, color: '#1890ff' }} />
                   </Tooltip>
                 )}
@@ -532,7 +535,7 @@ const ProjectSettingsPage: React.FC = () => {
                     setEditLocaleCode(code);
                     editLocaleForm.setFieldsValue({
                       aliases: aliases || [],
-                      guidance: guidance ?? '',
+                      localeSkill: localeSkill ?? '',
                     });
                     setEditLocaleModalOpen(true);
                   }}
@@ -652,11 +655,11 @@ const ProjectSettingsPage: React.FC = () => {
         }}
         onOk={() =>
           localeForm.validateFields().then((v) => {
-            const lang = LANGUAGE_BY_CODE[v.code];
+            const loc = localeMap.get(v.code as string);
             addLocaleMutation.mutate({
-              code: v.code,
-              aliases: v.aliases ?? lang?.aliases ?? [],
-              guidance: v.guidance || undefined,
+              code: v.code as string,
+              aliases: (v.aliases as string[] | undefined) ?? loc?.aliases ?? [],
+              localeSkill: (v.localeSkill as string | undefined) || undefined,
             });
           })
         }
@@ -674,13 +677,13 @@ const ProjectSettingsPage: React.FC = () => {
               placeholder="Select language"
               optionFilterProp="label"
               onChange={(code: string) => {
-                const lang = LANGUAGE_BY_CODE[code];
-                if (lang) localeForm.setFieldsValue({ aliases: lang.aliases });
+                const loc = localeMap.get(code);
+                if (loc) localeForm.setFieldsValue({ aliases: loc.aliases });
                 localeForm.setFieldsValue({
-                  guidance: LOCALE_GUIDELINES[code] ?? '',
+                  localeSkill: loc?.localeSkill ?? '',
                 });
               }}
-              options={SUPPORTED_LANGUAGES.map((l) => {
+              options={supportedLocales.map((l) => {
                 const alreadyAdded = p.locales.some(
                   (loc) => loc.code === l.code,
                 );
@@ -700,7 +703,7 @@ const ProjectSettingsPage: React.FC = () => {
             <Select mode="tags" placeholder="e.g. en-US, en-GB" />
           </Form.Item>
           <Form.Item
-            name="guidance"
+            name="localeSkill"
             label="Language translation guide"
             extra="Practical language-specific guide for AI: style, tone, grammar, anti-patterns, common mistakes, wording rules. The richer the guide, the better the translation quality."
           >
@@ -726,8 +729,8 @@ const ProjectSettingsPage: React.FC = () => {
           editLocaleForm.validateFields().then((v) =>
             updateLocaleMutation.mutate({
               code: editLocaleCode,
-              aliases: v.aliases ?? [],
-              guidance: v.guidance || undefined,
+              aliases: (v.aliases as string[] | undefined) ?? [],
+              localeSkill: (v.localeSkill as string | undefined) || undefined,
             }),
           )
         }
@@ -743,7 +746,7 @@ const ProjectSettingsPage: React.FC = () => {
             <Select mode="tags" placeholder="e.g. en-US, en-GB" />
           </Form.Item>
           <Form.Item
-            name="guidance"
+            name="localeSkill"
             label="Language translation guide"
             extra="Practical language-specific guide for AI: style, tone, grammar, anti-patterns, common mistakes, wording rules. The richer the guide, the better the translation quality."
           >

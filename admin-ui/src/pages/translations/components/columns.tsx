@@ -9,7 +9,6 @@ import {
 } from '@ant-design/icons';
 import QualityBadge, { QUALITY_COLOR } from './QualityBadge';
 import type { Entry } from './types';
-import { getFlagForCode } from '../../../constants/supported-languages';
 
 const { Text } = Typography;
 
@@ -23,6 +22,7 @@ export function buildColumns(
   onQualityUpdate: () => void,
   onEdit: (entry: Entry) => void,
   onDelete: (key: string) => void,
+  getFlagForCode: (code: string) => string,
   renderKeyExtra?: (key: string, namespace: string) => React.ReactNode,
   deleteConfirmTitle?: string,
   deleteConfirmDescription?: string,
