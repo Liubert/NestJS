@@ -622,6 +622,28 @@ export class TranslationsController {
     );
   }
 
+  // ─── Namespace bulk operations ────────────────────────────────────────────
+
+  @Post('projects/:slug/namespaces/:ns/reset-translations')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Delete all non-default sandbox translations for a namespace — auto-translate worker will re-translate',
+  })
+  async resetNamespaceTranslations(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<{ deleted: number }> {
+    return this.sandboxService.deleteNamespaceSandboxTranslations(
+      slug,
+      ns,
+      user.userId,
+      user.role,
+    );
+  }
+
   // ─── Entries (protected) ──────────────────────────────────────────────────
 
   @Get('projects/:slug/namespaces/:ns/entries')

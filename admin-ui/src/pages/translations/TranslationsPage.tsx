@@ -308,6 +308,19 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       message.error(e.response?.data?.message ?? 'Error deleting'),
   });
 
+  const resetNsTranslationsMutation = useMutation({
+    mutationFn: (ns: string) =>
+      apiClient.post(
+        `/translations/projects/${projectSlug}/namespaces/${ns}/reset-translations`,
+      ),
+    onSuccess: (_data, ns) => {
+      message.success(`Translations for "${ns}" deleted — auto-translate will re-translate`);
+      invalidate();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error resetting translations'),
+  });
+
   const handleSearch = useCallback(() => {
     setSearch(searchInput);
     setPage(1);
@@ -402,7 +415,32 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           setEditModalOpen(true);
         }}
         disabled={!projectDetails}
-        extraControls={extraControls}
+        extraControls={
+          <>
+            {isSandbox && namespace && (
+              <Col>
+                <Popconfirm
+                  title={`Delete all translations in "${namespace}" and re-translate?`}
+                  description="Auto-translate will pick them up shortly. This cannot be undone."
+                  onConfirm={() => resetNsTranslationsMutation.mutate(namespace)}
+                  okText="Reset"
+                  okButtonProps={{ danger: true }}
+                >
+                  <Tooltip title="Delete all sandbox translations for this namespace and re-translate from scratch">
+                    <Button
+                      size="small"
+                      icon={<SyncOutlined />}
+                      loading={resetNsTranslationsMutation.isPending}
+                    >
+                      Reset translations
+                    </Button>
+                  </Tooltip>
+                </Popconfirm>
+              </Col>
+            )}
+            {extraControls}
+          </>
+        }
       />
 
       <Table<Entry>

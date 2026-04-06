@@ -9,7 +9,7 @@ export class BackfillAiTokenDailyLimit17759000000001 implements MigrationInterfa
     );
   }
 
-  async down(queryRunner: QueryRunner): Promise<void> {
+  async down(_queryRunner: QueryRunner): Promise<void> {
     // intentionally a no-op — cannot distinguish backfilled from user-set
   }
 }
