@@ -5,7 +5,7 @@ export class BackfillAiTokenDailyLimit17759000000001 implements MigrationInterfa
     await queryRunner.query(
       `UPDATE translation_projects
        SET ai_token_daily_limit = 2000000
-       WHERE ai_token_daily_limit IS NULL`,
+       WHERE ai_token_daily_limit IS NULL OR ai_token_daily_limit < 2000000`,
     );
   }
 
