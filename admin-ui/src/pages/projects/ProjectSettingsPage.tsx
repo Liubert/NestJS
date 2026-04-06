@@ -222,6 +222,8 @@ const ProjectSettingsPage: React.FC = () => {
   const [editLocaleCode, setEditLocaleCode] = useState('');
   const [editNsModalOpen, setEditNsModalOpen] = useState(false);
   const [editNsSlug, setEditNsSlug] = useState('');
+  const [selectedLocaleCode, setSelectedLocaleCode] = useState<string | null>(null);
+  const [initTranslateChecked, setInitTranslateChecked] = useState(true);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', slug],
@@ -651,8 +653,11 @@ const ProjectSettingsPage: React.FC = () => {
       <Modal
         open={localeModalOpen}
         title="Add locale"
+        width={600}
         onCancel={() => {
           setLocaleModalOpen(false);
+          setSelectedLocaleCode(null);
+          setInitTranslateChecked(true);
           localeForm.resetFields();
         }}
         onOk={() =>
@@ -669,7 +674,7 @@ const ProjectSettingsPage: React.FC = () => {
         confirmLoading={addLocaleMutation.isPending}
         destroyOnHidden
       >
-        <Form form={localeForm} layout="vertical" style={{ marginTop: 16 }}>
+        <Form form={localeForm} layout="vertical" style={{ marginTop: 16 }} initialValues={{ initTranslate: true }}>
           <Form.Item
             name="code"
             label="Language"
@@ -680,10 +685,12 @@ const ProjectSettingsPage: React.FC = () => {
               placeholder="Select language"
               optionFilterProp="label"
               onChange={(code: string) => {
+                setSelectedLocaleCode(code);
                 const loc = localeMap.get(code);
                 if (loc) localeForm.setFieldsValue({ aliases: loc.aliases });
+                const skill = loc?.localeSkill;
                 localeForm.setFieldsValue({
-                  localeSkill: loc?.localeSkill ?? '',
+                  localeSkill: Array.isArray(skill) ? skill.join('\n') : (skill ?? ''),
                 });
               }}
               options={supportedLocales.map((l) => {
@@ -698,32 +705,40 @@ const ProjectSettingsPage: React.FC = () => {
               })}
             />
           </Form.Item>
-          <Form.Item
-            name="aliases"
-            label="Aliases"
-            extra="Alternative locale codes that map to this language"
-          >
-            <Select mode="tags" placeholder="e.g. en-US, en-GB" />
-          </Form.Item>
-          <Form.Item
-            name="localeSkill"
-            label="Language translation guide"
-            extra="Practical language-specific guide for AI: style, tone, grammar, anti-patterns, common mistakes, wording rules. The richer the guide, the better the translation quality."
-          >
-            <Input.TextArea
-              rows={10}
-              maxLength={5000}
-              showCount
-              placeholder={`e.g.\n- Tone: formal "ви", not informal "ти"\n- Plural forms: 3 forms — 1 елемент, 2 елементи, 5 елементів\n- Anti-patterns: avoid anglicisms (налаштування, not сетинги)\n- UI wording: use imperative for buttons (Зберегти, not Збереження)\n- Common mistakes: "приймати участь" → "брати участь"\n- Quotation marks: «text» not "text"`}
-            />
-          </Form.Item>
-          <Form.Item
-            name="initTranslate"
-            valuePropName="checked"
-            extra="Translates using AI regardless of project auto-translate setting. Runs in background."
-          >
-            <Checkbox>Auto-translate all existing keys for this locale</Checkbox>
-          </Form.Item>
+          <div style={{ visibility: selectedLocaleCode ? 'visible' : 'hidden' }}>
+            <Form.Item
+              name="aliases"
+              label="Aliases"
+              extra="Alternative locale codes that map to this language"
+            >
+              <Select mode="tags" placeholder="e.g. en-US, en-GB" />
+            </Form.Item>
+            <Form.Item
+              name="localeSkill"
+              label="Language translation skill"
+              extra={<span style={{ display: 'block', marginTop: 24 }}>Practical language-specific guide for AI: style, tone, grammar, anti-patterns, common mistakes, wording rules.</span>}
+            >
+              <Input.TextArea
+                rows={10}
+                maxLength={5000}
+                showCount
+                placeholder={`e.g.\n- Tone: formal "ви", not informal "ти"\n- Plural forms: 3 forms — 1 елемент, 2 елементи, 5 елементів\n- Anti-patterns: avoid anglicisms (налаштування, not сетинги)\n- UI wording: use imperative for buttons (Зберегти, not Збереження)\n- Common mistakes: "приймати участь" → "брати участь"\n- Quotation marks: «text» not "text"`}
+              />
+            </Form.Item>
+            <Form.Item name="initTranslate" valuePropName="checked">
+              <Checkbox onChange={(e) => setInitTranslateChecked(e.target.checked)}>
+                Auto-translate all existing keys for this locale
+              </Checkbox>
+            </Form.Item>
+            {!initTranslateChecked && p.namespaces.length > 0 && (
+              <Alert
+                type="warning"
+                showIcon
+                message="This locale will have empty values. You'll need to fill them manually or via an AI agent."
+                style={{ marginBottom: 16 }}
+              />
+            )}
+          </div>
         </Form>
       </Modal>
 
@@ -731,6 +746,7 @@ const ProjectSettingsPage: React.FC = () => {
       <Modal
         open={editLocaleModalOpen}
         title={`Edit locale: ${editLocaleCode}`}
+        width={600}
         onCancel={() => {
           setEditLocaleModalOpen(false);
           editLocaleForm.resetFields();
@@ -757,7 +773,7 @@ const ProjectSettingsPage: React.FC = () => {
           </Form.Item>
           <Form.Item
             name="localeSkill"
-            label="Language translation guide"
+            label="Language translation skill"
             extra="Practical language-specific guide for AI: style, tone, grammar, anti-patterns, common mistakes, wording rules. The richer the guide, the better the translation quality."
           >
             <Input.TextArea
