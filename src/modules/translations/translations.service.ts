@@ -314,12 +314,15 @@ export class TranslationsService {
       this.namespaceRepo
         .createQueryBuilder('ns')
         .select('ns.slug', 'slug')
-        .addSelect('ROUND(AVG(tv.quality_score))::int', 'avgScore')
-        .leftJoin('ns.keys', 'tk')
-        .leftJoin('tk.values', 'tv', 'tv.quality_score IS NOT NULL')
+        .addSelect(
+          `(SELECT ROUND(AVG(tv.quality_score))::int
+            FROM translation_keys tk
+            JOIN translation_values tv ON tv.key_id = tk.id
+            WHERE tk.namespace_id = ns.id
+              AND tv.quality_score IS NOT NULL)`,
+          'avgScore',
+        )
         .where('ns.project_id = :projectId', { projectId: project.id })
-        .groupBy('ns.id')
-        .addGroupBy('ns.slug')
         .getRawMany<{ slug: string; avgScore: string | null }>(),
     ]);
 
