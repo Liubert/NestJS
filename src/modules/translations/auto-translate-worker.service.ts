@@ -88,6 +88,7 @@ export class AutoTranslateWorkerService
            ON sv_tgt.key_id = tk.id
            AND sv_tgt.locale_id = $3
            AND sv_tgt.project_id = $2
+           AND sv_tgt.is_deleted = false
          WHERE ns.project_id = $2
            AND COALESCE(sv_def.value, tv_def.value) IS NOT NULL
            AND sv_tgt.id IS NULL
@@ -159,6 +160,7 @@ export class AutoTranslateWorkerService
            ON sv_tgt.key_id = tk.id
            AND sv_tgt.locale_id = tl.id
            AND sv_tgt.project_id = p.id
+           AND sv_tgt.is_deleted = false
          WHERE p.sandbox_initialized_at IS NOT NULL
            AND p.auto_translate_enabled = true
            AND COALESCE(sv_def.value, tv_def.value) IS NOT NULL
@@ -230,7 +232,7 @@ export class AutoTranslateWorkerService
   ): Promise<void> {
     // Check which locales are actually missing sandbox values for this key
     const existingSandbox = await this.sandboxRepo.find({
-      where: { projectId, keyId },
+      where: { projectId, keyId, isDeleted: false },
       select: ['localeId'],
     });
     const existingLocaleIds = new Set(existingSandbox.map((s) => s.localeId));
@@ -284,7 +286,8 @@ export class AutoTranslateWorkerService
       await this.dataSource.query(
         `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
          SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[])
-         ON CONFLICT (project_id, key_id, locale_id) DO NOTHING`,
+         ON CONFLICT (project_id, key_id, locale_id)
+           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at`,
         [
           values.map((v) => v.projectId),
           values.map((v) => v.keyId),
