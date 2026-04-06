@@ -465,6 +465,7 @@ export class TranslationsService {
     userRole: UserRole,
     aliases: string[] = [],
     localeSkill?: string | null,
+    initTranslate = false,
   ): Promise<LocaleEntity> {
     const project = await this.requireProject(projectSlug);
     await this.assertManageAccess(project, userId, userRole);
@@ -486,6 +487,7 @@ export class TranslationsService {
         isDefault,
         aliases,
         localeSkill: localeSkill ?? getLocaleSkill(code) ?? null,
+        initTranslate,
       }),
     );
   }

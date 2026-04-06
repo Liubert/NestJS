@@ -506,6 +506,7 @@ export class TranslationsController {
       user.role,
       dto.aliases,
       dto.localeSkill,
+      dto.initTranslate ?? false,
     );
   }
 

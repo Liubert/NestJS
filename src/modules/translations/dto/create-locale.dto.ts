@@ -41,4 +41,13 @@ export class CreateLocaleDto {
   @IsString()
   @MaxLength(5000)
   localeSkill?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Trigger one-time auto-translation of all existing keys for this locale',
+    default: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  initTranslate?: boolean;
 }

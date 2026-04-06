@@ -30,4 +30,7 @@ export class LocaleEntity {
 
   @Column({ name: 'locale_skill', type: 'text', nullable: true })
   localeSkill!: string | null;
+
+  @Column({ name: 'init_translate', type: 'boolean', default: false })
+  initTranslate!: boolean;
 }
