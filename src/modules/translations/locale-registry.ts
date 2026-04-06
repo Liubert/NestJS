@@ -522,20 +522,6 @@ export const LOCALE_REGISTRY: LocaleDefinition[] = [
   },
 
   {
-    code: 'ru',
-    name: 'Russian',
-    aliases: ['ru-RU'],
-    flag: '🇷🇺',
-    localeSkill: [
-      '- Use formal "вы" (not "ты") for addressing users',
-      '- 3 plural forms (one, few, many): 1 элемент, 2 элемента, 5 элементов',
-      '- Avoid unnecessary anglicisms (настройки, not сеттинги)',
-      '- Date format: DD.MM.YYYY. Numbers: 1 000,00',
-      '- Use Russian quotation marks: «text»',
-    ].join('\n'),
-  },
-
-  {
     code: 'lt',
     name: 'Lithuanian',
     aliases: ['lt-LT'],
