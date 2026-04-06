@@ -527,12 +527,13 @@ const ProjectSettingsPage: React.FC = () => {
             Daily token limit (resets at midnight UTC)
           </Text>
           <InputNumber
-            min={1}
-            placeholder="No limit"
-            value={project?.aiTokenDailyLimit ?? undefined}
-            style={{ width: 200 }}
-            formatter={(v) => (v ? String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '')}
-            parser={(v) => Number((v ?? '').replace(/,/g, ''))}
+            min={1_000_000}
+            step={1_000_000}
+            placeholder="2M"
+            value={project?.aiTokenDailyLimit ?? 2_000_000}
+            style={{ width: 180 }}
+            formatter={(v) => (v ? `${Math.round(Number(v) / 1_000_000)}M` : '')}
+            parser={(v) => Math.round(Number((v ?? '').replace(/M/g, '').trim()) * 1_000_000)}
             onChange={async (val) => {
               try {
                 await apiClient.patch(
