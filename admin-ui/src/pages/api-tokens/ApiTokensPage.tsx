@@ -215,7 +215,7 @@ export default function ApiTokensPage() {
         <Text strong style={{ display: 'block', marginBottom: 6 }}>Mac / Linux / Windows:</Text>
         <Paragraph
           copyable={{
-            text: `claude mcp add -s user localization -e MCP_TOKEN=${newTokenResult?.token} -e BACKEND_URL=${import.meta.env.VITE_BACKEND_URL ?? window.location.origin} -- npx -y localization-mcp-server`,
+            text: `claude mcp add -s user localization -e MCP_TOKEN=${newTokenResult?.token} -e BACKEND_URL=${import.meta.env.VITE_BACKEND_URL ?? window.location.origin} -- localization-mcp-server`,
             icon: [<CopyOutlined key="copy" />, <CopyOutlined key="copied" />],
             tooltips: ['Copy', 'Copied!'],
           }}
@@ -229,10 +229,10 @@ export default function ApiTokensPage() {
             marginBottom: 8,
           }}
         >
-          {`claude mcp add -s user localization -e MCP_TOKEN=${newTokenResult?.token} -e BACKEND_URL=${import.meta.env.VITE_BACKEND_URL ?? window.location.origin} -- npx -y localization-mcp-server`}
+          {`claude mcp add -s user localization -e MCP_TOKEN=${newTokenResult?.token} -e BACKEND_URL=${import.meta.env.VITE_BACKEND_URL ?? window.location.origin} -- localization-mcp-server`}
         </Paragraph>
         <Text type="secondary" style={{ fontSize: 12, display: 'block', marginBottom: 20 }}>
-          Installs the server automatically if not present. Requires the package to be published to npm.
+          Requires localization-mcp-server to be installed globally: npm install -g localization-mcp-server
         </Text>
 
         {/* Raw token */}
