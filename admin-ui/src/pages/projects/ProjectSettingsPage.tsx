@@ -175,66 +175,68 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
           {data.totalTokens === 0 ? (
             <Text type="secondary">No AI usage recorded yet.</Text>
           ) : (
-          <div
-            style={{
-              marginBottom: 12,
-              display: 'flex',
-              gap: 24,
-              alignItems: 'baseline',
-            }}
-          >
-            <div>
-              <Text strong style={{ fontSize: 20 }}>
-                {formatTokens(data.totalTokens)}
-              </Text>
-              <Text type="secondary" style={{ marginLeft: 8 }}>
-                total tokens
-              </Text>
-            </div>
-            <div>
-              <Text strong style={{ fontSize: 20 }}>
-                {estimateCost(data.inputTokens, data.outputTokens)}
-              </Text>
-              <Text type="secondary" style={{ marginLeft: 8 }}>
-                estimated cost
-              </Text>
-            </div>
-          </div>
-          <Table<AiUsageBreakdown>
-            rowKey="operation"
-            dataSource={data.breakdown}
-            size="small"
-            pagination={false}
-            style={{ maxWidth: 600 }}
-            columns={[
-              {
-                title: 'Operation',
-                dataIndex: 'operation',
-                key: 'operation',
-                render: (op: string) => OPERATION_LABELS[op] ?? op,
-              },
-              {
-                title: 'Tokens',
-                dataIndex: 'totalTokens',
-                key: 'totalTokens',
-                width: 100,
-                render: (v: number) => formatTokens(v),
-              },
-              {
-                title: 'Cost',
-                key: 'cost',
-                width: 80,
-                render: (_: unknown, row: AiUsageBreakdown) =>
-                  estimateCost(row.inputTokens, row.outputTokens),
-              },
-              {
-                title: 'Calls',
-                dataIndex: 'callCount',
-                key: 'callCount',
-                width: 70,
-              },
-            ]}
-          />
+            <>
+              <div
+                style={{
+                  marginBottom: 12,
+                  display: 'flex',
+                  gap: 24,
+                  alignItems: 'baseline',
+                }}
+              >
+                <div>
+                  <Text strong style={{ fontSize: 20 }}>
+                    {formatTokens(data.totalTokens)}
+                  </Text>
+                  <Text type="secondary" style={{ marginLeft: 8 }}>
+                    total tokens
+                  </Text>
+                </div>
+                <div>
+                  <Text strong style={{ fontSize: 20 }}>
+                    {estimateCost(data.inputTokens, data.outputTokens)}
+                  </Text>
+                  <Text type="secondary" style={{ marginLeft: 8 }}>
+                    estimated cost
+                  </Text>
+                </div>
+              </div>
+              <Table<AiUsageBreakdown>
+                rowKey="operation"
+                dataSource={data.breakdown}
+                size="small"
+                pagination={false}
+                style={{ maxWidth: 600 }}
+                columns={[
+                  {
+                    title: 'Operation',
+                    dataIndex: 'operation',
+                    key: 'operation',
+                    render: (op: string) => OPERATION_LABELS[op] ?? op,
+                  },
+                  {
+                    title: 'Tokens',
+                    dataIndex: 'totalTokens',
+                    key: 'totalTokens',
+                    width: 100,
+                    render: (v: number) => formatTokens(v),
+                  },
+                  {
+                    title: 'Cost',
+                    key: 'cost',
+                    width: 80,
+                    render: (_: unknown, row: AiUsageBreakdown) =>
+                      estimateCost(row.inputTokens, row.outputTokens),
+                  },
+                  {
+                    title: 'Calls',
+                    dataIndex: 'callCount',
+                    key: 'callCount',
+                    width: 70,
+                  },
+                ]}
+              />
+            </>
           )}
         </>
       )}
