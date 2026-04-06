@@ -17,6 +17,7 @@ import {
   Table,
   Alert,
   Tooltip,
+  Checkbox,
 } from 'antd';
 import {
   PlusOutlined,
@@ -248,6 +249,7 @@ const ProjectSettingsPage: React.FC = () => {
       code: string;
       aliases?: string[];
       localeSkill?: string;
+      initTranslate?: boolean;
     }) => apiClient.post(`/translations/projects/${slug}/locales`, vals),
     onSuccess: () => {
       message.success('Locale added');
@@ -660,6 +662,7 @@ const ProjectSettingsPage: React.FC = () => {
               code: v.code as string,
               aliases: (v.aliases as string[] | undefined) ?? loc?.aliases ?? [],
               localeSkill: (v.localeSkill as string | undefined) || undefined,
+              initTranslate: !!v.initTranslate,
             });
           })
         }
@@ -713,6 +716,13 @@ const ProjectSettingsPage: React.FC = () => {
               showCount
               placeholder={`e.g.\n- Tone: formal "ви", not informal "ти"\n- Plural forms: 3 forms — 1 елемент, 2 елементи, 5 елементів\n- Anti-patterns: avoid anglicisms (налаштування, not сетинги)\n- UI wording: use imperative for buttons (Зберегти, not Збереження)\n- Common mistakes: "приймати участь" → "брати участь"\n- Quotation marks: «text» not "text"`}
             />
+          </Form.Item>
+          <Form.Item
+            name="initTranslate"
+            valuePropName="checked"
+            extra="Translates using AI regardless of project auto-translate setting. Runs in background."
+          >
+            <Checkbox>Auto-translate all existing keys for this locale</Checkbox>
           </Form.Item>
         </Form>
       </Modal>
