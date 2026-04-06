@@ -127,8 +127,7 @@ None yet.
 | 260405-uvr | Fix sandbox quality reset bug and MCP pre-flight / REST URL guidance | 2026-04-05 | decce64 | [260405-uvr-fix-sandbox-quality-reset-bug-and-mcp-pr](./quick/260405-uvr-fix-sandbox-quality-reset-bug-and-mcp-pr/) |
 | 260406-g0q | Locale registry consolidation: single source of truth, rename guidance→localeSkill, DB migration nb-NO/da-DK→aliases, public API endpoint, remove frontend hardcoded data | 2026-04-06 | c966903 | [260406-g0q-locale-registry-consolidation-create-sin](./quick/260406-g0q-locale-registry-consolidation-create-sin/) |
 | 260406-gca | Pass previousComment to Gemini on quality re-check | 2026-04-06 | af4b6fc | [260406-gca-add-previouscomment-to-quality-check-pas](./quick/260406-gca-add-previouscomment-to-quality-check-pas/) |
-| 260406-g0q | Locale registry consolidation: single source of truth, rename guidance->localeSkill, public API endpoint, frontend hook | 2026-04-06 | c966903 | [260406-g0q-locale-registry-consolidation-create-sin](./quick/260406-g0q-locale-registry-consolidation-create-sin/) |
-| 260406-gxq | Phase 2 testing for locale registry consolidation — migration verified, all 15 API/DB/frontend tests passed, zero hotfixes | 2026-04-06 | — | [260406-gxq-phase-2-manual-testing-and-hotfixes-for-](./quick/260406-gxq-phase-2-manual-testing-and-hotfixes-for-/) |
+| 260406-gxq | Phase 2 testing for locale registry consolidation — migration verified, all 15 API/DB/frontend tests passed, zero hotfixes | 2026-04-06 | c5fa1f8 | [260406-gxq-phase-2-manual-testing-and-hotfixes-for-](./quick/260406-gxq-phase-2-manual-testing-and-hotfixes-for-/) |
 
 ## Session Continuity
 
