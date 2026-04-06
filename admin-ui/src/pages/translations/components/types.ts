@@ -11,11 +11,16 @@ export interface LocaleInfo {
   isDefault: boolean;
 }
 
+export interface NamespaceInfo {
+  slug: string;
+  avgScore: number | null;
+}
+
 export interface ProjectDetails {
   slug: string;
   name: string;
   locales: LocaleInfo[];
-  namespaces: string[];
+  namespaces: NamespaceInfo[];
 }
 
 export interface QualityInfo {

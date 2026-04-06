@@ -219,8 +219,8 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
 
   React.useEffect(() => {
     if (!projectDetails || projectDetails.namespaces.length === 0) return;
-    if (!namespace || !projectDetails.namespaces.includes(namespace)) {
-      setNamespace(projectDetails.namespaces[0]);
+    if (!namespace || !projectDetails.namespaces.some((ns) => ns.slug === namespace)) {
+      setNamespace(projectDetails.namespaces[0].slug);
     }
   }, [projectDetails, namespace]);
 
@@ -374,7 +374,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
     <>
       <FilterBar
         namespace={namespace}
-        namespaces={projectDetails?.namespaces ?? []}
+        namespaces={projectDetails?.namespaces.map((ns) => ns.slug) ?? []}
         onNamespaceChange={(val) => {
           setNamespace(val);
           setPage(1);
