@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: "Completed quick task 260406-he7: initTranslate flag on locale for one-time bulk AI translation"
-last_updated: "2026-04-06T09:47:00.000Z"
-last_activity: "2026-04-06 - Completed quick task 260406-he7: initTranslate flag, migration, worker processing loop, frontend checkbox"
+stopped_at: "Completed quick task 260406-ihm: add prompt preview endpoint and UI in AI Settings"
+last_updated: "2026-04-06T10:35:00.000Z"
+last_activity: "2026-04-06 - Completed quick task 260406-ihm: buildTranslatePrompt/buildQualityPrompt extractors, POST /translations/ai-preview-prompt, Prompt Preview tab in AI Settings"
 progress:
   total_phases: 1
   completed_phases: 0
@@ -129,6 +129,7 @@ None yet.
 | 260406-gca | Pass previousComment to Gemini on quality re-check | 2026-04-06 | af4b6fc | [260406-gca-add-previouscomment-to-quality-check-pas](./quick/260406-gca-add-previouscomment-to-quality-check-pas/) |
 | 260406-gxq | Phase 2 testing for locale registry consolidation — migration verified, all 15 API/DB/frontend tests passed, zero hotfixes | 2026-04-06 | c5fa1f8 | [260406-gxq-phase-2-manual-testing-and-hotfixes-for-](./quick/260406-gxq-phase-2-manual-testing-and-hotfixes-for-/) |
 | 260406-he7 | Add initTranslate flag to locale for one-time bulk AI translation of all existing keys | 2026-04-06 | 1e79982 | [260406-he7-add-inittranslate-flag-to-locale-for-one](./quick/260406-he7-add-inittranslate-flag-to-locale-for-one/) |
+| 260406-ihm | Add prompt preview endpoint and UI in AI Settings | 2026-04-06 | 42c8134 | [260406-ihm-add-prompt-preview-endpoint-and-ui-in-ai](./quick/260406-ihm-add-prompt-preview-endpoint-and-ui-in-ai/) |
 
 ## Session Continuity
 
