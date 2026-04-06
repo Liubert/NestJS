@@ -471,6 +471,12 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const REVIEW_PAGE_SIZE = 50;
   const [sandboxChangeFilter, setSandboxChangeFilter] = useState<string>('');
 
+  const { data: supportedLocalesForFlags = [] } = useSupportedLocales();
+  const getFlagForCode = useCallback(
+    (code: string) => supportedLocalesForFlags.find((l) => l.code === code)?.flag ?? '',
+    [supportedLocalesForFlags],
+  );
+
   const { data: status, isLoading: statusLoading } = useQuery<SandboxStatus>({
     queryKey: ['sandbox-status', projectSlug],
     queryFn: () => fetchSandboxStatus(projectSlug),
