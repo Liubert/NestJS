@@ -9,54 +9,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AiConfigService, interpolate } from './ai-config.service.js';
 import { AiUsageService } from './ai-usage.service.js';
 import { scoreToLevel } from './quality-constants.js';
+import { getLocaleName } from './locale-registry.js';
 
-const DEFAULT_TARGET_LOCALES: Record<string, string> = {
-  uk: 'Ukrainian',
-  'nb-NO': 'Norwegian Bokmål',
-  sv: 'Swedish',
-  'da-DK': 'Danish',
-};
-
-const LOCALE_NAMES: Record<string, string> = {
-  uk: 'Ukrainian',
-  nb: 'Norwegian Bokmål',
-  'nb-NO': 'Norwegian Bokmål',
-  sv: 'Swedish',
-  da: 'Danish',
-  'da-DK': 'Danish',
-  de: 'German',
-  fr: 'French',
-  es: 'Spanish',
-  it: 'Italian',
-  pt: 'Portuguese',
-  pl: 'Polish',
-  nl: 'Dutch',
-  fi: 'Finnish',
-  ja: 'Japanese',
-  ko: 'Korean',
-  zh: 'Chinese',
-  ar: 'Arabic',
-  hi: 'Hindi',
-  tr: 'Turkish',
-  cs: 'Czech',
-  ro: 'Romanian',
-  hu: 'Hungarian',
-  el: 'Greek',
-  he: 'Hebrew',
-  th: 'Thai',
-  vi: 'Vietnamese',
-  id: 'Indonesian',
-  ms: 'Malay',
-  bg: 'Bulgarian',
-  hr: 'Croatian',
-  sk: 'Slovak',
-  sl: 'Slovenian',
-  lt: 'Lithuanian',
-  lv: 'Latvian',
-  et: 'Estonian',
-  sr: 'Serbian',
-  ru: 'Russian',
-};
+/** Default target locale codes when no targetLocales is specified */
+const DEFAULT_TARGET_LOCALE_CODES = ['uk', 'nb', 'sv', 'da'];
 
 const BULK_CHUNK_SIZE = 10;
 
@@ -89,10 +45,10 @@ export class AiTranslateService {
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
     // If targetLocales is explicitly provided (even empty), respect it.
-    // Only fall back to DEFAULT_TARGET_LOCALES when targetLocales is undefined.
+    // Only fall back to DEFAULT_TARGET_LOCALE_CODES when targetLocales is undefined.
     const localeEntries = targetLocales
-      ? targetLocales.map((code) => [code, LOCALE_NAMES[code] ?? code])
-      : Object.entries(DEFAULT_TARGET_LOCALES);
+      ? targetLocales.map((code) => [code, getLocaleName(code)])
+      : DEFAULT_TARGET_LOCALE_CODES.map((code) => [code, getLocaleName(code)]);
 
     if (localeEntries.length === 0) {
       return {};
@@ -188,10 +144,10 @@ export class AiTranslateService {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
-    // Build locale entries — fall back to DEFAULT_TARGET_LOCALES when undefined
+    // Build locale entries — fall back to DEFAULT_TARGET_LOCALE_CODES when undefined
     const localeEntries = targetLocales
-      ? targetLocales.map((code) => [code, LOCALE_NAMES[code] ?? code])
-      : Object.entries(DEFAULT_TARGET_LOCALES);
+      ? targetLocales.map((code) => [code, getLocaleName(code)])
+      : DEFAULT_TARGET_LOCALE_CODES.map((code) => [code, getLocaleName(code)]);
 
     if (localeEntries.length === 0) {
       return {};
@@ -402,6 +358,7 @@ export class AiTranslateService {
       source: string | null;
       context: string | null;
       translations: Record<string, string>;
+      previousComment?: string | null;
     }>,
     chunkSize = 5,
     chunkTimeoutMs = 90_000,
@@ -569,6 +526,7 @@ export class AiTranslateService {
       source: string | null;
       context: string | null;
       translations: Record<string, string>;
+      previousComment?: string | null;
     }>,
     localeGuidance?: Record<string, string>,
   ): string {
@@ -585,7 +543,7 @@ export class AiTranslateService {
         .filter((code) => localeGuidance[code])
         .map(
           (code) =>
-            `- ${LOCALE_NAMES[code] ?? code} (${code}): ${localeGuidance[code]}`,
+            `- ${getLocaleName(code)} (${code}): ${localeGuidance[code]}`,
         );
       if (guidanceLines.length) {
         guidanceSection = `\nLanguage-specific guidance:\n${guidanceLines.join('\n')}\n`;
@@ -608,6 +566,8 @@ If "source" is present, compare translation accuracy to it. If "source" is null,
 
 Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).
 
+If "previousReviewerNote" is present, treat it as prior feedback on an earlier version. Do not penalize for issues already resolved.
+
 For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.
 
 Return ONLY valid JSON:
@@ -622,7 +582,19 @@ Return ONLY valid JSON:
 }
 
 Translations to review:
-${JSON.stringify(items, null, 2)}`;
+${JSON.stringify(
+  items.map((item) => ({
+    key: item.key,
+    source: item.source,
+    context: item.context,
+    translations: item.translations,
+    ...(item.previousComment && {
+      previousReviewerNote: `Previous reviewer note: ${item.previousComment}`,
+    }),
+  })),
+  null,
+  2,
+)}`;
   }
 
   async checkQuality(
