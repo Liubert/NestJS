@@ -57,6 +57,8 @@ export class AiTranslateService {
     const targetLocalesMap: Record<string, string> = Object.fromEntries(
       localeEntries as Array<[string, string]>,
     );
+    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
+
     const prompt = await this.buildTranslatePrompt(
       text,
       targetLocalesMap,
@@ -148,6 +150,8 @@ export class AiTranslateService {
     const languages = localeEntries
       .map(([code, name]) => `${name} (${code})`)
       .join(', ');
+
+    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
 
     const requestedCodes = new Set(localeEntries.map(([code]) => code));
     const merged: Record<string, Record<string, string>> = {};
@@ -271,6 +275,8 @@ export class AiTranslateService {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
+    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
+
     const prompt = await this.buildTranslatePrompt(
       text,
       targetLocales,
@@ -370,6 +376,8 @@ export class AiTranslateService {
     const aiCfg = await this.aiConfig.getConfig();
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
+
+    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
 
     const results: Record<
       string,
@@ -676,6 +684,8 @@ ${JSON.stringify(
     const aiCfg = await this.aiConfig.getConfig();
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
+
+    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
 
     const prompt = await this.buildQualityPrompt(
       source,

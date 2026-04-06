@@ -409,18 +409,14 @@ export class SandboxController {
 
   @Patch('settings')
   @ApiOperation({
-    summary: 'Update project sandbox settings (auto-translate toggle)',
+    summary:
+      'Update project sandbox settings (auto-translate toggle, daily token limit)',
   })
   updateSettings(
     @Param('slug') slug: string,
-    @Body() body: { autoTranslateEnabled?: boolean },
+    @Body()
+    body: { autoTranslateEnabled?: boolean; aiTokenDailyLimit?: number | null },
   ) {
-    if (body.autoTranslateEnabled !== undefined) {
-      return this.sandboxService.updateAutoTranslate(
-        slug,
-        body.autoTranslateEnabled,
-      );
-    }
-    return {};
+    return this.sandboxService.updateProjectSettings(slug, body);
   }
 }

@@ -9,6 +9,7 @@ import {
   Modal,
   Form,
   Input,
+  InputNumber,
   Switch,
   Select,
   Popconfirm,
@@ -18,6 +19,7 @@ import {
   Alert,
   Tooltip,
   Checkbox,
+  Progress,
 } from 'antd';
 import {
   PlusOutlined,
@@ -49,6 +51,7 @@ interface ProjectDetails {
   locales: LocaleEntry[];
   namespaces: string[];
   autoTranslateEnabled: boolean;
+  aiTokenDailyLimit: number | null;
 }
 
 interface MemberRow {
@@ -83,6 +86,8 @@ interface AiUsageData {
   totalTokens: number;
   inputTokens: number;
   outputTokens: number;
+  todayTokens: number;
+  dailyLimit: number | null;
   breakdown: AiUsageBreakdown[];
 }
 
@@ -129,10 +134,47 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
       </Title>
       {isLoading ? (
         <Spin size="small" />
-      ) : !data || data.totalTokens === 0 ? (
+      ) : !data ? (
         <Text type="secondary">No AI usage recorded yet.</Text>
       ) : (
         <>
+          {data.dailyLimit !== null && (
+            <div style={{ maxWidth: 500, marginBottom: 16 }}>
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  marginBottom: 4,
+                }}
+              >
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  Today&apos;s usage
+                </Text>
+                <Text
+                  type={data.todayTokens >= data.dailyLimit ? 'danger' : 'secondary'}
+                  style={{ fontSize: 12 }}
+                >
+                  {formatTokens(data.todayTokens)} / {formatTokens(data.dailyLimit)}
+                </Text>
+              </div>
+              <Progress
+                percent={Math.min(
+                  100,
+                  Math.round((data.todayTokens / data.dailyLimit) * 100),
+                )}
+                status={data.todayTokens >= data.dailyLimit ? 'exception' : 'normal'}
+                strokeColor={
+                  data.todayTokens / data.dailyLimit >= 0.9 ? '#ff4d4f' :
+                  data.todayTokens / data.dailyLimit >= 0.7 ? '#faad14' :
+                  '#52c41a'
+                }
+                size="small"
+              />
+            </div>
+          )}
+          {data.totalTokens === 0 ? (
+            <Text type="secondary">No AI usage recorded yet.</Text>
+          ) : (
           <div
             style={{
               marginBottom: 12,
@@ -193,6 +235,7 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
               },
             ]}
           />
+          )}
         </>
       )}
     </div>
@@ -477,6 +520,55 @@ const ProjectSettingsPage: React.FC = () => {
           message="When enabled, the system continuously checks for missing translations and automatically generates them using AI. Auto-generated translations are created in sandbox only and must be manually reviewed and pushed to production."
           style={{ maxWidth: 600 }}
         />
+        <div style={{ marginTop: 16, maxWidth: 400 }}>
+          <Text type="secondary" style={{ display: 'block', marginBottom: 6 }}>
+            Daily token limit (resets at midnight UTC)
+          </Text>
+          <InputNumber
+            min={1}
+            placeholder="No limit"
+            value={project?.aiTokenDailyLimit ?? undefined}
+            style={{ width: 200 }}
+            formatter={(v) => (v ? String(v).replace(/\B(?=(\d{3})+(?!\d))/g, ',') : '')}
+            parser={(v) => Number((v ?? '').replace(/,/g, ''))}
+            onChange={async (val) => {
+              try {
+                await apiClient.patch(
+                  `/translations/projects/${slug}/sandbox/settings`,
+                  { aiTokenDailyLimit: val ?? null },
+                );
+                qc.invalidateQueries({ queryKey: ['project', slug] });
+                qc.invalidateQueries({ queryKey: ['ai-usage', slug] });
+                message.success('Daily limit updated');
+              } catch {
+                message.error('Failed to update limit');
+              }
+            }}
+            onKeyDown={(e) => e.stopPropagation()}
+          />
+          {project?.aiTokenDailyLimit && (
+            <Button
+              type="link"
+              size="small"
+              style={{ padding: '0 4px' }}
+              onClick={async () => {
+                try {
+                  await apiClient.patch(
+                    `/translations/projects/${slug}/sandbox/settings`,
+                    { aiTokenDailyLimit: null },
+                  );
+                  qc.invalidateQueries({ queryKey: ['project', slug] });
+                  qc.invalidateQueries({ queryKey: ['ai-usage', slug] });
+                  message.success('Daily limit removed');
+                } catch {
+                  message.error('Failed to remove limit');
+                }
+              }}
+            >
+              Remove limit
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* ── AI Token Usage ── */}

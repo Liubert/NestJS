@@ -1,4 +1,5 @@
 import {
+  HttpException,
   Injectable,
   Logger,
   OnApplicationBootstrap,
@@ -195,7 +196,9 @@ export class AutoTranslateWorkerService
         const nonDefaultLocales = locales.filter((l) => !l.isDefault);
         if (!nonDefaultLocales.length) continue;
 
+        let projectLimitReached = false;
         for (const { keyId, keyName, sourceText } of keys) {
+          if (projectLimitReached) break;
           try {
             await this.translateKey(
               projectId,
@@ -206,9 +209,16 @@ export class AutoTranslateWorkerService
             );
             totalTranslated++;
           } catch (e: unknown) {
-            this.logger.warn(
-              `Failed to auto-translate key "${keyName}": ${e instanceof Error ? e.message : String(e)}`,
-            );
+            if (e instanceof HttpException && e.getStatus() === 429) {
+              this.logger.warn(
+                `Daily token limit reached for project ${projectId}, skipping remaining keys`,
+              );
+              projectLimitReached = true;
+            } else {
+              this.logger.warn(
+                `Failed to auto-translate key "${keyName}": ${e instanceof Error ? e.message : String(e)}`,
+              );
+            }
           }
         }
       }

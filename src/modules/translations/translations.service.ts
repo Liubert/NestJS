@@ -82,6 +82,7 @@ export interface ProjectDetails {
   locales: LocaleInfo[];
   namespaces: string[];
   autoTranslateEnabled: boolean;
+  aiTokenDailyLimit: number | null;
 }
 
 export interface MemberRow {
@@ -321,6 +322,7 @@ export class TranslationsService {
       })),
       namespaces: namespaces.map((ns) => ns.slug),
       autoTranslateEnabled: project.autoTranslateEnabled,
+      aiTokenDailyLimit: project.aiTokenDailyLimit ?? null,
     };
   }
 

@@ -1,13 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AiUsageLogEntity } from './entities/ai-usage-log.entity.js';
+import { ProjectEntity } from './entities/project.entity.js';
 
 @Injectable()
 export class AiUsageService {
   constructor(
     @InjectRepository(AiUsageLogEntity)
     private readonly repo: Repository<AiUsageLogEntity>,
+    @InjectRepository(ProjectEntity)
+    private readonly projectRepo: Repository<ProjectEntity>,
   ) {}
 
   async logUsage(params: {
@@ -24,6 +27,25 @@ export class AiUsageService {
     });
   }
 
+  async assertDailyLimit(projectId: string): Promise<void> {
+    const project = await this.projectRepo.findOneBy({ id: projectId });
+    if (!project?.aiTokenDailyLimit) return;
+
+    const [row] = await this.repo.query<{ total: number }[]>(
+      `SELECT COALESCE(SUM(total_tokens), 0)::int AS total
+       FROM ai_usage_logs
+       WHERE project_id = $1 AND created_at >= CURRENT_DATE`,
+      [projectId],
+    );
+
+    if ((row?.total ?? 0) >= project.aiTokenDailyLimit) {
+      throw new HttpException(
+        `Daily AI token limit (${String(project.aiTokenDailyLimit)}) reached. Resets at midnight UTC.`,
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
+  }
+
   async getProjectUsage(
     projectId: string,
     options?: { since?: Date },
@@ -31,6 +53,8 @@ export class AiUsageService {
     totalTokens: number;
     inputTokens: number;
     outputTokens: number;
+    todayTokens: number;
+    dailyLimit: number | null;
     breakdown: {
       operation: string;
       totalTokens: number;
@@ -75,10 +99,21 @@ export class AiUsageService {
       0,
     );
 
+    const [todayRow] = await this.repo.query<{ total: number }[]>(
+      `SELECT COALESCE(SUM(total_tokens), 0)::int AS total
+       FROM ai_usage_logs
+       WHERE project_id = $1 AND created_at >= CURRENT_DATE`,
+      [projectId],
+    );
+
+    const project = await this.projectRepo.findOneBy({ id: projectId });
+
     return {
       totalTokens,
       inputTokens,
       outputTokens,
+      todayTokens: todayRow?.total ?? 0,
+      dailyLimit: project?.aiTokenDailyLimit ?? null,
       breakdown: breakdown.map((row) => ({
         operation: row.operation,
         totalTokens: Number(row.totalTokens) || 0,

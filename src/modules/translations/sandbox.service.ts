@@ -2178,6 +2178,31 @@ export class SandboxService {
     return { autoTranslateEnabled: enabled };
   }
 
+  async updateProjectSettings(
+    slug: string,
+    settings: {
+      autoTranslateEnabled?: boolean;
+      aiTokenDailyLimit?: number | null;
+    },
+  ): Promise<{
+    autoTranslateEnabled: boolean;
+    aiTokenDailyLimit: number | null;
+  }> {
+    const project = await this.projectRepo.findOneBy({ slug });
+    if (!project) throw new NotFoundException('Project not found');
+    if (settings.autoTranslateEnabled !== undefined) {
+      project.autoTranslateEnabled = settings.autoTranslateEnabled;
+    }
+    if ('aiTokenDailyLimit' in settings) {
+      project.aiTokenDailyLimit = settings.aiTokenDailyLimit ?? null;
+    }
+    await this.projectRepo.save(project);
+    return {
+      autoTranslateEnabled: project.autoTranslateEnabled,
+      aiTokenDailyLimit: project.aiTokenDailyLimit,
+    };
+  }
+
   // ─── Private helper ─────────────────────────────────────────────────────────
 
   private async findSandboxValue(

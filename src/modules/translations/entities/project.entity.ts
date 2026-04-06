@@ -44,6 +44,9 @@ export class ProjectEntity {
   })
   autoTranslateEnabled!: boolean;
 
+  @Column({ name: 'ai_token_daily_limit', type: 'int', nullable: true })
+  aiTokenDailyLimit!: number | null;
+
   @OneToMany(() => NamespaceEntity, (ns) => ns.project)
   namespaces!: NamespaceEntity[];
 
