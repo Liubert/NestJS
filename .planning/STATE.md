@@ -130,9 +130,10 @@ None yet.
 | 260406-gxq | Phase 2 testing for locale registry consolidation — migration verified, all 15 API/DB/frontend tests passed, zero hotfixes | 2026-04-06 | c5fa1f8 | [260406-gxq-phase-2-manual-testing-and-hotfixes-for-](./quick/260406-gxq-phase-2-manual-testing-and-hotfixes-for-/) |
 | 260406-he7 | Add initTranslate flag to locale for one-time bulk AI translation of all existing keys | 2026-04-06 | 1e79982 | [260406-he7-add-inittranslate-flag-to-locale-for-one](./quick/260406-he7-add-inittranslate-flag-to-locale-for-one/) |
 | 260406-ihm | Add prompt preview endpoint and UI in AI Settings | 2026-04-06 | 42c8134 | [260406-ihm-add-prompt-preview-endpoint-and-ui-in-ai](./quick/260406-ihm-add-prompt-preview-endpoint-and-ui-in-ai/) |
+| 260406-wje | Add average quality score per namespace to project details and ProjectSettingsPage | 2026-04-06 | 145ae9a | [260406-wje-add-average-quality-score-per-namespace-](./quick/260406-wje-add-average-quality-score-per-namespace-/) |
 
 ## Session Continuity
 
-Last session: 2026-04-06T09:02:00.000Z
-Stopped at: Completed quick task 260406-g0q: Locale registry consolidation — single source of truth, rename guidance->localeSkill, public endpoint, frontend hook
+Last session: 2026-04-06T10:35:00.000Z
+Stopped at: Completed quick task 260406-wje: Add average quality score per namespace
 Resume file: None
