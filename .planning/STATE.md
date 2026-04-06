@@ -126,9 +126,10 @@ None yet.
 | 260405-q5q | Remove init_sandbox dead tool — replaced by auto-init | 2026-04-05 | 20f4e6a | [260405-q5q-remove-init-sandbox-dead-tool-replaced-b](./quick/260405-q5q-remove-init-sandbox-dead-tool-replaced-b/) |
 | 260405-uvr | Fix sandbox quality reset bug and MCP pre-flight / REST URL guidance | 2026-04-05 | decce64 | [260405-uvr-fix-sandbox-quality-reset-bug-and-mcp-pr](./quick/260405-uvr-fix-sandbox-quality-reset-bug-and-mcp-pr/) |
 | 260406-gca | Pass previousComment to Gemini on quality re-check | 2026-04-06 | af4b6fc | [260406-gca-add-previouscomment-to-quality-check-pas](./quick/260406-gca-add-previouscomment-to-quality-check-pas/) |
+| 260406-g0q | Locale registry consolidation: single source of truth, rename guidance->localeSkill, public API endpoint, frontend hook | 2026-04-06 | c966903 | [260406-g0q-locale-registry-consolidation-create-sin](./quick/260406-g0q-locale-registry-consolidation-create-sin/) |
 
 ## Session Continuity
 
-Last session: 2026-04-06T08:49:00.000Z
-Stopped at: Completed quick task 260406-gca: Pass previousComment to Gemini on quality re-check
+Last session: 2026-04-06T09:02:00.000Z
+Stopped at: Completed quick task 260406-g0q: Locale registry consolidation — single source of truth, rename guidance->localeSkill, public endpoint, frontend hook
 Resume file: None
