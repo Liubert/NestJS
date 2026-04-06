@@ -244,6 +244,73 @@ const AiUsageSection: React.FC<{ slug: string }> = ({ slug }) => {
   );
 };
 
+// ─── Daily Limit Editor ─────────────────────────────────────────────────────
+
+const DailyLimitEditor: React.FC<{ slug: string; limit: number | null }> = ({
+  slug,
+  limit,
+}) => {
+  const qc = useQueryClient();
+  const [editing, setEditing] = useState(false);
+
+  const current = limit ?? 2_000_000;
+  const label = `${Math.round(current / 1_000_000)}M tokens / day`;
+
+  const save = async (val: number | null) => {
+    try {
+      await apiClient.patch(`/translations/projects/${slug}/sandbox/settings`, {
+        aiTokenDailyLimit: val,
+      });
+      qc.invalidateQueries({ queryKey: ['project', slug] });
+      qc.invalidateQueries({ queryKey: ['ai-usage', slug] });
+      setEditing(false);
+    } catch {
+      message.error('Failed to update limit');
+    }
+  };
+
+  return (
+    <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
+      <Text type="secondary" style={{ fontSize: 12 }}>
+        Daily limit:
+      </Text>
+      {editing ? (
+        <InputNumber
+          autoFocus
+          min={1_000_000}
+          step={1_000_000}
+          defaultValue={current}
+          style={{ width: 120 }}
+          formatter={(v) => (v ? `${Math.round(Number(v) / 1_000_000)}M` : '')}
+          parser={(v) => Math.round(Number((v ?? '').replace(/M/g, '').trim()) * 1_000_000)}
+          onBlur={(e) => {
+            const raw = Number(e.target.value.replace(/M/g, '').trim()) * 1_000_000;
+            void save(raw >= 1_000_000 ? raw : current);
+          }}
+          onPressEnter={(e) => {
+            const raw =
+              Number((e.target as HTMLInputElement).value.replace(/M/g, '').trim()) *
+              1_000_000;
+            void save(raw >= 1_000_000 ? raw : current);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') setEditing(false);
+            e.stopPropagation();
+          }}
+        />
+      ) : (
+        <Text
+          type="secondary"
+          style={{ fontSize: 12, cursor: 'pointer', textDecoration: 'underline dotted' }}
+          onClick={() => setEditing(true)}
+        >
+          {label}
+        </Text>
+      )}
+    </div>
+  );
+};
+
 // ─── Main Page ──────────────────────────────────────────────────────────────
 
 const ProjectSettingsPage: React.FC = () => {
@@ -522,56 +589,7 @@ const ProjectSettingsPage: React.FC = () => {
           message="When enabled, the system continuously checks for missing translations and automatically generates them using AI. Auto-generated translations are created in sandbox only and must be manually reviewed and pushed to production."
           style={{ maxWidth: 600 }}
         />
-        <div style={{ marginTop: 16, maxWidth: 400 }}>
-          <Text type="secondary" style={{ display: 'block', marginBottom: 6 }}>
-            Daily token limit (resets at midnight UTC)
-          </Text>
-          <InputNumber
-            min={1_000_000}
-            step={1_000_000}
-            placeholder="2M"
-            value={project?.aiTokenDailyLimit ?? 2_000_000}
-            style={{ width: 180 }}
-            formatter={(v) => (v ? `${Math.round(Number(v) / 1_000_000)}M` : '')}
-            parser={(v) => Math.round(Number((v ?? '').replace(/M/g, '').trim()) * 1_000_000)}
-            onChange={async (val) => {
-              try {
-                await apiClient.patch(
-                  `/translations/projects/${slug}/sandbox/settings`,
-                  { aiTokenDailyLimit: val ?? null },
-                );
-                qc.invalidateQueries({ queryKey: ['project', slug] });
-                qc.invalidateQueries({ queryKey: ['ai-usage', slug] });
-                message.success('Daily limit updated');
-              } catch {
-                message.error('Failed to update limit');
-              }
-            }}
-            onKeyDown={(e) => e.stopPropagation()}
-          />
-          {project?.aiTokenDailyLimit && (
-            <Button
-              type="link"
-              size="small"
-              style={{ padding: '0 4px' }}
-              onClick={async () => {
-                try {
-                  await apiClient.patch(
-                    `/translations/projects/${slug}/sandbox/settings`,
-                    { aiTokenDailyLimit: null },
-                  );
-                  qc.invalidateQueries({ queryKey: ['project', slug] });
-                  qc.invalidateQueries({ queryKey: ['ai-usage', slug] });
-                  message.success('Daily limit removed');
-                } catch {
-                  message.error('Failed to remove limit');
-                }
-              }}
-            >
-              Remove limit
-            </Button>
-          )}
-        </div>
+        <DailyLimitEditor slug={slug!} limit={project?.aiTokenDailyLimit ?? null} />
       </div>
 
       {/* ── AI Token Usage ── */}

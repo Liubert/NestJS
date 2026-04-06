@@ -250,6 +250,7 @@ export class TranslationsService {
         slug: dto.slug,
         name: dto.name ?? dto.slug,
         ownerId: userId,
+        aiTokenDailyLimit: 2_000_000,
       }),
     );
 
@@ -1194,6 +1195,7 @@ export class TranslationsService {
           projectRepo.create({
             slug: projectSlug,
             name: projectName ?? projectSlug,
+            aiTokenDailyLimit: 2_000_000,
           }),
         );
       }
