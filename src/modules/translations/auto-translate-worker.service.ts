@@ -10,43 +10,7 @@ import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
 import { AiTranslateService } from './ai-translate.service.js';
-
-/** Map of locale code → human-readable language name for Gemini prompts */
-const LOCALE_NAMES: Record<string, string> = {
-  en: 'English',
-  nb: 'Norwegian Bokmål',
-  'nb-NO': 'Norwegian Bokmål',
-  sv: 'Swedish',
-  da: 'Danish',
-  'da-DK': 'Danish',
-  fi: 'Finnish',
-  is: 'Icelandic',
-  de: 'German',
-  fr: 'French',
-  es: 'Spanish',
-  it: 'Italian',
-  pt: 'Portuguese',
-  nl: 'Dutch',
-  el: 'Greek',
-  tr: 'Turkish',
-  uk: 'Ukrainian',
-  pl: 'Polish',
-  cs: 'Czech',
-  sk: 'Slovak',
-  ro: 'Romanian',
-  hu: 'Hungarian',
-  bg: 'Bulgarian',
-  hr: 'Croatian',
-  sl: 'Slovenian',
-  sr: 'Serbian',
-  et: 'Estonian',
-  lv: 'Latvian',
-  lt: 'Lithuanian',
-  ja: 'Japanese',
-  zh: 'Chinese',
-  ko: 'Korean',
-  ar: 'Arabic',
-};
+import { getLocaleName } from './locale-registry.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const MAX_KEYS_PER_CYCLE = 20;
@@ -202,13 +166,13 @@ export class AutoTranslateWorkerService
     // Build target locales map for Gemini
     const targetLocales: Record<string, string> = {};
     for (const locale of missingLocales) {
-      targetLocales[locale.code] = LOCALE_NAMES[locale.code] ?? locale.code;
+      targetLocales[locale.code] = getLocaleName(locale.code);
     }
 
     // Build locale guidance from locale entities
     const localeGuidance = missingLocales.reduce<Record<string, string>>(
       (acc, l) => {
-        if (l.guidance) acc[l.code] = l.guidance;
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
         return acc;
       },
       {},

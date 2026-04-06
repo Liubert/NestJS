@@ -125,7 +125,7 @@ export class TranslationsController {
         dto.projectSlug,
       );
       const guidance = locales.reduce<Record<string, string>>((acc, l) => {
-        if (l.guidance) acc[l.code] = l.guidance;
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
         return acc;
       }, {});
       if (Object.keys(guidance).length) localeGuidance = guidance;
@@ -159,7 +159,7 @@ export class TranslationsController {
         dto.projectSlug,
       );
       const guidance = locales.reduce<Record<string, string>>((acc, l) => {
-        if (l.guidance) acc[l.code] = l.guidance;
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
         return acc;
       }, {});
       if (Object.keys(guidance).length) localeGuidance = guidance;
@@ -206,7 +206,7 @@ export class TranslationsController {
       dto.projectSlug,
     );
     const localeGuidance = locales.reduce<Record<string, string>>((acc, l) => {
-      if (l.guidance) acc[l.code] = l.guidance;
+      if (l.localeSkill) acc[l.code] = l.localeSkill;
       return acc;
     }, {});
     const guidanceParam = Object.keys(localeGuidance).length
@@ -306,8 +306,10 @@ export class TranslationsController {
       const locales = await this.translationsService.getProjectLocales(
         dto.projectSlug,
       );
-      const matched = locales.find((l) => l.code === dto.locale && l.guidance);
-      if (matched) localeGuidanceStr = matched.guidance!;
+      const matched = locales.find(
+        (l) => l.code === dto.locale && l.localeSkill,
+      );
+      if (matched) localeGuidanceStr = matched.localeSkill!;
     }
     return this.aiTranslateService.checkQuality(
       dto.source,
@@ -340,7 +342,7 @@ export class TranslationsController {
         dto.projectSlug,
       );
       const guidance = locales.reduce<Record<string, string>>((acc, l) => {
-        if (l.guidance) acc[l.code] = l.guidance;
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
         return acc;
       }, {});
       if (Object.keys(guidance).length) localeGuidance = guidance;
@@ -503,7 +505,7 @@ export class TranslationsController {
       user.userId,
       user.role,
       dto.aliases,
-      dto.guidance,
+      dto.localeSkill,
     );
   }
 
@@ -523,7 +525,7 @@ export class TranslationsController {
       dto.aliases ?? [],
       user.userId,
       user.role,
-      dto.guidance,
+      dto.localeSkill,
     );
   }
 

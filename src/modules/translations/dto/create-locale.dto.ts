@@ -11,8 +11,9 @@ import {
 export class CreateLocaleDto {
   @ApiProperty({ example: 'uk' })
   @IsString()
-  @Matches(/^[a-z]{2,3}(-[A-Z]{2,4})?$/, {
-    message: 'code must be a valid locale code (e.g. en, nb-NO, uk)',
+  @Matches(/^[a-z]{2,3}$/, {
+    message:
+      'code must be a 2-3 char ISO 639 code (e.g. en, nb, uk). Use aliases for regional variants (nb-NO).',
   })
   code!: string;
 
@@ -39,5 +40,5 @@ export class CreateLocaleDto {
   @IsOptional()
   @IsString()
   @MaxLength(5000)
-  guidance?: string;
+  localeSkill?: string;
 }

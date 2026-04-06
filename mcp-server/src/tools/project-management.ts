@@ -200,21 +200,26 @@ export function registerProjectManagementTools(server: McpServer): void {
     'create_locale',
     [
       'Add a locale to a project.',
-      "Use full BCP 47 codes: 'nb-NO', 'da-DK', 'sv', 'en', 'uk'.",
-      "Do NOT use short codes like 'no' or 'da' — they are not stored on the server.",
+      "Use 2-char ISO 639-1 codes: 'nb', 'da', 'sv', 'en', 'uk'. Do NOT use BCP 47 variants like 'nb-NO' — they are aliases, not primary codes.",
       'After adding a locale, use get_namespace_coverage to see fill gaps, then bulk_set_locale to fill them.',
-      'Locale guidance (translation style rules) can be set via the guidance param — if omitted, known locales get auto-filled defaults.',
+      'Locale skill (translation style rules) can be set via the localeSkill param — if omitted, known locales get auto-filled defaults.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug'),
       code: z
         .string()
-        .describe("BCP 47 locale code (e.g. 'nb-NO', 'da-DK', 'sv', 'uk')"),
+        .regex(
+          /^[a-z]{2,3}$/,
+          '2-3 char ISO 639 code only (e.g. nb, da, uk)',
+        )
+        .describe(
+          "ISO 639-1 locale code (e.g. 'nb', 'da', 'sv', 'uk'). Use 2-char codes only — NOT BCP 47 like 'nb-NO'.",
+        ),
       isDefault: z
         .boolean()
         .default(false)
         .describe('Whether this is the default locale for the project'),
-      guidance: z
+      localeSkill: z
         .string()
         .max(5000)
         .optional()
@@ -222,7 +227,7 @@ export function registerProjectManagementTools(server: McpServer): void {
           'Language-specific translation guide for AI — style, tone, grammar rules, anti-patterns, common mistakes, wording preferences (up to ~500 words). If omitted, server auto-fills from built-in defaults for known locales.',
         ),
     },
-    async ({ projectSlug, code, isDefault, guidance }) => {
+    async ({ projectSlug, code, isDefault, localeSkill }) => {
       try {
         // Fetch existing namespaces to guide the next step.
         let namespaces: string[] = [];
@@ -236,12 +241,12 @@ export function registerProjectManagementTools(server: McpServer): void {
         }
 
         const body: Record<string, unknown> = { code, isDefault };
-        if (guidance) body.guidance = guidance;
+        if (localeSkill) body.localeSkill = localeSkill;
         const created = await apiPost<LocaleCreated>(
           `/translations/projects/${projectSlug}/locales`,
           body,
         );
-        logWrite('create_locale', { projectSlug, code, isDefault, guidance }, created);
+        logWrite('create_locale', { projectSlug, code, isDefault, localeSkill }, created);
 
         const nextSteps =
           namespaces.length > 0
@@ -259,14 +264,14 @@ export function registerProjectManagementTools(server: McpServer): void {
                 `No namespaces exist yet — create a namespace first, then add translations.`,
               ];
 
-        const guidanceNote = guidance
-          ? 'Guidance: custom (provided)'
-          : 'Guidance: auto-filled from defaults (if available)';
+        const localeSkillNote = localeSkill
+          ? 'Locale skill: custom (provided)'
+          : 'Locale skill: auto-filled from defaults (if available)';
 
         return textResult(
           [
             `Added locale: ${code}${isDefault ? ' (default)' : ''} to project ${projectSlug}`,
-            guidanceNote,
+            localeSkillNote,
             ...nextSteps,
           ].join('\n'),
         );
