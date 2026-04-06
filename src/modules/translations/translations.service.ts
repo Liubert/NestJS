@@ -38,7 +38,7 @@ import {
   WebhooksService,
   WebhookEventPayload,
 } from '../webhooks/webhooks.service.js';
-import { LOCALE_GUIDELINES } from './locale-guidelines.js';
+import { getLocaleSkill } from './locale-registry.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,7 +70,7 @@ export interface LocaleInfo {
   code: string;
   isDefault: boolean;
   aliases: string[];
-  guidance: string | null;
+  localeSkill: string | null;
 }
 
 export interface ProjectDetails {
@@ -317,7 +317,7 @@ export class TranslationsService {
         code: l.code,
         isDefault: l.isDefault,
         aliases: l.aliases ?? [],
-        guidance: l.guidance ?? null,
+        localeSkill: l.localeSkill ?? null,
       })),
       namespaces: namespaces.map((ns) => ns.slug),
       autoTranslateEnabled: project.autoTranslateEnabled,
@@ -464,7 +464,7 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
     aliases: string[] = [],
-    guidance?: string | null,
+    localeSkill?: string | null,
   ): Promise<LocaleEntity> {
     const project = await this.requireProject(projectSlug);
     await this.assertManageAccess(project, userId, userRole);
@@ -485,7 +485,7 @@ export class TranslationsService {
         code,
         isDefault,
         aliases,
-        guidance: guidance ?? LOCALE_GUIDELINES[code] ?? null,
+        localeSkill: localeSkill ?? getLocaleSkill(code) ?? null,
       }),
     );
   }
@@ -496,7 +496,7 @@ export class TranslationsService {
     aliases: string[],
     userId: string,
     userRole: UserRole,
-    guidance?: string | null,
+    localeSkill?: string | null,
   ): Promise<LocaleEntity> {
     const project = await this.requireProject(projectSlug);
     await this.assertManageAccess(project, userId, userRole);
@@ -507,7 +507,7 @@ export class TranslationsService {
     if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
 
     locale.aliases = aliases;
-    if (guidance !== undefined) locale.guidance = guidance;
+    if (localeSkill !== undefined) locale.localeSkill = localeSkill;
     return this.localeRepo.save(locale);
   }
 

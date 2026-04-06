@@ -30,7 +30,7 @@ import {
   unmarkSandboxExpected,
 } from './api';
 import { QUALITY_CONFIG } from './QualityBadge';
-import { getFlagForCode } from '../../../constants/supported-languages';
+import { useSupportedLocales } from '../../../hooks/useSupportedLocales';
 
 // ─── Entry Edit Modal ─────────────────────────────────────────────────────────
 
@@ -48,6 +48,9 @@ const EntryEditModal: React.FC<EditModalProps> = ({
   onQualityUpdate,
 }) => {
   const [form] = Form.useForm();
+  const { data: supportedLocales = [] } = useSupportedLocales();
+  const getFlagForCode = (code: string) =>
+    supportedLocales.find((l) => l.code === code)?.flag ?? '';
   const [aiLoadingLocale, setAiLoadingLocale] = useState<string | null>(null); // null | 'all' | locale
   const [qualityLoadingLocale, setQualityLoadingLocale] = useState<
     string | null

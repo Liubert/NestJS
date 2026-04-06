@@ -28,7 +28,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import apiClient from '../../api/client';
-import { getFlagForCode } from '../../constants/supported-languages';
+import { useSupportedLocales } from '../../hooks/useSupportedLocales';
 
 // ─── Extracted Components ─────────────────────────────────────────────────────
 import type {
@@ -196,6 +196,13 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [isNewEntry, setIsNewEntry] = useState(false);
 
+  const { data: supportedLocales = [] } = useSupportedLocales();
+  const getFlagForCode = useCallback(
+    (code: string) =>
+      supportedLocales.find((l) => l.code === code)?.flag ?? '',
+    [supportedLocales],
+  );
+
   const { data: projectDetails } = useQuery<ProjectDetails>({
     queryKey: ['project', projectSlug],
     queryFn: () => fetchProjectDetails(projectSlug),
@@ -341,12 +348,13 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           setEditModalOpen(true);
         },
         (key) => deleteMutation.mutate(key),
+        getFlagForCode,
         renderKeyExtra,
         deleteConfirmTitle,
         deleteConfirmDescription,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [locales, projectSlug, namespace, isSandbox, invalidate, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription],
+    [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription],
   );
 
   return (

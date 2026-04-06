@@ -162,7 +162,7 @@ export class QualityWorkerService
     // Build locale guidance map for AI quality checks
     const localeGuidance = projectLocales.reduce<Record<string, string>>(
       (acc, l) => {
-        if (l.guidance) acc[l.code] = l.guidance;
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
         return acc;
       },
       {},
@@ -189,19 +189,26 @@ export class QualityWorkerService
         'sv.key_id AS key_id',
         'sv.locale_id AS locale_id',
         'sv.value AS value',
+        'sv.quality_comment AS quality_comment',
       ])
       .getRawMany<{
         key_id: string;
         locale_id: string;
         value: string | null;
+        quality_comment: string | null;
       }>();
 
-    // Group values by key
+    // Group values by key; also collect previous quality comments per key
     const valuesByKey = new Map<string, Map<string, string>>();
+    const commentsByKey = new Map<string, string[]>();
     for (const v of values) {
       if (!v.value) continue;
       if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, new Map());
       valuesByKey.get(v.key_id)!.set(v.locale_id, v.value);
+      if (v.quality_comment) {
+        if (!commentsByKey.has(v.key_id)) commentsByKey.set(v.key_id, []);
+        commentsByKey.get(v.key_id)!.push(v.quality_comment);
+      }
     }
 
     // Build items for bulk quality check
@@ -210,12 +217,14 @@ export class QualityWorkerService
       source: string | null;
       context: string | null;
       translations: Record<string, string>;
+      previousComment?: string | null;
     }> = [];
     const defaultItems: Array<{
       key: string;
       source: string | null;
       context: string | null;
       translations: Record<string, string>;
+      previousComment?: string | null;
     }> = [];
 
     for (const keyId of keyIds) {
@@ -239,8 +248,17 @@ export class QualityWorkerService
         }
       }
 
+      const comments = commentsByKey.get(keyId) ?? [];
+      const previousComment = comments.length ? comments.join('; ') : null;
+
       if (Object.keys(translations).length) {
-        items.push({ key: keyEntity.key, source, context, translations });
+        items.push({
+          key: keyEntity.key,
+          source,
+          context,
+          translations,
+          previousComment,
+        });
       }
       if (defaultLocale && defaultValue) {
         defaultItems.push({
@@ -248,6 +266,7 @@ export class QualityWorkerService
           source: null,
           context,
           translations: { [defaultLocale.code]: defaultValue },
+          previousComment,
         });
       }
     }

@@ -3,6 +3,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { TranslationsService } from './translations.service.js';
 import { SandboxService } from './sandbox.service.js';
+import { LOCALE_REGISTRY } from './locale-registry.js';
 
 /**
  * Public (Locize-compatible) routes for serving translations to client apps.
@@ -18,6 +19,12 @@ export class PublicTranslationsController {
     private readonly translationsService: TranslationsService,
     private readonly sandboxService: SandboxService,
   ) {}
+
+  @Get('supported-locales')
+  @ApiOperation({ summary: 'List all supported locales with metadata' })
+  getSupportedLocales() {
+    return LOCALE_REGISTRY;
+  }
 
   @Get(':projectSlug/locales')
   @ApiOperation({ summary: 'Get all supported locales for a project' })

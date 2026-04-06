@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: "Completed quick task 260405-q5q: Remove init_sandbox dead tool replaced by auto-init"
-last_updated: "2026-04-05T16:00:27.538Z"
-last_activity: "2026-04-05 - Completed quick task 260405-q5q: remove init_sandbox dead tool replaced by reset_sandbox and auto-init"
+stopped_at: "Completed quick task 260406-gxq: Phase 2 manual testing for locale registry consolidation — all 15 tests passed, zero hotfixes"
+last_updated: "2026-04-06T09:30:00.000Z"
+last_activity: "2026-04-06 - Completed quick task 260406-gxq: locale registry consolidation testing — migration verified, API endpoints confirmed, AI translate regression-free"
 progress:
   total_phases: 1
   completed_phases: 0
@@ -125,9 +125,12 @@ None yet.
 | 260405-p2j | Implement bulk_translate_and_save MCP tool and backend endpoint | 2026-04-05 | cf5669f | [260405-p2j-implement-bulk-translate-and-save-mcp-to](./quick/260405-p2j-implement-bulk-translate-and-save-mcp-to/) |
 | 260405-q5q | Remove init_sandbox dead tool — replaced by auto-init | 2026-04-05 | 20f4e6a | [260405-q5q-remove-init-sandbox-dead-tool-replaced-b](./quick/260405-q5q-remove-init-sandbox-dead-tool-replaced-b/) |
 | 260405-uvr | Fix sandbox quality reset bug and MCP pre-flight / REST URL guidance | 2026-04-05 | decce64 | [260405-uvr-fix-sandbox-quality-reset-bug-and-mcp-pr](./quick/260405-uvr-fix-sandbox-quality-reset-bug-and-mcp-pr/) |
+| 260406-g0q | Locale registry consolidation: single source of truth, rename guidance→localeSkill, DB migration nb-NO/da-DK→aliases, public API endpoint, remove frontend hardcoded data | 2026-04-06 | c966903 | [260406-g0q-locale-registry-consolidation-create-sin](./quick/260406-g0q-locale-registry-consolidation-create-sin/) |
+| 260406-gca | Pass previousComment to Gemini on quality re-check | 2026-04-06 | af4b6fc | [260406-gca-add-previouscomment-to-quality-check-pas](./quick/260406-gca-add-previouscomment-to-quality-check-pas/) |
+| 260406-gxq | Phase 2 testing for locale registry consolidation — migration verified, all 15 API/DB/frontend tests passed, zero hotfixes | 2026-04-06 | c5fa1f8 | [260406-gxq-phase-2-manual-testing-and-hotfixes-for-](./quick/260406-gxq-phase-2-manual-testing-and-hotfixes-for-/) |
 
 ## Session Continuity
 
-Last session: 2026-04-05T19:27:00.000Z
-Stopped at: Completed quick task 260405-uvr: Fix sandbox quality reset bug and MCP pre-flight / REST URL guidance
+Last session: 2026-04-06T09:02:00.000Z
+Stopped at: Completed quick task 260406-g0q: Locale registry consolidation — single source of truth, rename guidance->localeSkill, public endpoint, frontend hook
 Resume file: None

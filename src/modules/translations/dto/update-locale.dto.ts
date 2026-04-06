@@ -20,5 +20,5 @@ export class UpdateLocaleDto {
   @IsOptional()
   @IsString()
   @MaxLength(5000)
-  guidance?: string;
+  localeSkill?: string;
 }
