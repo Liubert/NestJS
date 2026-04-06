@@ -271,7 +271,9 @@ export class AutoTranslateWorkerService
     // Write results to sandbox_values
     const values: Partial<SandboxValueEntity>[] = [];
     for (const locale of missingLocales) {
-      const translated = translations[locale.code];
+      // Gemini may normalise e.g. "nb-NO" → "nb"; fall back to primary subtag
+      const translated =
+        translations[locale.code] ?? translations[locale.code.split('-')[0]];
       if (!translated) continue;
       values.push({
         projectId,
