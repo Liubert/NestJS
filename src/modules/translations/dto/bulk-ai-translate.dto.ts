@@ -65,7 +65,7 @@ export class BulkAiTranslateDto {
   projectSlug?: string;
 
   @ApiPropertyOptional({
-    example: ['uk', 'nb-NO', 'sv'],
+    example: ['uk', 'nb', 'sv'],
     description:
       'Target locale codes. When omitted, translates to all non-default project locales.',
   })

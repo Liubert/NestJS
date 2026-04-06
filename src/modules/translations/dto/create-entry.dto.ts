@@ -18,7 +18,7 @@ export class CreateEntryDto {
   key!: string;
 
   @ApiPropertyOptional({
-    example: { en: 'Access control', 'nb-NO': 'Adgangskontroll' },
+    example: { en: 'Access control', nb: 'Adgangskontroll' },
     description: 'Initial values per locale code',
   })
   @IsOptional()

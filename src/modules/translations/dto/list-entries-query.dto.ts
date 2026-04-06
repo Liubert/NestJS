@@ -67,7 +67,7 @@ export class ListEntriesQueryDto extends PaginationDto {
 
   @ApiPropertyOptional({
     description: 'Filter to keys missing a value for the specified locale',
-    example: 'nb-NO',
+    example: 'nb',
   })
   @IsOptional()
   @IsString()

@@ -3,7 +3,7 @@ import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
 
 export class UpdateEntryDto {
   @ApiProperty({
-    example: { en: 'Access control', 'nb-NO': 'Adgangskontroll' },
+    example: { en: 'Access control', nb: 'Adgangskontroll' },
     description: 'Values to upsert per locale code',
   })
   @IsObject()

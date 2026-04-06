@@ -23,7 +23,7 @@ export class BulkImportEntryDto {
   key!: string;
 
   @ApiProperty({
-    example: { en: 'Access control', 'nb-NO': 'Adgangskontroll' },
+    example: { en: 'Access control', nb: 'Adgangskontroll' },
     description: 'Values per locale code',
   })
   @IsObject()

@@ -855,12 +855,12 @@ export class SandboxService {
     namespace: string,
     locale: string,
   ): Promise<Record<string, string>> {
-    // Resolve BCP 47 aliases (no → nb-NO, da → da-DK)
+    // Resolve legacy aliases to canonical codes (normalised by migration)
     const localeAliases: Record<string, string> = {
-      no: 'nb-NO',
-      nb: 'nb-NO',
-      da: 'da-DK',
-      nn: 'nb-NO',
+      no: 'nb',
+      nn: 'nb',
+      'nb-NO': 'nb',
+      'da-DK': 'da',
     };
     const resolvedLocale = localeAliases[locale.toLowerCase()] ?? locale;
 

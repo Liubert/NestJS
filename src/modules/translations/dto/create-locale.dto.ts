@@ -12,8 +12,7 @@ export class CreateLocaleDto {
   @ApiProperty({ example: 'uk' })
   @IsString()
   @Matches(/^[a-z]{2,3}$/, {
-    message:
-      'code must be a 2-3 char ISO 639 code (e.g. en, nb, uk). Use aliases for regional variants (nb-NO).',
+    message: 'code must be a 2-3 char ISO 639 code (e.g. en, nb, uk).',
   })
   code!: string;
 

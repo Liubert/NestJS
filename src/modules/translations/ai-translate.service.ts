@@ -169,7 +169,7 @@ export class AiTranslateService {
       let prompt =
         `Translate these English UI strings to ${languages}.\n` +
         `Return ONLY valid JSON with no markdown, no explanation:\n` +
-        `{ "key1": { "uk": "...", "nb-NO": "..." }, "key2": { ... } }\n\n` +
+        `{ "key1": { "uk": "...", "nb": "..." }, "key2": { ... } }\n\n` +
         `Strings to translate:\n` +
         `${JSON.stringify(entriesMap)}`;
 

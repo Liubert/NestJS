@@ -1091,10 +1091,10 @@ export class TranslationsService {
    * To add a new alias: append an entry here. No other changes needed.
    */
   private static readonly LOCALE_ALIASES: Record<string, string> = {
-    no: 'nb-NO', // Norwegian (legacy ISO 639-1 → BCP 47)
-    nb: 'nb-NO', // Norwegian Bokmål short form
-    da: 'da-DK', // Danish (legacy ISO 639-1 → BCP 47)
-    nn: 'nb-NO', // Norwegian Nynorsk — fall back to Bokmål
+    no: 'nb', // Norwegian (legacy ISO 639-1)
+    nn: 'nb', // Norwegian Nynorsk — fall back to Bokmål
+    'nb-NO': 'nb', // backward compat — was normalised to nb by migration
+    'da-DK': 'da', // backward compat — was normalised to da by migration
   };
 
   async getNamespace(

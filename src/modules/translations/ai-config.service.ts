@@ -27,7 +27,7 @@ Context (if provided): "{{context}}"
 
 English text: "{{text}}"
 
-Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "..."}`;
+Required output format: {"uk": "...", "nb": "...", "sv": "...", "da": "..."}`;
 
 export const DEFAULT_QUALITY_TRANSLATE_PROMPT = `\
 You are a strict software localization and language quality reviewer.

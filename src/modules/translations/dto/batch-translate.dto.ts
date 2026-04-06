@@ -19,7 +19,7 @@ export class BatchTranslateDto {
   keys!: string[];
 
   @ApiPropertyOptional({
-    example: ['da-DK', 'nb-NO'],
+    example: ['da', 'nb'],
     description:
       'Target locale codes. If omitted, translates to all non-default locales.',
   })
