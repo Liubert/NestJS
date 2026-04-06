@@ -27,6 +27,7 @@ import {
   TranslationOutlined,
   EditOutlined,
   InfoCircleOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
@@ -42,6 +43,11 @@ interface LocaleEntry {
   localeSkill?: string | null;
 }
 
+interface NamespaceInfo {
+  slug: string;
+  avgScore: number | null;
+}
+
 interface ProjectDetails {
   id: string;
   slug: string;
@@ -49,7 +55,7 @@ interface ProjectDetails {
   ownerId: string | null;
   createdAt: string;
   locales: LocaleEntry[];
-  namespaces: string[];
+  namespaces: NamespaceInfo[];
   autoTranslateEnabled: boolean;
   aiTokenDailyLimit: number | null;
 }
@@ -447,6 +453,22 @@ const ProjectSettingsPage: React.FC = () => {
       message.error(e.response?.data?.message ?? 'Error removing namespace'),
   });
 
+  const resetNsTranslationsMutation = useMutation({
+    mutationFn: (ns: string) =>
+      apiClient.post(
+        `/translations/projects/${slug}/namespaces/${ns}/reset-translations`,
+      ),
+    onSuccess: (_data, ns) => {
+      message.success(
+        `Translations for "${ns}" deleted — auto-translate will re-translate`,
+      );
+    },
+    onError: (e: any) =>
+      message.error(
+        e.response?.data?.message ?? 'Error resetting translations',
+      ),
+  });
+
   const addMemberMutation = useMutation({
     mutationFn: (email: string) =>
       apiClient.post(`/translations/projects/${slug}/members`, { email }),
@@ -702,12 +724,28 @@ const ProjectSettingsPage: React.FC = () => {
           {p.namespaces.length === 0 && (
             <Text type="secondary">No namespaces yet</Text>
           )}
-          {p.namespaces.map((ns) => (
+          {p.namespaces.map(({ slug: ns, avgScore }) => (
             <Tag
               key={ns}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
               {ns}
+              {avgScore !== null && (
+                <Text
+                  style={{
+                    fontSize: 11,
+                    fontWeight: 500,
+                    color:
+                      avgScore >= 80
+                        ? '#52c41a'
+                        : avgScore >= 60
+                          ? '#faad14'
+                          : '#ff4d4f',
+                  }}
+                >
+                  {avgScore}/100
+                </Text>
+              )}
               <EditOutlined
                 style={{ cursor: 'pointer', fontSize: 10 }}
                 onClick={() => {
@@ -716,6 +754,19 @@ const ProjectSettingsPage: React.FC = () => {
                   setEditNsModalOpen(true);
                 }}
               />
+              <Popconfirm
+                title={`Delete all translations in "${ns}" and re-translate from scratch?`}
+                description="Auto-translate will pick them up shortly. This cannot be undone."
+                onConfirm={() => resetNsTranslationsMutation.mutate(ns)}
+                okText="Reset"
+                okButtonProps={{ danger: true }}
+              >
+                <Tooltip title="Reset translations">
+                  <SyncOutlined
+                    style={{ cursor: 'pointer', fontSize: 10, opacity: 0.5 }}
+                  />
+                </Tooltip>
+              </Popconfirm>
               <Popconfirm
                 title={`Remove namespace "${ns}" and all its translation keys?`}
                 onConfirm={() => removeNsMutation.mutate(ns)}

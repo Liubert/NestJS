@@ -73,6 +73,11 @@ export interface LocaleInfo {
   localeSkill: string | null;
 }
 
+export interface NamespaceInfo {
+  slug: string;
+  avgScore: number | null;
+}
+
 export interface ProjectDetails {
   id: string;
   slug: string;
@@ -80,7 +85,7 @@ export interface ProjectDetails {
   ownerId: string | null;
   createdAt: Date;
   locales: LocaleInfo[];
-  namespaces: string[];
+  namespaces: NamespaceInfo[];
   autoTranslateEnabled: boolean;
   aiTokenDailyLimit: number | null;
 }
@@ -301,12 +306,21 @@ export class TranslationsService {
     const project = await this.requireProject(slug);
     await this.assertAccess(project, userId, userRole);
 
-    const [locales, namespaces] = await Promise.all([
+    const [locales, nsRows] = await Promise.all([
       this.localeRepo.find({
         where: { projectId: project.id },
         order: { isDefault: 'DESC', code: 'ASC' },
       }),
-      this.namespaceRepo.findBy({ projectId: project.id }),
+      this.namespaceRepo
+        .createQueryBuilder('ns')
+        .select('ns.slug', 'slug')
+        .addSelect('ROUND(AVG(tv.quality_score))::int', 'avgScore')
+        .leftJoin('ns.keys', 'tk')
+        .leftJoin('tk.values', 'tv', 'tv.quality_score IS NOT NULL')
+        .where('ns.project_id = :projectId', { projectId: project.id })
+        .groupBy('ns.id')
+        .addGroupBy('ns.slug')
+        .getRawMany<{ slug: string; avgScore: string | null }>(),
     ]);
 
     return {
@@ -321,7 +335,10 @@ export class TranslationsService {
         aliases: l.aliases ?? [],
         localeSkill: l.localeSkill ?? null,
       })),
-      namespaces: namespaces.map((ns) => ns.slug),
+      namespaces: nsRows.map((r) => ({
+        slug: r.slug,
+        avgScore: r.avgScore !== null ? Number(r.avgScore) : null,
+      })),
       autoTranslateEnabled: project.autoTranslateEnabled,
       aiTokenDailyLimit: project.aiTokenDailyLimit ?? null,
     };
