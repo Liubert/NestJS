@@ -32,6 +32,7 @@ import {
 } from '../../common/dto/paginated-response.dto.js';
 import type { QualityInfo } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
+import { AutoTranslateWorkerService } from './auto-translate-worker.service.js';
 import { scoreToLevel } from './quality-constants.js';
 
 const MAX_SNAPSHOTS = 5;
@@ -86,6 +87,7 @@ export class SandboxService {
     private readonly dataSource: DataSource,
     @Inject(forwardRef(() => AiTranslateService))
     private readonly aiTranslateService: AiTranslateService,
+    private readonly autoTranslateWorkerService: AutoTranslateWorkerService,
   ) {}
 
   // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -838,6 +840,48 @@ export class SandboxService {
 
     const result = await this.initSandbox(projectSlug, userId, role, true);
     return { copiedRows: result.copiedRows };
+  }
+
+  async deleteNamespaceSandboxTranslations(
+    projectSlug: string,
+    nsSlug: string,
+    userId: string,
+    role: UserRole,
+  ): Promise<{ deleted: number }> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!this.isAdmin(role) && project.ownerId !== userId) {
+      throw new ForbiddenException(
+        'Only the project owner or admin can reset namespace translations',
+      );
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const defaultLocale = await this.localeRepo.findOne({
+      where: { projectId: project.id, isDefault: true },
+    });
+    if (!defaultLocale) throw new NotFoundException('No default locale found');
+
+    const result = await this.dataSource.query<{ id: string }[]>(
+      `DELETE FROM sandbox_values
+       WHERE project_id = $1
+         AND locale_id != $2
+         AND key_id IN (SELECT id FROM translation_keys WHERE namespace_id = $3)
+       RETURNING id`,
+      [project.id, defaultLocale.id, ns.id],
+    );
+
+    if (result.length > 0) {
+      await this.projectRepo.update(project.id, { sandboxHasChanges: true });
+      // Trigger immediate re-translation for this namespace — bypasses auto_translate_enabled flag
+      this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
+    }
+
+    return { deleted: result.length };
   }
 
   // ─── Sandbox HTTP namespace (flat JSON for consumer apps) ────────────────

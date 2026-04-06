@@ -53,6 +53,82 @@ export class AutoTranslateWorkerService
     if (this.timer) clearInterval(this.timer);
   }
 
+  /**
+   * Immediately translate all keys in the given namespace that are missing
+   * non-default-locale sandbox values — bypassing the auto_translate_enabled flag.
+   * Intended for use after a namespace reset. Fire-and-forget safe.
+   */
+  triggerForNamespace(projectId: string, namespaceId: string): void {
+    void this.translateNamespace(projectId, namespaceId);
+  }
+
+  private async translateNamespace(
+    projectId: string,
+    namespaceId: string,
+  ): Promise<void> {
+    try {
+      const locales = await this.localeRepo.findBy({ projectId });
+      const defaultLocale = locales.find((l) => l.isDefault);
+      const nonDefaultLocales = locales.filter((l) => !l.isDefault);
+      if (!defaultLocale || !nonDefaultLocales.length) return;
+
+      const rows = await this.dataSource.query<
+        { key_id: string; key_name: string; source_text: string }[]
+      >(
+        `SELECT tk.id AS key_id,
+                tk.key AS key_name,
+                COALESCE(sv_def.value, tv_def.value) AS source_text
+         FROM translation_keys tk
+         LEFT JOIN sandbox_values sv_def
+           ON sv_def.key_id = tk.id
+           AND sv_def.locale_id = $1
+           AND sv_def.project_id = $2
+           AND sv_def.is_deleted = false
+         LEFT JOIN translation_values tv_def
+           ON tv_def.key_id = tk.id AND tv_def.locale_id = $1
+         WHERE tk.namespace_id = $3
+           AND COALESCE(sv_def.value, tv_def.value) IS NOT NULL
+         LIMIT $4`,
+        [defaultLocale.id, projectId, namespaceId, MAX_KEYS_PER_CYCLE],
+      );
+
+      if (!rows.length) {
+        this.logger.debug(
+          `triggerForNamespace: no translatable keys in namespace ${namespaceId}`,
+        );
+        return;
+      }
+
+      let translated = 0;
+      for (const row of rows) {
+        try {
+          await this.translateKey(
+            projectId,
+            row.key_id,
+            row.key_name,
+            row.source_text,
+            nonDefaultLocales,
+          );
+          translated++;
+        } catch (e: unknown) {
+          this.logger.warn(
+            `triggerForNamespace failed for key "${row.key_name}": ${e instanceof Error ? e.message : String(e)}`,
+          );
+        }
+      }
+
+      if (translated > 0) {
+        this.logger.log(
+          `triggerForNamespace: translated ${translated} keys in namespace ${namespaceId}`,
+        );
+      }
+    } catch (e: unknown) {
+      this.logger.error(
+        `triggerForNamespace error: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
   private async processInitTranslateLocales(): Promise<void> {
     const initLocales = await this.localeRepo.findBy({ initTranslate: true });
     if (!initLocales.length) return;

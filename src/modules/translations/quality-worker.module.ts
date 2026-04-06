@@ -32,6 +32,6 @@ import { AiUsageService } from './ai-usage.service.js';
     AiConfigService,
     AiUsageService,
   ],
-  exports: [QualityWorkerService],
+  exports: [QualityWorkerService, AutoTranslateWorkerService],
 })
 export class QualityWorkerModule {}
