@@ -7,21 +7,28 @@ import {
   SortAscendingOutlined,
 } from '@ant-design/icons';
 import type { FilterBarProps, NamespaceInfo } from './types';
+import { QUALITY_COLOR } from './QualityBadge';
 
-const scoreColor = (score: number) =>
-  score >= 80 ? '#52c41a' : score >= 60 ? '#faad14' : '#ff4d4f';
+const scoreToLevel = (score: number) =>
+  score >= 80 ? 'green' : score >= 60 ? 'yellow' : 'red';
 
-const nsLabel = ({ slug, avgScore }: NamespaceInfo) =>
-  avgScore !== null ? (
-    <span>
-      {slug}{' '}
-      <span style={{ fontSize: 11, fontWeight: 500, color: scoreColor(avgScore) }}>
-        {avgScore}/100
-      </span>
-    </span>
-  ) : (
-    slug
-  );
+const nsLabel = ({ slug, avgScore }: NamespaceInfo) => (
+  <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+    {avgScore !== null && (
+      <span
+        style={{
+          width: 8,
+          height: 8,
+          borderRadius: '50%',
+          backgroundColor: QUALITY_COLOR[scoreToLevel(avgScore)],
+          flexShrink: 0,
+          display: 'inline-block',
+        }}
+      />
+    )}
+    {slug}
+  </span>
+);
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
 
