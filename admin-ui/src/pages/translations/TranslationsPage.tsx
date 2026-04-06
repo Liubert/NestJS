@@ -17,6 +17,7 @@ import {
   Spin,
   Tabs,
   Empty,
+  Statistic,
 } from 'antd';
 import {
   ArrowRightOutlined,
@@ -442,6 +443,23 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           </>
         }
       />
+
+      {(() => {
+        const nsInfo = projectDetails?.namespaces.find((n) => n.slug === namespace);
+        if (!nsInfo || nsInfo.avgScore === null) return null;
+        const score = nsInfo.avgScore;
+        const color = score >= 80 ? '#52c41a' : score >= 60 ? '#faad14' : '#ff4d4f';
+        return (
+          <div style={{ marginBottom: 12 }}>
+            <Statistic
+              title="Avg quality score"
+              value={score}
+              suffix="/ 100"
+              valueStyle={{ color, fontSize: 28, fontWeight: 700 }}
+            />
+          </div>
+        );
+      })()}
 
       <Table<Entry>
         rowKey="key"
