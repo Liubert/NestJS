@@ -47,6 +47,7 @@ import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
 import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { BulkQualityCheckAiDto } from './dto/bulk-quality-check-ai.dto.js';
+import { PreviewPromptDto } from './dto/preview-prompt.dto.js';
 import { BulkMarkExpectedDto } from './dto/bulk-mark-expected.dto.js';
 import { BulkContextUpdateDto } from './dto/bulk-context.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
@@ -363,6 +364,40 @@ export class TranslationsController {
       localeGuidance,
     );
     return bulkResult.results['input'] ?? {};
+  }
+
+  @Post('ai-preview-prompt')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary: 'Preview constructed prompt without calling Gemini',
+  })
+  async previewPrompt(
+    @Body() dto: PreviewPromptDto,
+  ): Promise<{ prompt: string }> {
+    let prompt: string;
+    if (dto.type === 'translate') {
+      const targetLocales =
+        dto.targetLocales && Object.keys(dto.targetLocales).length > 0
+          ? dto.targetLocales
+          : { uk: 'Ukrainian' };
+      prompt = await this.aiTranslateService.buildTranslatePrompt(
+        dto.text,
+        targetLocales,
+        dto.localeSkill,
+        dto.context,
+      );
+    } else {
+      prompt = await this.aiTranslateService.buildQualityPrompt(
+        dto.text,
+        dto.translation ?? '',
+        dto.locale ?? 'uk',
+        dto.mode ?? 'translation_quality',
+        dto.context,
+        dto.localeSkill?.[dto.locale ?? 'uk'],
+      );
+    }
+    return { prompt };
   }
 
   // ─── Projects (protected) ─────────────────────────────────────────────────

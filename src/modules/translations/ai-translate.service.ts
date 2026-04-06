@@ -54,23 +54,15 @@ export class AiTranslateService {
       return {};
     }
 
-    const languages = localeEntries
-      .map(([code, name]) => `${name} (${code})`)
-      .join(', ');
-
-    const translateVars: Record<string, string> = { text, languages };
-    if (context) translateVars.context = context;
-    let prompt = interpolate(aiCfg.translatePrompt, translateVars);
-
-    // Inject locale-specific guidance when available
-    if (localeGuidance) {
-      const guidanceLines = localeEntries
-        .filter(([code]) => localeGuidance[code])
-        .map(([code, name]) => `- ${name} (${code}): ${localeGuidance[code]}`);
-      if (guidanceLines.length) {
-        prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
-      }
-    }
+    const targetLocalesMap: Record<string, string> = Object.fromEntries(
+      localeEntries as Array<[string, string]>,
+    );
+    const prompt = await this.buildTranslatePrompt(
+      text,
+      targetLocalesMap,
+      localeGuidance,
+      context,
+    );
 
     let raw: string;
     try {
@@ -279,21 +271,11 @@ export class AiTranslateService {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
-    const languages = Object.entries(targetLocales)
-      .map(([code, name]) => `${name} (${code})`)
-      .join(', ');
-
-    let prompt = interpolate(aiCfg.translatePrompt, { text, languages });
-
-    // Inject locale-specific guidance when available
-    if (localeGuidance) {
-      const guidanceLines = Object.entries(targetLocales)
-        .filter(([code]) => localeGuidance[code])
-        .map(([code, name]) => `- ${name} (${code}): ${localeGuidance[code]}`);
-      if (guidanceLines.length) {
-        prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
-      }
-    }
+    const prompt = await this.buildTranslatePrompt(
+      text,
+      targetLocales,
+      localeGuidance,
+    );
 
     let raw: string;
     try {
@@ -597,6 +579,78 @@ ${JSON.stringify(
 )}`;
   }
 
+  /**
+   * Build the translate prompt string without making a Gemini call.
+   * Used both by translate/translateForLocales internally and by the preview endpoint.
+   */
+  async buildTranslatePrompt(
+    text: string,
+    targetLocales: Record<string, string>,
+    localeGuidance?: Record<string, string>,
+    context?: string,
+  ): Promise<string> {
+    const aiCfg = await this.aiConfig.getConfig();
+
+    const languages = Object.entries(targetLocales)
+      .map(([code, name]) => `${name} (${code})`)
+      .join(', ');
+
+    const vars: Record<string, string> = { text, languages };
+    if (context) vars.context = context;
+    let prompt = interpolate(aiCfg.translatePrompt, vars);
+
+    if (localeGuidance) {
+      const guidanceLines = Object.entries(targetLocales)
+        .filter(([code]) => localeGuidance[code])
+        .map(([code, name]) => `- ${name} (${code}): ${localeGuidance[code]}`);
+      if (guidanceLines.length) {
+        prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
+      }
+    }
+
+    return prompt;
+  }
+
+  /**
+   * Build the quality check prompt string without making a Gemini call.
+   * Used both by checkQuality internally and by the preview endpoint.
+   */
+  async buildQualityPrompt(
+    source: string,
+    translation: string,
+    locale: string,
+    mode: 'translation_quality' | 'language_quality' = 'translation_quality',
+    context?: string,
+    localeGuidance?: string,
+  ): Promise<string> {
+    const aiCfg = await this.aiConfig.getConfig();
+
+    const template =
+      mode === 'translation_quality'
+        ? aiCfg.qualityTranslatePrompt
+        : aiCfg.qualityLanguagePrompt;
+
+    const vars: Record<string, string> = { source, translation, locale };
+    if (context?.trim()) {
+      vars.meaning_rule =
+        `Context: "${context.trim()}"\n` +
+        `This context is DEFINITIVE — evaluate the translation against it ONLY.`;
+    } else {
+      vars.meaning_rule = `No context provided. Accept any translation that fits standard software UI usage.`;
+    }
+
+    const identicalHint =
+      mode === 'translation_quality' && source.trim() === translation.trim()
+        ? `\n\nIMPORTANT: The translation is IDENTICAL to the English source text. This is often a sign that the text was not translated at all. Some words (like "taxi", "hotel", "internet") are legitimately the same across languages — if so, score normally. But if this is a phrase or word that should differ in ${locale}, score it very low (1-3) and comment that it appears untranslated.`
+        : '';
+
+    const guidanceHint = localeGuidance
+      ? `\n\nLanguage-specific guidance for ${locale}: ${localeGuidance}`
+      : '';
+
+    return interpolate(template, vars) + identicalHint + guidanceHint;
+  }
+
   async checkQuality(
     source: string,
     translation: string,
@@ -623,31 +677,14 @@ ${JSON.stringify(
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
-    const template =
-      mode === 'translation_quality'
-        ? aiCfg.qualityTranslatePrompt
-        : aiCfg.qualityLanguagePrompt;
-
-    const vars: Record<string, string> = { source, translation, locale };
-    if (context?.trim()) {
-      vars.meaning_rule =
-        `Context: "${context.trim()}"\n` +
-        `This context is DEFINITIVE — evaluate the translation against it ONLY.`;
-    } else {
-      vars.meaning_rule = `No context provided. Accept any translation that fits standard software UI usage.`;
-    }
-
-    // When source and translation are identical, hint the AI to check for untranslated text
-    const identicalHint =
-      mode === 'translation_quality' && source.trim() === translation.trim()
-        ? `\n\nIMPORTANT: The translation is IDENTICAL to the English source text. This is often a sign that the text was not translated at all. Some words (like "taxi", "hotel", "internet") are legitimately the same across languages — if so, score normally. But if this is a phrase or word that should differ in ${locale}, score it very low (1-3) and comment that it appears untranslated.`
-        : '';
-
-    const guidanceHint = localeGuidance
-      ? `\n\nLanguage-specific guidance for ${locale}: ${localeGuidance}`
-      : '';
-
-    const prompt = interpolate(template, vars) + identicalHint + guidanceHint;
+    const prompt = await this.buildQualityPrompt(
+      source,
+      translation,
+      locale,
+      mode,
+      context,
+      localeGuidance,
+    );
 
     let raw: string;
     try {
