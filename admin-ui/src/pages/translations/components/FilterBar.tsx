@@ -27,6 +27,11 @@ const nsLabel = ({ slug, avgScore }: NamespaceInfo) => (
       />
     )}
     {slug}
+    {avgScore !== null && (
+      <span style={{ fontSize: 11, color: QUALITY_COLOR[scoreToLevel(avgScore)], fontWeight: 500 }}>
+        {avgScore}/100
+      </span>
+    )}
   </span>
 );
 
