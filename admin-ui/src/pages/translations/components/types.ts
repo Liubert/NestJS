@@ -140,7 +140,7 @@ export interface EditModalProps {
 
 export interface FilterBarProps {
   namespace: string;
-  namespaces: string[];
+  namespaces: NamespaceInfo[];
   onNamespaceChange: (ns: string) => void;
   searchInput: string;
   onSearchInputChange: (val: string) => void;

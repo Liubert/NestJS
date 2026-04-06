@@ -6,7 +6,22 @@ import {
   FilterOutlined,
   SortAscendingOutlined,
 } from '@ant-design/icons';
-import type { FilterBarProps } from './types';
+import type { FilterBarProps, NamespaceInfo } from './types';
+
+const scoreColor = (score: number) =>
+  score >= 80 ? '#52c41a' : score >= 60 ? '#faad14' : '#ff4d4f';
+
+const nsLabel = ({ slug, avgScore }: NamespaceInfo) =>
+  avgScore !== null ? (
+    <span>
+      {slug}{' '}
+      <span style={{ fontSize: 11, fontWeight: 500, color: scoreColor(avgScore) }}>
+        {avgScore}/100
+      </span>
+    </span>
+  ) : (
+    slug
+  );
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
 
@@ -47,9 +62,9 @@ const FilterBar: React.FC<FilterBarProps> = ({
           onChange={onNamespaceChange}
           style={{ width: 220 }}
           disabled={disabled}
-          options={namespaces.map((ns: string) => ({
-            value: ns,
-            label: ns,
+          options={namespaces.map((ns) => ({
+            value: ns.slug,
+            label: nsLabel(ns),
           }))}
         />
       </Col>

@@ -374,7 +374,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
     <>
       <FilterBar
         namespace={namespace}
-        namespaces={projectDetails?.namespaces.map((ns) => ns.slug) ?? []}
+        namespaces={projectDetails?.namespaces ?? []}
         onNamespaceChange={(val) => {
           setNamespace(val);
           setPage(1);
