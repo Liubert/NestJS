@@ -901,8 +901,11 @@ export class SandboxService {
     );
 
     if (result.length > 0) {
-      // Trigger immediate re-translation for this namespace — bypasses auto_translate_enabled flag
-      this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
+      // Delay re-translation slightly so the HTTP response reaches the client first,
+      // ensuring the empty state is visible before new translations appear
+      setTimeout(() => {
+        this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
+      }, 3000);
     }
 
     return { deleted: result.length };
