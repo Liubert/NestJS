@@ -841,4 +841,3 @@ export class TranslationsController {
   // @Delete('projects/:slug/namespaces/:ns/entries/:key')
   // async deleteEntry(...) { ... }
 }
-}
