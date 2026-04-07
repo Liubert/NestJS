@@ -131,9 +131,10 @@ None yet.
 | 260406-he7 | Add initTranslate flag to locale for one-time bulk AI translation of all existing keys | 2026-04-06 | 1e79982 | [260406-he7-add-inittranslate-flag-to-locale-for-one](./quick/260406-he7-add-inittranslate-flag-to-locale-for-one/) |
 | 260406-ihm | Add prompt preview endpoint and UI in AI Settings | 2026-04-06 | 42c8134 | [260406-ihm-add-prompt-preview-endpoint-and-ui-in-ai](./quick/260406-ihm-add-prompt-preview-endpoint-and-ui-in-ai/) |
 | 260406-wje | Add average quality score per namespace to project details and ProjectSettingsPage | 2026-04-06 | 145ae9a | [260406-wje-add-average-quality-score-per-namespace-](./quick/260406-wje-add-average-quality-score-per-namespace-/) |
+| 260407-hur | Quality column-header filters, FilterBar settings gear, AddLocaleModal, contextNeed priority merge, vite preview config | 2026-04-07 | 7511168 | [260407-hur-deploy-uncommitted-changes-to-stage](./quick/260407-hur-deploy-uncommitted-changes-to-stage/) |
 
 ## Session Continuity
 
-Last session: 2026-04-06T10:35:00.000Z
-Stopped at: Completed quick task 260406-wje: Add average quality score per namespace
+Last session: 2026-04-07T09:54:00.000Z
+Stopped at: Completed quick task 260407-hur: deploy uncommitted UI+API changes to stage
 Resume file: None
