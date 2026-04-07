@@ -890,14 +890,11 @@ export class SandboxService {
 
     if (deletedRows.length > 0) {
       await this.projectRepo.update(project.id, { sandboxHasChanges: true });
-
-      // Trigger re-translation after a short delay so the HTTP response reaches
-      // the client first — user sees empty state before new translations appear.
-      // Bypasses auto_translate_enabled intentionally: reset is an explicit user action.
-      setTimeout(() => {
-        this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
-      }, 3000);
     }
+
+    // Always trigger re-translation after reset — even if sandbox was empty
+    // (keys exist only in production). Bypasses auto_translate_enabled intentionally.
+    this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
 
     // Reset quality states for all remaining sandbox values in this namespace
     // so quality worker re-runs and re-evaluates contextNeed after re-translation
