@@ -77,7 +77,7 @@ const ROW_BG: Record<string, string> = {
   deleted: '#fff1f0',
 };
 
-const POLL_INTERVAL_MS = 30_000; // 30s background refresh
+const POLL_INTERVAL_MS = 10_000; // 10s background refresh
 
 // ─── Diff helpers ─────────────────────────────────────────────────────────────
 

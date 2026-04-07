@@ -2094,7 +2094,7 @@ export class SandboxService {
       }
 
       try {
-        const translations = await this.aiTranslateService.translate(
+        const { translations } = await this.aiTranslateService.translate(
           sourceRow.value,
           project.id,
           keyEntity.context ?? undefined,

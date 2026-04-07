@@ -51,11 +51,26 @@ Scoring (1–100):
 
 Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).
 
-Evaluate whether context about this key's usage would help:
-- "contextNeed": "required" — text is genuinely ambiguous (e.g. "Train", "Light", "Save")
-- "contextNeed": "useful" — short/generic, context would improve confidence
-- "contextNeed": "none" — meaning is clear
-Add "contextReason" if required or useful (1 sentence, max 30 words).
+Context need — evaluate the ENGLISH SOURCE TEXT only, not the translation quality:
+
+Step 1: List ALL distinct meanings this English word/phrase could have in a software product.
+Step 2: If there are 2+ distinct meanings that would require different translations → "required".
+         If there is 1 clear dominant meaning but knowing context would help → "useful".
+         If meaning is unambiguous in any software context → "none".
+
+Examples where contextNeed = "required":
+- "Train" → transportation vs exercise/ML training
+- "Light" → weight/theme mode vs illumination
+- "Save" → save file/data vs save/rescue
+- "Draft" → document draft vs air draft vs military draft
+- "by" → "Sort by", "Created by", "Approved by", "Powered by" — meaning depends entirely on UI context
+- "Log" → event log vs log in/out vs log (wood)
+
+Examples where contextNeed = "none":
+- "Email address", "Password", "Sign in" — universally clear in software
+
+Do NOT let a high translation score influence contextNeed. A translation can be correct AND the source can still be ambiguous.
+Add "contextReason" if required or useful (1 sentence, max 30 words explaining what other meanings are possible).
 
 Return ONLY valid JSON:
 {"score": <1-100>, "comment": "<string>", "contextNeed": "<required|useful|none>", "contextReason": "<string or null>"}`;
@@ -95,10 +110,25 @@ Comment rules:
 - score below 80: comment must explain the main issue
 - keep comment practical and concise, up to 60 words
 
-Additionally, evaluate whether context about where/how this key is used would improve this evaluation:
-- "contextNeed": "required" if the text is genuinely ambiguous — multiple meanings lead to different translations and a translator cannot confidently choose without context
-- "contextNeed": "useful" if the text is short/generic and business intent or usage location would improve confidence, even though a reasonable default exists
-- "contextNeed": "none" if the meaning is universally clear
+Context need — evaluate the TEXT itself, independently of quality score:
+
+Step 1: List ALL distinct meanings this word/phrase could have in a software product.
+Step 2: If there are 2+ distinct meanings that would require different translations → "required".
+         If there is 1 clear dominant meaning but knowing context would help → "useful".
+         If meaning is unambiguous → "none".
+
+Examples where contextNeed = "required":
+- "Train" → transportation vs exercise/ML training
+- "Light" → weight/theme mode vs illumination
+- "Save" → save file/data vs save/rescue
+- "Draft" → document draft vs air draft vs military draft
+- "by" → "Sort by", "Created by", "Approved by" — meaning depends entirely on UI context
+- "Log" → event log vs log in/out
+
+Examples where contextNeed = "none":
+- "Email address", "Password", "Sign in" — universally clear in software
+
+Do NOT let a high quality score influence contextNeed.
 If contextNeed is "required" or "useful", add "contextReason" — a short plain-language explanation (1 sentence, max 30 words).
 
 Return ONLY valid JSON, no markdown, no extra text:

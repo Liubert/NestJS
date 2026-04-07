@@ -112,9 +112,11 @@ export class TranslationsController {
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'AI-generate translations' })
-  async aiTranslate(
-    @Body() dto: AiTranslateDto,
-  ): Promise<Record<string, string>> {
+  async aiTranslate(@Body() dto: AiTranslateDto): Promise<{
+    translations: Record<string, string>;
+    contextNeed: string;
+    contextReason: string | null;
+  }> {
     let projectId: string | undefined;
     let localeGuidance: Record<string, string> | undefined;
     if (dto.projectSlug) {

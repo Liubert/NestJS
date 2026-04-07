@@ -89,6 +89,8 @@ export interface QualityResult {
   score: number;
   level: 'green' | 'yellow' | 'red' | 'expected';
   comment: string;
+  contextNeed?: 'required' | 'useful' | 'none';
+  contextReason?: string | null;
 }
 
 // Key-level diff (multiple locale diffs collapsed into one)

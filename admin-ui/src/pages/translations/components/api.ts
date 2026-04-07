@@ -92,7 +92,7 @@ export const aiTranslate = async (
   projectSlug?: string,
   context?: string,
   targetLocales?: string[],
-): Promise<Record<string, string>> => {
+): Promise<{ translations: Record<string, string>; contextNeed: 'required' | 'useful' | 'none'; contextReason: string | null }> => {
   const body: Record<string, unknown> = { text, projectSlug };
   if (context?.trim()) body.context = context.trim();
   if (targetLocales?.length) body.targetLocales = targetLocales;
@@ -106,6 +106,7 @@ export const checkQuality = async (
   locale: string,
   mode: 'translation_quality' | 'language_quality' = 'translation_quality',
   projectSlug?: string,
+  context?: string,
 ): Promise<QualityResult> => {
   const res = await apiClient.post('/translations/ai-quality-check', {
     source,
@@ -113,6 +114,7 @@ export const checkQuality = async (
     locale,
     mode,
     projectSlug,
+    ...(context?.trim() ? { context: context.trim() } : {}),
   });
   return res.data;
 };

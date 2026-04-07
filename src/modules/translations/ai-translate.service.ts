@@ -32,7 +32,11 @@ export class AiTranslateService {
     context?: string,
     targetLocales?: string[],
     localeGuidance?: Record<string, string>,
-  ): Promise<Record<string, string>> {
+  ): Promise<{
+    translations: Record<string, string>;
+    contextNeed: 'required' | 'useful' | 'none';
+    contextReason: string | null;
+  }> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -51,7 +55,7 @@ export class AiTranslateService {
       : DEFAULT_TARGET_LOCALE_CODES.map((code) => [code, getLocaleName(code)]);
 
     if (localeEntries.length === 0) {
-      return {};
+      return { translations: {}, contextNeed: 'none', contextReason: null };
     }
 
     const targetLocalesMap: Record<string, string> = Object.fromEntries(
@@ -64,6 +68,7 @@ export class AiTranslateService {
       targetLocalesMap,
       localeGuidance,
       context,
+      true,
     );
 
     let raw: string;
@@ -80,20 +85,34 @@ export class AiTranslateService {
       .replace(/\s*```$/, '')
       .trim();
 
-    let parsed: Record<string, string>;
+    let parsed: {
+      contextNeed?: string;
+      contextReason?: string;
+      translations: Record<string, string>;
+    };
     try {
-      parsed = JSON.parse(cleaned) as Record<string, string>;
+      parsed = JSON.parse(cleaned) as typeof parsed;
     } catch {
       throw new BadGatewayException(
         `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,
       );
     }
 
-    // Filter response to only include requested locales
+    // Filter translations to only include requested locales
     const requestedCodes = new Set(localeEntries.map(([code]) => code));
     const filtered = Object.fromEntries(
-      Object.entries(parsed).filter(([code]) => requestedCodes.has(code)),
+      Object.entries(parsed.translations ?? {}).filter(([code]) =>
+        requestedCodes.has(code),
+      ),
     );
+
+    const need = parsed.contextNeed;
+    const contextNeed: 'required' | 'useful' | 'none' =
+      need === 'required' || need === 'useful' ? need : 'none';
+    const contextReason =
+      contextNeed !== 'none' && typeof parsed.contextReason === 'string'
+        ? parsed.contextReason
+        : null;
 
     if (projectId) {
       const inputTokens = Math.ceil(prompt.length / 4);
@@ -113,7 +132,7 @@ export class AiTranslateService {
         .catch(() => {}); // Non-blocking: don't fail the translation if logging fails
     }
 
-    return filtered;
+    return { translations: filtered, contextNeed, contextReason };
   }
 
   /**
@@ -601,6 +620,7 @@ ${JSON.stringify(
     targetLocales: Record<string, string>,
     localeGuidance?: Record<string, string>,
     context?: string,
+    includeContextDetection?: boolean,
   ): Promise<string> {
     const aiCfg = await this.aiConfig.getConfig();
 
@@ -619,6 +639,17 @@ ${JSON.stringify(
       if (guidanceLines.length) {
         prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
       }
+    }
+
+    if (includeContextDetection) {
+      prompt += `\n\nAlso evaluate whether context about this key's usage would help future quality checks:
+- "contextNeed": "required" — text is genuinely ambiguous (e.g. "Train", "Light", "Save", "By", "Draft")
+- "contextNeed": "useful" — short/generic, context would improve confidence
+- "contextNeed": "none" — meaning is universally clear
+Add "contextReason" (1 sentence, max 30 words) if required or useful.
+
+Return ONLY valid JSON in this format:
+{"contextNeed": "<required|useful|none>", "contextReason": "<string or null>", "translations": {"uk": "...", "nb": "...", ...}}`;
     }
 
     return prompt;

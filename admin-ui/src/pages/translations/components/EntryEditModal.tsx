@@ -61,11 +61,15 @@ const EntryEditModal: React.FC<EditModalProps> = ({
   const [expectedLoading, setExpectedLoading] = useState<string | null>(null);
   const [keyValue, setKeyValue] = useState('');
   const [showContext, setShowContext] = useState(false);
+  const wasOpen = React.useRef(false);
 
   const hasKey = isNew ? keyValue.trim().length > 0 : true;
 
   React.useEffect(() => {
-    if (open) {
+    const justOpened = open && !wasOpen.current;
+    wasOpen.current = open;
+
+    if (justOpened) {
       setQualityResults({});
       setAiLoadingLocale(null);
       setQualityLoadingLocale(null);
@@ -99,6 +103,21 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     });
   };
 
+  const applyContextNeedHint = (contextNeed: 'required' | 'useful' | 'none', contextReason: string | null) => {
+    if (contextNeed === 'none') return;
+    setQualityResults((prev) => {
+      const next = { ...prev };
+      for (const locale of locales.filter((l) => l !== 'en')) {
+        if (!next[locale]) {
+          next[locale] = { score: 0, level: 'green', comment: '', contextNeed, contextReason: contextReason ?? null };
+        } else {
+          next[locale] = { ...next[locale], contextNeed, contextReason: contextReason ?? null };
+        }
+      }
+      return next;
+    });
+  };
+
   // ── AI Translate (all locales) ──
   const handleAiGenerateAll = async () => {
     const enText: string = form.getFieldValue('en') ?? '';
@@ -118,10 +137,11 @@ const EntryEditModal: React.FC<EditModalProps> = ({
       );
       const patch: Record<string, string> = {};
       for (const locale of targetLocales) {
-        if (result[locale] !== undefined) patch[locale] = result[locale];
+        if (result.translations[locale] !== undefined) patch[locale] = result.translations[locale];
       }
       form.setFieldsValue(patch);
       setQualityResults({});
+      applyContextNeedHint(result.contextNeed, result.contextReason);
       message.success('Translations generated');
     } catch {
       message.error('AI translation failed. Check that GEMINI_API_KEY is set.');
@@ -143,13 +163,14 @@ const EntryEditModal: React.FC<EditModalProps> = ({
       const result = await aiTranslate(enText, projectSlug, contextVal, [
         locale,
       ]);
-      if (result[locale] !== undefined) {
-        form.setFieldsValue({ [locale]: result[locale] });
+      if (result.translations[locale] !== undefined) {
+        form.setFieldsValue({ [locale]: result.translations[locale] });
         setQualityResults((prev) => {
           const next = { ...prev };
           delete next[locale];
           return next;
         });
+        applyContextNeedHint(result.contextNeed, result.contextReason);
         message.success(`${locale} translated`);
       }
     } catch {
@@ -172,6 +193,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
       message.warning('No values to check');
       return;
     }
+    const contextVal: string = vals['context'] ?? '';
     setQualityLoadingLocale('all');
     setQualityResults({});
     try {
@@ -184,6 +206,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
             locale,
             isDefault ? 'language_quality' : 'translation_quality',
             projectSlug,
+            contextVal,
           ).then((r) => [locale, r] as const);
         }),
       );
@@ -208,6 +231,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
       message.warning(`No value for ${locale}`);
       return;
     }
+    const contextVal: string = vals['context'] ?? '';
     setQualityLoadingLocale(locale);
     try {
       const isDefault = locale === 'en';
@@ -217,6 +241,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
         locale,
         isDefault ? 'language_quality' : 'translation_quality',
         projectSlug,
+        contextVal,
       );
       setQualityResults((prev) => ({ ...prev, [locale]: result }));
     } catch {
@@ -509,6 +534,11 @@ const EntryEditModal: React.FC<EditModalProps> = ({
                   <>
                     <Tag>{locale}</Tag>
                     {r.comment || 'Looks good'}
+                    {r.contextNeed && r.contextNeed !== 'none' && r.contextReason && (
+                      <span style={{ marginLeft: 8, color: '#8c8c8c' }}>
+                        · Context {r.contextNeed === 'required' ? 'required' : 'suggested'}: {r.contextReason}
+                      </span>
+                    )}
                   </>
                 }
                 style={{ marginBottom: 6 }}
