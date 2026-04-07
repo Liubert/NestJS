@@ -315,13 +315,17 @@ export class TranslationsService {
         .createQueryBuilder('ns')
         .select('ns.slug', 'slug')
         .addSelect(
-          `(SELECT ROUND(AVG(sv.quality_score))::int
-            FROM translation_keys tk
-            JOIN sandbox_values sv ON sv.key_id = tk.id
-              AND sv.project_id = ns.project_id
-              AND sv.is_deleted = false
-            WHERE tk.namespace_id = ns.id
-              AND sv.quality_score IS NOT NULL)`,
+          `(SELECT ROUND(AVG(min_score))::int
+            FROM (
+              SELECT MIN(sv.quality_score) AS min_score
+              FROM translation_keys tk
+              JOIN sandbox_values sv ON sv.key_id = tk.id
+                AND sv.project_id = ns.project_id
+                AND sv.is_deleted = false
+              WHERE tk.namespace_id = ns.id
+                AND sv.quality_score IS NOT NULL
+              GROUP BY tk.id
+            ) per_key)`,
           'avgScore',
         )
         .where('ns.project_id = :projectId', { projectId: project.id })
