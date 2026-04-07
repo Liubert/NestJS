@@ -901,11 +901,7 @@ export class SandboxService {
     );
 
     if (result.length > 0) {
-      // Delay re-translation slightly so the HTTP response reaches the client first,
-      // ensuring the empty state is visible before new translations appear
-      setTimeout(() => {
-        this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
-      }, 3000);
+      this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
     }
 
     return { deleted: result.length };
@@ -1148,14 +1144,10 @@ export class SandboxService {
       const mli = params.length;
       missingLocaleCondition = `
         AND NOT EXISTS (
-          SELECT 1 FROM (
-            SELECT COALESCE(sv_ml.value, tv_ml.value) AS effective_value
-            FROM translation_locales tl_ml
-            LEFT JOIN translation_values tv_ml ON tv_ml.key_id = tk.id AND tv_ml.locale_id = tl_ml.id
-            LEFT JOIN sandbox_values sv_ml ON sv_ml.key_id = tk.id AND sv_ml.locale_id = tl_ml.id AND sv_ml.project_id = $1 AND sv_ml.is_deleted = false
-            WHERE tl_ml.project_id = $1 AND tl_ml.code = $${mli}
-          ) sub
-          WHERE sub.effective_value IS NOT NULL AND sub.effective_value != ''
+          SELECT 1 FROM sandbox_values sv_ml
+          JOIN translation_locales tl_ml ON tl_ml.id = sv_ml.locale_id
+          WHERE sv_ml.key_id = tk.id AND sv_ml.project_id = $1 AND sv_ml.is_deleted = false
+            AND tl_ml.code = $${mli} AND sv_ml.value IS NOT NULL AND sv_ml.value != ''
         )
       `;
     }
@@ -1243,28 +1235,10 @@ export class SandboxService {
     const values = await this.dataSource.query<
       { key_id: string; locale: string; value: string | null }[]
     >(
-      `
-      -- Production values, overridden by sandbox where available
-      SELECT tv.key_id, l.code AS locale, COALESCE(sv.value, tv.value) AS value
-      FROM translation_values tv
-      JOIN translation_locales l ON l.id = tv.locale_id
-      LEFT JOIN sandbox_values sv
-        ON sv.key_id = tv.key_id AND sv.locale_id = tv.locale_id
-        AND sv.project_id = $1 AND sv.is_deleted = false
-      WHERE tv.key_id = ANY($2)
-
-      UNION ALL
-
-      -- Sandbox-only values (added in sandbox, not present in production)
-      SELECT sv.key_id, l.code AS locale, sv.value
-      FROM sandbox_values sv
-      JOIN translation_locales l ON l.id = sv.locale_id
-      WHERE sv.key_id = ANY($2) AND sv.project_id = $1 AND sv.is_deleted = false
-        AND NOT EXISTS (
-          SELECT 1 FROM translation_values tv2
-          WHERE tv2.key_id = sv.key_id AND tv2.locale_id = sv.locale_id
-        )
-    `,
+      `SELECT sv.key_id, l.code AS locale, sv.value
+       FROM sandbox_values sv
+       JOIN translation_locales l ON l.id = sv.locale_id
+       WHERE sv.key_id = ANY($2) AND sv.project_id = $1 AND sv.is_deleted = false`,
       [project.id, keyIds],
     );
 
