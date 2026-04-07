@@ -416,6 +416,7 @@ export class AiTranslateService {
       const prompt = this.buildBulkQualityPrompt(
         chunk,
         localeGuidance,
+        aiCfg.qualityTranslatePrompt,
         aiCfg.contextDetectionPrompt ?? undefined,
       );
 
@@ -533,6 +534,21 @@ export class AiTranslateService {
     return { results, contextInfo, skippedKeys };
   }
 
+  /**
+   * Extracts the evaluation criteria section from the per-item qualityTranslatePrompt template.
+   * Returns everything between {{meaning_rule}} and the final return format, with per-item
+   * locale references replaced by a generic description.
+   */
+  private extractQualityCriteria(qualityTranslatePrompt: string): string {
+    const afterMeaningRule =
+      qualityTranslatePrompt.split('{{meaning_rule}}')[1] ??
+      qualityTranslatePrompt;
+    const beforeReturn = afterMeaningRule.split('\nReturn ONLY valid JSON:')[0];
+    // Replace per-item {{locale}} references (e.g. "Grammar ... ({{locale}} conventions)")
+    // with a generic reference since bulk covers multiple locales at once
+    return beforeReturn.trim().replace(/\{\{locale\}\}/g, 'the target locale');
+  }
+
   private buildBulkQualityPrompt(
     items: Array<{
       key: string;
@@ -542,6 +558,7 @@ export class AiTranslateService {
       previousComment?: string | null;
     }>,
     localeGuidance?: Record<string, string>,
+    qualityTranslatePrompt?: string,
     contextDetectionPrompt?: string,
   ): string {
     // Collect all locale codes from items and build guidance section
@@ -564,23 +581,35 @@ export class AiTranslateService {
       }
     }
 
-    return `You are a professional translation quality reviewer. Evaluate each translation below.
+    // Use the same criteria as the per-item quality prompt so both paths are consistent.
+    // If the template is available, extract the Checks/Scoring/Context-need sections from it.
+    const sharedCriteria = qualityTranslatePrompt
+      ? this.extractQualityCriteria(qualityTranslatePrompt)
+      : `Checks:
+- Grammar, spelling, punctuation (target locale conventions)
+- Natural, idiomatic phrasing for software/product UI
+- Nuance and meaning preserved
+- Placeholders ({{name}}, %s, {count}, {0}) preserved exactly
+
+Scoring (1–100):
+- 95–100: excellent, production-ready
+- 80–94: strong, minor improvements only
+- 60–79: understandable but imperfect
+- below 60: significant errors
+
+Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).`;
+
+    return `You are a strict software localization and language quality reviewer. Evaluate each translation below.
 
 Context rule:
 - If a key has a "context" field: it is DEFINITIVE — evaluate against that meaning ONLY.
 - If a key has no "context" field: accept any translation that fits standard software UI usage.
 ${guidanceSection}
-Scoring (1–100):
-- 95–100: excellent, production-ready
-- 80–94: strong, minor improvements only
-- 60–79: understandable but imperfect
-- 1–59: significant errors
-
 If "source" is present, compare translation accuracy to it. If "source" is null, evaluate language quality only.
 
-Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).
-
 If "previousReviewerNote" is present, treat it as prior feedback on an earlier version. Do not penalize for issues already resolved.
+
+${sharedCriteria}
 
 ${contextDetectionPrompt ?? 'For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.'}
 
