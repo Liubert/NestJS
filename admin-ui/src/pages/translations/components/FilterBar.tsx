@@ -85,16 +85,18 @@ const FilterBar: React.FC<FilterBarProps> = ({
           style={{ maxWidth: 360 }}
         />
       </Col>
-      <Col>
-        <Button
-          type="primary"
-          icon={<PlusOutlined />}
-          disabled={!namespace}
-          onClick={onAddKey}
-        >
-          Add key
-        </Button>
-      </Col>
+      {onAddKey && (
+        <Col>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            disabled={!namespace}
+            onClick={onAddKey}
+          >
+            Add key
+          </Button>
+        </Col>
+      )}
       {extraControls}
       {settingsItems && settingsItems.length > 0 && (
         <Col>

@@ -151,7 +151,7 @@ export interface FilterBarProps {
   searchInput: string;
   onSearchInputChange: (val: string) => void;
   onSearch: () => void;
-  onAddKey: () => void;
+  onAddKey?: () => void;
   disabled: boolean;
   extraControls?: React.ReactNode;
   settingsItems?: SettingsMenuItem[];
@@ -173,19 +173,19 @@ export interface EntriesTableProps {
     qualityLevel?: string,
     reviewState?: string,
   ) => Promise<PaginatedEntries>;
-  createFn: (
+  createFn?: (
     slug: string,
     ns: string,
     payload: { key: string; values: Record<string, string>; context?: string },
   ) => Promise<unknown>;
-  updateFn: (
+  updateFn?: (
     slug: string,
     ns: string,
     key: string,
     values: Record<string, string>,
     context?: string,
   ) => Promise<unknown>;
-  deleteFn: (slug: string, ns: string, key: string) => Promise<void>;
+  deleteFn?: (slug: string, ns: string, key: string) => Promise<void>;
   enabled?: boolean;
   onMutationSuccess?: () => void;
   onNamespaceChange?: (ns: string) => void;

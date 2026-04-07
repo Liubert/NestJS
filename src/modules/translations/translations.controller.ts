@@ -689,24 +689,10 @@ export class TranslationsController {
     );
   }
 
-  @Post('projects/:slug/namespaces/:ns/entries')
-  @UseGuards(JwtAuthGuard, BlockMcpGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new translation key' })
-  async createEntry(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: CreateEntryDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.translationsService.createEntry(
-      slug,
-      ns,
-      dto,
-      user.userId,
-      user.role,
-    );
-  }
+  // DISABLED: production entries are read-only — use sandbox flow instead
+  // @Post('projects/:slug/namespaces/:ns/entries')
+  // @UseGuards(JwtAuthGuard, BlockMcpGuard)
+  // async createEntry(...) { ... }
 
   @Post('projects/:slug/namespaces/:ns/entries/bulk-quality-check')
   @UseGuards(JwtAuthGuard)
@@ -766,26 +752,10 @@ export class TranslationsController {
     );
   }
 
-  @Patch('projects/:slug/namespaces/:ns/entries/:key')
-  @UseGuards(JwtAuthGuard, BlockMcpGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update translation values for a key' })
-  async updateEntry(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('key') key: string,
-    @Body() dto: UpdateEntryDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.translationsService.updateEntry(
-      slug,
-      ns,
-      key,
-      dto,
-      user.userId,
-      user.role,
-    );
-  }
+  // DISABLED: production entries are read-only — use sandbox flow instead
+  // @Patch('projects/:slug/namespaces/:ns/entries/:key')
+  // @UseGuards(JwtAuthGuard, BlockMcpGuard)
+  // async updateEntry(...) { ... }
 
   @Get('projects/:slug/namespaces/:ns/attention')
   @UseGuards(JwtAuthGuard)
@@ -812,27 +782,9 @@ export class TranslationsController {
     );
   }
 
-  @Post('projects/:slug/namespaces/:ns/entries/:key/check-quality')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary:
-      'Run AI quality check for all locales of a key and persist results',
-  })
-  async checkEntryQuality(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('key') key: string,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.translationsService.runQualityCheck(
-      slug,
-      ns,
-      key,
-      user.userId,
-      user.role,
-    );
-  }
+  // DISABLED: production quality checks go through sandbox flow
+  // @Post('projects/:slug/namespaces/:ns/entries/:key/check-quality')
+  // async checkEntryQuality(...) { ... }
 
   @Post(
     'projects/:slug/namespaces/:ns/entries/:key/locales/:locale/mark-expected',
@@ -885,23 +837,8 @@ export class TranslationsController {
     );
   }
 
-  @Delete('projects/:slug/namespaces/:ns/entries/:key')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard, BlockMcpGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete a translation key and all its values' })
-  async deleteEntry(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('key') key: string,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<void> {
-    return this.translationsService.deleteEntry(
-      slug,
-      ns,
-      key,
-      user.userId,
-      user.role,
-    );
-  }
+  // DISABLED: production entries are read-only — use sandbox flow instead
+  // @Delete('projects/:slug/namespaces/:ns/entries/:key')
+  // async deleteEntry(...) { ... }
+}
 }

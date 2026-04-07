@@ -58,13 +58,14 @@ export function buildColumns(
   namespace: string,
   isSandbox: boolean | undefined,
   onQualityUpdate: () => void,
-  onEdit: (entry: Entry) => void,
-  onDelete: (key: string) => void,
+  onEdit: ((entry: Entry) => void) | undefined,
+  onDelete: ((key: string) => void) | undefined,
   getFlagForCode: (code: string) => string,
   renderKeyExtra?: (key: string, namespace: string) => React.ReactNode,
   deleteConfirmTitle?: string,
   deleteConfirmDescription?: string,
 ): ColumnsType<Entry> {
+  const readOnly = !onEdit && !onDelete;
   return [
     {
       title: 'Key',
@@ -193,11 +194,11 @@ export function buildColumns(
         );
       },
     },
-    {
+    ...(readOnly ? [] : [{
       title: '',
       key: 'actions',
       width: 80,
-      fixed: 'right',
+      fixed: 'right' as const,
       render: (_: unknown, record: Entry) => (
         <Space size={4}>
           <Tooltip title="Edit translation">
@@ -205,13 +206,13 @@ export function buildColumns(
               type="text"
               size="small"
               icon={<EditOutlined />}
-              onClick={() => onEdit(record)}
+              onClick={() => onEdit!(record)}
             />
           </Tooltip>
           <Popconfirm
             title={deleteConfirmTitle ?? 'Delete this key?'}
             description={deleteConfirmDescription}
-            onConfirm={() => onDelete(record.key)}
+            onConfirm={() => onDelete!(record.key)}
             okText="Delete Entry"
             okButtonProps={{ danger: true }}
             cancelText="Keep"
@@ -222,6 +223,6 @@ export function buildColumns(
           </Popconfirm>
         </Space>
       ),
-    },
+    }]),
   ];
 }

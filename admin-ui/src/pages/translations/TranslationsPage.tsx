@@ -49,9 +49,6 @@ import {
   fetchProjects,
   fetchProjectDetails,
   fetchEntries,
-  createEntry,
-  updateEntry,
-  deleteEntry,
   fetchSandboxStatus,
   fetchSandboxDiff,
   fetchSnapshots,
@@ -262,7 +259,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       key: string;
       values: Record<string, string>;
       context?: string;
-    }) => createFn(projectSlug, namespace, { key, values, context }),
+    }) => createFn!(projectSlug, namespace, { key, values, context }),
     onSuccess: () => {
       message.success('Key created');
       invalidate();
@@ -281,7 +278,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       key: string;
       values: Record<string, string>;
       context?: string;
-    }) => updateFn(projectSlug, namespace, key, values, context),
+    }) => updateFn!(projectSlug, namespace, key, values, context),
     onSuccess: () => {
       message.success('Saved');
       invalidate();
@@ -292,7 +289,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   });
 
   const deleteMutation = useMutation({
-    mutationFn: (key: string) => deleteFn(projectSlug, namespace, key),
+    mutationFn: (key: string) => deleteFn!(projectSlug, namespace, key),
     onSuccess: () => {
       message.success('Deleted');
       invalidate();
@@ -374,12 +371,12 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         namespace,
         isSandbox,
         invalidate,
-        (entry) => {
+        updateFn ? (entry) => {
           setEditEntry(entry);
           setIsNewEntry(false);
           setEditModalOpen(true);
-        },
-        (key) => deleteMutation.mutate(key),
+        } : undefined,
+        deleteFn ? (key) => deleteMutation.mutate(key) : undefined,
         getFlagForCode,
         renderKeyExtra,
         deleteConfirmTitle,
@@ -450,11 +447,11 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         searchInput={searchInput}
         onSearchInputChange={setSearchInput}
         onSearch={handleSearch}
-        onAddKey={() => {
+        onAddKey={createFn ? () => {
           setEditEntry(null);
           setIsNewEntry(true);
           setEditModalOpen(true);
-        }}
+        } : undefined}
         disabled={!projectDetails}
         extraControls={extraControls}
         settingsItems={settingsItems}
@@ -1329,9 +1326,6 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
         projectSlug={projectSlug}
         queryKeyPrefix="entries"
         fetchFn={fetchEntries}
-        createFn={createEntry}
-        updateFn={updateEntry}
-        deleteFn={deleteEntry}
         extraControls={
           <Col>
             <Button
