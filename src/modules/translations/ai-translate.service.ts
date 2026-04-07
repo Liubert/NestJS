@@ -226,12 +226,20 @@ export class AiTranslateService {
     targetLocales: Record<string, string>,
     projectId?: string,
     localeGuidance?: Record<string, string>,
+    context?: string | null,
   ): Promise<Record<string, string>> {
     const codes = Object.keys(targetLocales);
     if (codes.length === 0) return {};
 
     const { results } = await this.bulkTranslate(
-      [{ key: '__solo__', text, targetLocales: codes }],
+      [
+        {
+          key: '__solo__',
+          text,
+          context: context ?? undefined,
+          targetLocales: codes,
+        },
+      ],
       projectId,
       localeGuidance,
     );
