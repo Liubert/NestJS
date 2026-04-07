@@ -77,6 +77,8 @@ const ROW_BG: Record<string, string> = {
   deleted: '#fff1f0',
 };
 
+const POLL_INTERVAL_MS = 30_000; // 30s background refresh
+
 // ─── Diff helpers ─────────────────────────────────────────────────────────────
 
 
@@ -215,7 +217,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
 
   const locales: string[] = projectDetails?.locales?.map((l) => l.code) ?? [];
 
-  const { data: entriesData, isLoading: entriesLoading } =
+  const { data: entriesData, isLoading: entriesLoading, error: entriesError, isError: entriesIsError } =
     useQuery<PaginatedEntries>({
       queryKey: [
         queryKeyPrefix,
@@ -242,6 +244,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           reviewState || undefined,
         ),
       enabled: !!projectSlug && !!namespace && enabled,
+      refetchInterval: POLL_INTERVAL_MS,
     });
 
   const invalidate = useCallback(() => {
@@ -431,6 +434,21 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         changedNamespaces={changedNamespaces}
       />
 
+      {entriesIsError && (
+        <Alert
+          type="warning"
+          showIcon
+          closable
+          message="Background refresh failed"
+          description={
+            (entriesError as any)?.response?.data?.message
+            || (entriesError as Error)?.message
+            || 'Could not refresh translations. Will retry automatically.'
+          }
+          style={{ marginBottom: 12 }}
+        />
+      )}
+
       <Table<Entry>
         rowKey="key"
         columns={columns}
@@ -513,16 +531,18 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     [supportedLocalesForFlags],
   );
 
-  const { data: status, isLoading: statusLoading } = useQuery<SandboxStatus>({
+  const { data: status, isLoading: statusLoading, isError: statusIsError } = useQuery<SandboxStatus>({
     queryKey: ['sandbox-status', projectSlug],
     queryFn: () => fetchSandboxStatus(projectSlug),
     enabled: !!projectSlug,
+    refetchInterval: POLL_INTERVAL_MS,
   });
 
-  const { data: diff } = useQuery<DiffResult>({
+  const { data: diff, isError: diffIsError } = useQuery<DiffResult>({
     queryKey: ['sandbox-diff', projectSlug],
     queryFn: () => fetchSandboxDiff(projectSlug),
     enabled: !!projectSlug && !!status,
+    refetchInterval: POLL_INTERVAL_MS,
   });
 
   const keyStatusMap = useMemo(
@@ -803,6 +823,17 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
 
   return (
     <>
+      {(statusIsError || diffIsError) && (
+        <Alert
+          type="warning"
+          showIcon
+          closable
+          message="Background refresh failed"
+          description="Could not refresh sandbox data. Will retry automatically."
+          style={{ marginBottom: 12 }}
+        />
+      )}
+
       {/* ── Git-style status panel ── */}
       <div
         style={{
@@ -1241,6 +1272,7 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
     queryKey: ['sandbox-snapshots', projectSlug],
     queryFn: () => fetchSnapshots(projectSlug),
     enabled: !!projectSlug && revertModalOpen,
+    refetchInterval: POLL_INTERVAL_MS,
   });
 
   const revertMutation = useMutation({
