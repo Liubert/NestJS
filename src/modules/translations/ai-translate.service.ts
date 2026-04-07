@@ -6,13 +6,17 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
-import { AiConfigService, interpolate } from './ai-config.service.js';
+import { AiConfigService } from './ai-config.service.js';
 import { AiUsageService } from './ai-usage.service.js';
 import { scoreToLevel } from './quality-constants.js';
 import { getLocaleName } from './locale-registry.js';
-
-/** Default target locale codes when no targetLocales is specified */
-const DEFAULT_TARGET_LOCALE_CODES = ['uk', 'nb', 'sv', 'da'];
+import {
+  buildBulkQualityPrompt,
+  buildBulkTranslatePrompt,
+  buildQualityPrompt as buildQualityPromptPure,
+  buildTranslatePrompt as buildTranslatePromptPure,
+  extractTranslateRules,
+} from './ai-prompt-builder.js';
 
 const BULK_CHUNK_SIZE = 10;
 
@@ -37,115 +41,45 @@ export class AiTranslateService {
     contextNeed: 'required' | 'useful' | 'none';
     contextReason: string | null;
   }> {
-    const apiKey = this.config.get<string>('GEMINI_API_KEY');
-    if (!apiKey) {
-      throw new ServiceUnavailableException(
-        'GEMINI_API_KEY is not configured on this server',
-      );
-    }
-
-    const aiCfg = await this.aiConfig.getConfig();
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: aiCfg.model });
-
-    // If targetLocales is explicitly provided (even empty), respect it.
-    // Only fall back to DEFAULT_TARGET_LOCALE_CODES when targetLocales is undefined.
-    const localeEntries = targetLocales
-      ? targetLocales.map((code) => [code, getLocaleName(code)])
-      : DEFAULT_TARGET_LOCALE_CODES.map((code) => [code, getLocaleName(code)]);
-
-    if (localeEntries.length === 0) {
+    if (!targetLocales || targetLocales.length === 0) {
       return { translations: {}, contextNeed: 'none', contextReason: null };
     }
 
-    const targetLocalesMap: Record<string, string> = Object.fromEntries(
-      localeEntries as Array<[string, string]>,
-    );
-    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
-
-    const prompt = await this.buildTranslatePrompt(
-      text,
-      targetLocalesMap,
+    const { results, contextInfo } = await this.bulkTranslate(
+      [{ key: '__solo__', text, context, targetLocales }],
+      projectId,
       localeGuidance,
-      context,
-      true,
     );
 
-    let raw: string;
-    try {
-      const result = await model.generateContent(prompt);
-      raw = result.response.text().trim();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new BadGatewayException(`Gemini API error: ${msg}`);
-    }
-
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/, '')
-      .trim();
-
-    let parsed: {
-      contextNeed?: string;
-      contextReason?: string;
-      translations: Record<string, string>;
+    const ctx = contextInfo['__solo__'];
+    return {
+      translations: results['__solo__'] ?? {},
+      contextNeed: ctx?.need ?? 'none',
+      contextReason: ctx?.reason ?? null,
     };
-    try {
-      parsed = JSON.parse(cleaned) as typeof parsed;
-    } catch {
-      throw new BadGatewayException(
-        `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,
-      );
-    }
-
-    // Filter translations to only include requested locales
-    const requestedCodes = new Set(localeEntries.map(([code]) => code));
-    const filtered = Object.fromEntries(
-      Object.entries(parsed.translations ?? {}).filter(([code]) =>
-        requestedCodes.has(code),
-      ),
-    );
-
-    const need = parsed.contextNeed;
-    const contextNeed: 'required' | 'useful' | 'none' =
-      need === 'required' || need === 'useful' ? need : 'none';
-    const contextReason =
-      contextNeed !== 'none' && typeof parsed.contextReason === 'string'
-        ? parsed.contextReason
-        : null;
-
-    if (projectId) {
-      const inputTokens = Math.ceil(prompt.length / 4);
-      const outputTokens = Math.ceil(raw.length / 4);
-      await this.aiUsageService
-        .logUsage({
-          projectId,
-          operation: 'translate',
-          inputTokens,
-          outputTokens,
-          model: aiCfg.model,
-          metadata: {
-            textLength: text.length,
-            localeCount: Object.keys(filtered).length,
-          },
-        })
-        .catch(() => {}); // Non-blocking: don't fail the translation if logging fails
-    }
-
-    return { translations: filtered, contextNeed, contextReason };
   }
 
   /**
-   * Translate multiple entries (key + text) to all target locales in a single bulk call.
+   * Translate multiple entries (key + text) to their per-item targetLocales in a single bulk call.
    * Processes entries in chunks of BULK_CHUNK_SIZE (10) per Gemini request.
    * On parse failure for a chunk, skips those keys and continues.
    */
   async bulkTranslate(
-    entries: Array<{ key: string; text: string; context?: string }>,
+    entries: Array<{
+      key: string;
+      text: string;
+      context?: string;
+      targetLocales?: string[];
+    }>,
     projectId?: string,
-    targetLocales?: string[],
     localeGuidance?: Record<string, string>,
-  ): Promise<Record<string, Record<string, string>>> {
+  ): Promise<{
+    results: Record<string, Record<string, string>>;
+    contextInfo: Record<
+      string,
+      { need: 'required' | 'useful' | 'none'; reason: string | null }
+    >;
+  }> {
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -157,59 +91,50 @@ export class AiTranslateService {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
-    // Build locale entries — fall back to DEFAULT_TARGET_LOCALE_CODES when undefined
-    const localeEntries = targetLocales
-      ? targetLocales.map((code) => [code, getLocaleName(code)])
-      : DEFAULT_TARGET_LOCALE_CODES.map((code) => [code, getLocaleName(code)]);
-
-    if (localeEntries.length === 0) {
-      return {};
-    }
-
-    const languages = localeEntries
-      .map(([code, name]) => `${name} (${code})`)
-      .join(', ');
-
     if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
 
-    const requestedCodes = new Set(localeEntries.map(([code]) => code));
-    const merged: Record<string, Record<string, string>> = {};
+    const results: Record<string, Record<string, string>> = {};
+    const contextInfo: Record<
+      string,
+      { need: 'required' | 'useful' | 'none'; reason: string | null }
+    > = {};
     const skippedKeys: string[] = [];
     let totalInputTokens = 0;
     let totalOutputTokens = 0;
     let chunksProcessed = 0;
 
+    // Collect all unique locale codes across entries for guidance section
+    const allLocaleCodes = new Set<string>();
+    for (const e of entries) {
+      const codes = e.targetLocales ?? [];
+      for (const code of codes) allLocaleCodes.add(code);
+    }
+
+    // Build locale guidance section from all referenced locales
+    let localeGuidanceSection = '';
+    if (localeGuidance) {
+      const guidanceLines = [...allLocaleCodes]
+        .filter((code) => localeGuidance[code])
+        .map(
+          (code) =>
+            `- ${getLocaleName(code)} (${code}): ${localeGuidance[code]}`,
+        );
+      if (guidanceLines.length) {
+        localeGuidanceSection = `Language-specific guidance:\n${guidanceLines.join('\n')}`;
+      }
+    }
+
+    const translateRules = extractTranslateRules(aiCfg.translatePrompt);
+
     for (let i = 0; i < entries.length; i += BULK_CHUNK_SIZE) {
       const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
 
-      // Build context lines for entries that have context
-      const contextLines = chunk
-        .filter((e) => e.context)
-        .map((e) => `Context for key '${e.key}': ${e.context}`);
-
-      const entriesMap = Object.fromEntries(chunk.map((e) => [e.key, e.text]));
-
-      let prompt =
-        `Translate these English UI strings to ${languages}.\n` +
-        `Return ONLY valid JSON with no markdown, no explanation:\n` +
-        `{ "key1": { "uk": "...", "nb": "..." }, "key2": { ... } }\n\n` +
-        `Strings to translate:\n` +
-        `${JSON.stringify(entriesMap)}`;
-
-      if (contextLines.length) {
-        prompt += `\n\n${contextLines.join('\n')}`;
-      }
-
-      if (localeGuidance) {
-        const guidanceLines = localeEntries
-          .filter(([code]) => localeGuidance[code])
-          .map(
-            ([code, name]) => `- ${name} (${code}): ${localeGuidance[code]}`,
-          );
-        if (guidanceLines.length) {
-          prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
-        }
-      }
+      const prompt = buildBulkTranslatePrompt(
+        chunk,
+        translateRules,
+        aiCfg.contextDetectionPrompt,
+        localeGuidanceSection,
+      );
 
       let raw: string;
       try {
@@ -229,9 +154,9 @@ export class AiTranslateService {
         .replace(/\s*```$/, '')
         .trim();
 
-      let parsed: Record<string, Record<string, string>>;
+      let parsed: Record<string, unknown>;
       try {
-        parsed = JSON.parse(cleaned) as Record<string, Record<string, string>>;
+        parsed = JSON.parse(cleaned) as Record<string, unknown>;
       } catch {
         this.logger.warn(
           `bulkTranslate: failed to parse chunk ${chunksProcessed} response, skipping ${chunk.length} keys`,
@@ -240,14 +165,33 @@ export class AiTranslateService {
         continue;
       }
 
-      // Merge chunk results — filter each key's locale map to only include requested locales
-      for (const [key, localeMap] of Object.entries(parsed)) {
-        if (!localeMap || typeof localeMap !== 'object') continue;
-        merged[key] = Object.fromEntries(
-          Object.entries(localeMap).filter(([code]) =>
-            requestedCodes.has(code),
-          ),
-        );
+      // New format: { key: { contextNeed, contextReason, translations: { locale: value } } }
+      for (const [key, value] of Object.entries(parsed)) {
+        const entry = value as {
+          contextNeed?: string;
+          contextReason?: string;
+          translations?: Record<string, string>;
+        };
+        const need = entry.contextNeed;
+        if (need === 'required' || need === 'useful' || need === 'none') {
+          contextInfo[key] = {
+            need,
+            reason:
+              typeof entry.contextReason === 'string'
+                ? entry.contextReason
+                : null,
+          };
+        }
+        if (entry.translations && typeof entry.translations === 'object') {
+          const requestedCodes = new Set(
+            chunk.find((c) => c.key === key)?.targetLocales ?? [],
+          );
+          results[key] = Object.fromEntries(
+            Object.entries(entry.translations).filter(
+              ([code]) => requestedCodes.size === 0 || requestedCodes.has(code),
+            ),
+          );
+        }
       }
     }
 
@@ -261,7 +205,7 @@ export class AiTranslateService {
           model: aiCfg.model,
           metadata: {
             keyCount: entries.length,
-            localeCount: localeEntries.length,
+            localeCount: allLocaleCodes.size,
             chunksProcessed,
             skippedKeys,
           },
@@ -269,7 +213,7 @@ export class AiTranslateService {
         .catch(() => {});
     }
 
-    return merged;
+    return { results, contextInfo };
   }
 
   /**
@@ -283,73 +227,16 @@ export class AiTranslateService {
     projectId?: string,
     localeGuidance?: Record<string, string>,
   ): Promise<Record<string, string>> {
-    const apiKey = this.config.get<string>('GEMINI_API_KEY');
-    if (!apiKey) {
-      throw new ServiceUnavailableException(
-        'GEMINI_API_KEY is not configured on this server',
-      );
-    }
+    const codes = Object.keys(targetLocales);
+    if (codes.length === 0) return {};
 
-    const aiCfg = await this.aiConfig.getConfig();
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: aiCfg.model });
-
-    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
-
-    const prompt = await this.buildTranslatePrompt(
-      text,
-      targetLocales,
+    const { results } = await this.bulkTranslate(
+      [{ key: '__solo__', text, targetLocales: codes }],
+      projectId,
       localeGuidance,
     );
 
-    let raw: string;
-    try {
-      const result = await model.generateContent(prompt);
-      raw = result.response.text().trim();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new BadGatewayException(`Gemini API error: ${msg}`);
-    }
-
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/, '')
-      .trim();
-
-    let parsed: Record<string, string>;
-    try {
-      parsed = JSON.parse(cleaned) as Record<string, string>;
-    } catch {
-      throw new BadGatewayException(
-        `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,
-      );
-    }
-
-    // Filter to only requested locales
-    const requestedCodes = new Set(Object.keys(targetLocales));
-    const filtered = Object.fromEntries(
-      Object.entries(parsed).filter(([code]) => requestedCodes.has(code)),
-    );
-
-    if (projectId) {
-      const inputTokens = Math.ceil(prompt.length / 4);
-      const outputTokens = Math.ceil(raw.length / 4);
-      await this.aiUsageService
-        .logUsage({
-          projectId,
-          operation: 'auto_translate',
-          inputTokens,
-          outputTokens,
-          model: aiCfg.model,
-          metadata: {
-            textLength: text.length,
-            localeCount: Object.keys(filtered).length,
-          },
-        })
-        .catch(() => {});
-    }
-
-    return filtered;
+    return results['__solo__'] ?? {};
   }
 
   /**
@@ -411,9 +298,26 @@ export class AiTranslateService {
     > = {};
     const skippedKeys: string[] = [];
 
-    for (let i = 0; i < items.length; i += chunkSize) {
-      const chunk = items.slice(i, i + chunkSize);
-      const prompt = this.buildBulkQualityPrompt(
+    // Items with no source (language-quality mode) are skipped — score 1 without an AI call.
+    for (const item of items) {
+      if (item.source === null) {
+        results[item.key] = Object.fromEntries(
+          Object.keys(item.translations).map((locale) => [
+            locale,
+            {
+              score: 1,
+              level: scoreToLevel(1),
+              comment: 'No source text — quality check skipped',
+            },
+          ]),
+        );
+      }
+    }
+    const itemsWithSource = items.filter((item) => item.source !== null);
+
+    for (let i = 0; i < itemsWithSource.length; i += chunkSize) {
+      const chunk = itemsWithSource.slice(i, i + chunkSize);
+      const prompt = buildBulkQualityPrompt(
         chunk,
         localeGuidance,
         aiCfg.qualityTranslatePrompt,
@@ -535,112 +439,6 @@ export class AiTranslateService {
   }
 
   /**
-   * Extracts the evaluation criteria section from the per-item qualityTranslatePrompt template.
-   * Returns everything between {{meaning_rule}} and the final return format, with per-item
-   * locale references replaced by a generic description.
-   */
-  private extractQualityCriteria(qualityTranslatePrompt: string): string {
-    const afterMeaningRule =
-      qualityTranslatePrompt.split('{{meaning_rule}}')[1] ??
-      qualityTranslatePrompt;
-    const beforeReturn = afterMeaningRule.split('\nReturn ONLY valid JSON:')[0];
-    // Replace per-item {{locale}} references (e.g. "Grammar ... ({{locale}} conventions)")
-    // with a generic reference since bulk covers multiple locales at once
-    return beforeReturn.trim().replace(/\{\{locale\}\}/g, 'the target locale');
-  }
-
-  private buildBulkQualityPrompt(
-    items: Array<{
-      key: string;
-      source: string | null;
-      context: string | null;
-      translations: Record<string, string>;
-      previousComment?: string | null;
-    }>,
-    localeGuidance?: Record<string, string>,
-    qualityTranslatePrompt?: string,
-    contextDetectionPrompt?: string,
-  ): string {
-    // Collect all locale codes from items and build guidance section
-    let guidanceSection = '';
-    if (localeGuidance) {
-      const allLocales = new Set<string>();
-      for (const item of items) {
-        for (const code of Object.keys(item.translations)) {
-          allLocales.add(code);
-        }
-      }
-      const guidanceLines = [...allLocales]
-        .filter((code) => localeGuidance[code])
-        .map(
-          (code) =>
-            `- ${getLocaleName(code)} (${code}): ${localeGuidance[code]}`,
-        );
-      if (guidanceLines.length) {
-        guidanceSection = `\nLanguage-specific guidance:\n${guidanceLines.join('\n')}\n`;
-      }
-    }
-
-    // Use the same criteria as the per-item quality prompt so both paths are consistent.
-    // If the template is available, extract the Checks/Scoring/Context-need sections from it.
-    const sharedCriteria = qualityTranslatePrompt
-      ? this.extractQualityCriteria(qualityTranslatePrompt)
-      : `Checks:
-- Grammar, spelling, punctuation (target locale conventions)
-- Natural, idiomatic phrasing for software/product UI
-- Nuance and meaning preserved
-- Placeholders ({{name}}, %s, {count}, {0}) preserved exactly
-
-Scoring (1–100):
-- 95–100: excellent, production-ready
-- 80–94: strong, minor improvements only
-- 60–79: understandable but imperfect
-- below 60: significant errors
-
-Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).`;
-
-    return `You are a strict software localization and language quality reviewer. Evaluate each translation below.
-
-Context rule:
-- If a key has a "context" field: it is DEFINITIVE — evaluate against that meaning ONLY.
-- If a key has no "context" field: accept any translation that fits standard software UI usage.
-${guidanceSection}
-If "source" is present, compare translation accuracy to it. If "source" is null, evaluate language quality only.
-
-If "previousReviewerNote" is present, treat it as prior feedback on an earlier version. Do not penalize for issues already resolved.
-
-${sharedCriteria}
-
-${contextDetectionPrompt ?? 'For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.'}
-
-Return ONLY valid JSON:
-{
-  "<key>": {
-    "contextNeed": "<required|useful|none>",
-    "contextReason": "<string or null>",
-    "locales": {
-      "<locale>": { "score": <number 1-100>, "comment": "<string>" }
-    }
-  }
-}
-
-Translations to review:
-${JSON.stringify(
-  items.map((item) => ({
-    key: item.key,
-    source: item.source,
-    context: item.context,
-    translations: item.translations,
-    ...(item.previousComment && {
-      previousReviewerNote: `Previous reviewer note: ${item.previousComment}`,
-    }),
-  })),
-  null,
-  2,
-)}`;
-  }
-
-  /**
    * Build the translate prompt string without making a Gemini call.
    * Used both by translate/translateForLocales internally and by the preview endpoint.
    */
@@ -652,44 +450,19 @@ ${JSON.stringify(
     includeContextDetection?: boolean,
   ): Promise<string> {
     const aiCfg = await this.aiConfig.getConfig();
-
-    const languages = Object.entries(targetLocales)
-      .map(([code, name]) => `${name} (${code})`)
-      .join(', ');
-
-    const vars: Record<string, string> = { text, languages };
-    if (context) vars.context = context;
-    let prompt = interpolate(aiCfg.translatePrompt, vars);
-
-    if (localeGuidance) {
-      const guidanceLines = Object.entries(targetLocales)
-        .filter(([code]) => localeGuidance[code])
-        .map(([code, name]) => `- ${name} (${code}): ${localeGuidance[code]}`);
-      if (guidanceLines.length) {
-        prompt += `\n\nLanguage-specific guidance:\n${guidanceLines.join('\n')}`;
-      }
-    }
-
-    if (includeContextDetection) {
-      // Remove any existing output format line from the base prompt to avoid conflict
-      prompt = prompt.replace(/\nRequired output format:.*$/m, '');
-
-      prompt += `\n\nAlso evaluate whether context about this key's usage would help future quality checks:
-- "contextNeed": "required" — text is genuinely ambiguous (e.g. "Train", "Light", "Save", "By", "Draft")
-- "contextNeed": "useful" — short/generic, context would improve confidence
-- "contextNeed": "none" — meaning is universally clear
-Add "contextReason" (1 sentence, max 30 words) if required or useful.
-
-Return ONLY valid JSON in this format (no flat locale keys, only this structure):
-{"contextNeed": "<required|useful|none>", "contextReason": "<string or null>", "translations": {"uk": "...", "nb": "...", ...}}`;
-    }
-
-    return prompt;
+    return buildTranslatePromptPure(
+      text,
+      targetLocales,
+      localeGuidance,
+      context,
+      includeContextDetection,
+      aiCfg,
+    );
   }
 
   /**
    * Build the quality check prompt string without making a Gemini call.
-   * Used both by checkQuality internally and by the preview endpoint.
+   * Used only by the prompt-preview endpoint — actual quality checks go through bulkCheckQuality.
    */
   async buildQualityPrompt(
     source: string,
@@ -700,31 +473,15 @@ Return ONLY valid JSON in this format (no flat locale keys, only this structure)
     localeGuidance?: string,
   ): Promise<string> {
     const aiCfg = await this.aiConfig.getConfig();
-
-    const template =
-      mode === 'translation_quality'
-        ? aiCfg.qualityTranslatePrompt
-        : aiCfg.qualityLanguagePrompt;
-
-    const vars: Record<string, string> = { source, translation, locale };
-    if (context?.trim()) {
-      vars.meaning_rule =
-        `Context: "${context.trim()}"\n` +
-        `This context is DEFINITIVE — evaluate the translation against it ONLY.`;
-    } else {
-      vars.meaning_rule = `No context provided. Accept any translation that fits standard software UI usage.`;
-    }
-
-    const identicalHint =
-      mode === 'translation_quality' && source.trim() === translation.trim()
-        ? `\n\nIMPORTANT: The translation is IDENTICAL to the English source text. This is often a sign that the text was not translated at all. Some words (like "taxi", "hotel", "internet") are legitimately the same across languages — if so, score normally. But if this is a phrase or word that should differ in ${locale}, score it very low (1-3) and comment that it appears untranslated.`
-        : '';
-
-    const guidanceHint = localeGuidance
-      ? `\n\nLanguage-specific guidance for ${locale}: ${localeGuidance}`
-      : '';
-
-    return interpolate(template, vars) + identicalHint + guidanceHint;
+    return buildQualityPromptPure(
+      source,
+      translation,
+      locale,
+      mode,
+      context,
+      localeGuidance,
+      aiCfg,
+    );
   }
 
   async checkQuality(
@@ -742,86 +499,45 @@ Return ONLY valid JSON in this format (no flat locale keys, only this structure)
     contextNeed: 'required' | 'useful' | 'none';
     contextReason: string | null;
   }> {
-    const apiKey = this.config.get<string>('GEMINI_API_KEY');
-    if (!apiKey) {
-      throw new ServiceUnavailableException(
-        'GEMINI_API_KEY is not configured on this server',
-      );
-    }
+    const items = [
+      {
+        key: '__solo__',
+        // language_quality mode has no source to compare against
+        source: mode === 'translation_quality' ? source : null,
+        context: context ?? null,
+        translations: { [locale]: translation },
+      },
+    ];
 
-    const aiCfg = await this.aiConfig.getConfig();
-    const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: aiCfg.model });
+    const guidanceMap = localeGuidance
+      ? { [locale]: localeGuidance }
+      : undefined;
 
-    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
-
-    const prompt = await this.buildQualityPrompt(
-      source,
-      translation,
-      locale,
-      mode,
-      context,
-      localeGuidance,
+    const { results, contextInfo, skippedKeys } = await this.bulkCheckQuality(
+      items,
+      1,
+      30_000,
+      projectId,
+      guidanceMap,
     );
 
-    let raw: string;
-    try {
-      const result = await model.generateContent(prompt);
-      raw = result.response.text().trim();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      throw new BadGatewayException(`Gemini API error: ${msg}`);
+    if (skippedKeys.includes('__solo__')) {
+      throw new BadGatewayException('Quality check timed out');
     }
 
-    const cleaned = raw
-      .replace(/^```(?:json)?\s*/i, '')
-      .replace(/\s*```$/, '')
-      .trim();
+    const localeResult = results['__solo__']?.[locale];
+    const ctx = contextInfo['__solo__'];
 
-    try {
-      const parsed = JSON.parse(cleaned) as {
-        score: number;
-        comment: string;
-        contextNeed?: string;
-        contextReason?: string;
-      };
-      const score = Math.min(100, Math.max(1, Math.round(parsed.score)));
-      const level = scoreToLevel(score);
-      const need = parsed.contextNeed;
-      const contextNeed: 'required' | 'useful' | 'none' =
-        need === 'required' || need === 'useful' ? need : 'none';
-      const contextReason =
-        contextNeed !== 'none' && typeof parsed.contextReason === 'string'
-          ? parsed.contextReason
-          : null;
-      const result = {
-        score,
-        level,
-        comment: parsed.comment ?? '',
-        contextNeed,
-        contextReason,
-      };
-
-      if (projectId) {
-        const inputTokens = Math.ceil(prompt.length / 4);
-        const outputTokens = Math.ceil(raw.length / 4);
-        await this.aiUsageService
-          .logUsage({
-            projectId,
-            operation: 'quality_check',
-            inputTokens,
-            outputTokens,
-            model: aiCfg.model,
-            metadata: { locale, mode },
-          })
-          .catch(() => {});
-      }
-
-      return result;
-    } catch {
-      throw new BadGatewayException(
-        `Gemini returned unexpected format: ${cleaned.slice(0, 200)}`,
-      );
+    if (!localeResult) {
+      throw new BadGatewayException('Quality check returned no result');
     }
+
+    return {
+      score: localeResult.score,
+      level: localeResult.level,
+      comment: localeResult.comment,
+      contextNeed: ctx?.need ?? 'none',
+      contextReason: ctx?.reason ?? null,
+    };
   }
 }

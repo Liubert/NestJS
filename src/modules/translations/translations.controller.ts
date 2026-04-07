@@ -41,8 +41,6 @@ import { CreateNamespaceDto } from './dto/create-namespace.dto.js';
 import { CreateLocaleDto } from './dto/create-locale.dto.js';
 import { UpdateLocaleDto } from './dto/update-locale.dto.js';
 import { UpdateNamespaceDto } from './dto/update-namespace.dto.js';
-import { CreateEntryDto } from './dto/create-entry.dto.js';
-import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
 import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
@@ -181,12 +179,16 @@ export class TranslationsController {
       }
     }
 
-    return this.aiTranslateService.bulkTranslate(
-      dto.entries,
-      projectId,
+    const entriesWithLocales = dto.entries.map((e) => ({
+      ...e,
       targetLocales,
+    }));
+    const { results } = await this.aiTranslateService.bulkTranslate(
+      entriesWithLocales,
+      projectId,
       localeGuidance,
     );
+    return results;
   }
 
   @Post('ai-translate/bulk-and-save')
@@ -229,12 +231,16 @@ export class TranslationsController {
     }
 
     // Translate all entries
-    const translations = await this.aiTranslateService.bulkTranslate(
-      dto.entries,
-      project.id,
+    const entriesWithLocales = dto.entries.map((e) => ({
+      ...e,
       targetLocales,
-      guidanceParam,
-    );
+    }));
+    const { results: translations } =
+      await this.aiTranslateService.bulkTranslate(
+        entriesWithLocales,
+        project.id,
+        guidanceParam,
+      );
 
     // Build sandbox entries — include all translated locales
     const sandboxEntries = dto.entries
