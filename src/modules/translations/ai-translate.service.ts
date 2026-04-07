@@ -642,13 +642,16 @@ ${JSON.stringify(
     }
 
     if (includeContextDetection) {
+      // Remove any existing output format line from the base prompt to avoid conflict
+      prompt = prompt.replace(/\nRequired output format:.*$/m, '');
+
       prompt += `\n\nAlso evaluate whether context about this key's usage would help future quality checks:
 - "contextNeed": "required" — text is genuinely ambiguous (e.g. "Train", "Light", "Save", "By", "Draft")
 - "contextNeed": "useful" — short/generic, context would improve confidence
 - "contextNeed": "none" — meaning is universally clear
 Add "contextReason" (1 sentence, max 30 words) if required or useful.
 
-Return ONLY valid JSON in this format:
+Return ONLY valid JSON in this format (no flat locale keys, only this structure):
 {"contextNeed": "<required|useful|none>", "contextReason": "<string or null>", "translations": {"uk": "...", "nb": "...", ...}}`;
     }
 
