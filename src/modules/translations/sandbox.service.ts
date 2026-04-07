@@ -890,6 +890,13 @@ export class SandboxService {
 
     if (deletedRows.length > 0) {
       await this.projectRepo.update(project.id, { sandboxHasChanges: true });
+
+      // Trigger re-translation after a short delay so the HTTP response reaches
+      // the client first — user sees empty state before new translations appear.
+      // Bypasses auto_translate_enabled intentionally: reset is an explicit user action.
+      setTimeout(() => {
+        this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
+      }, 3000);
     }
 
     // Reset quality states for all remaining sandbox values in this namespace
