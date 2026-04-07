@@ -23,6 +23,7 @@ import {
   RollbackOutlined,
   SyncOutlined,
   CheckCircleOutlined,
+  PlusOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -39,7 +40,6 @@ import type {
   DiffResult,
   DiffEntry,
   Snapshot,
-  KeyDiff,
   KeyDiffRow,
   Entry,
   EntriesTableProps,
@@ -65,6 +65,7 @@ import { QUALITY_COLOR } from './components/QualityBadge';
 import { buildColumns } from './components/columns';
 import FilterBar from './components/FilterBar';
 import EntryEditModal from './components/EntryEditModal';
+import AddLocaleModal from './components/AddLocaleModal';
 
 const { Title, Text } = Typography;
 
@@ -78,22 +79,6 @@ const ROW_BG: Record<string, string> = {
 
 // ─── Diff helpers ─────────────────────────────────────────────────────────────
 
-function buildKeyDiffs(entries: DiffEntry[]): KeyDiff[] {
-  const map = new Map<string, KeyDiff>();
-  for (const e of entries) {
-    const id = `${e.namespace}/${e.key}`;
-    if (!map.has(id)) {
-      map.set(id, {
-        namespace: e.namespace,
-        key: e.key,
-        status: e.status,
-        locales: [],
-      });
-    }
-    map.get(id)!.locales.push(e.locale);
-  }
-  return Array.from(map.values());
-}
 
 function buildKeyDiffRows(entries: DiffEntry[]): KeyDiffRow[] {
   const map = new Map<string, KeyDiffRow>();
@@ -165,6 +150,8 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   deleteFn,
   enabled = true,
   onMutationSuccess,
+  onNamespaceChange,
+  changedNamespaces,
   getRowProps,
   renderKeyExtra,
   clientFilter,
@@ -181,6 +168,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const setNamespace = (ns: string) => {
     setNamespaceRaw(ns);
     localStorage.setItem('translations_namespace', ns);
+    onNamespaceChange?.(ns);
   };
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
@@ -195,6 +183,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [isNewEntry, setIsNewEntry] = useState(false);
+  const [addLocaleOpen, setAddLocaleOpen] = useState(false);
 
   const { data: supportedLocales = [] } = useSupportedLocales();
   const getFlagForCode = useCallback(
@@ -328,11 +317,24 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
 
   const handleTableChange = (
     pagination: TablePaginationConfig,
-    _filters: Record<string, FilterValue | null>,
+    filters: Record<string, FilterValue | null>,
     sorter: SorterResult<Entry> | SorterResult<Entry>[],
   ) => {
     setPage(pagination.current ?? 1);
     setPageSize(pagination.pageSize ?? 50);
+
+    const qualityFilterVal = filters.qualityScore?.[0] as string | undefined;
+    if (qualityFilterVal?.startsWith('level:')) {
+      setQualityLevel(qualityFilterVal.slice(6));
+      setReviewState('');
+    } else if (qualityFilterVal?.startsWith('state:')) {
+      setQualityLevel('');
+      setReviewState(qualityFilterVal.slice(6));
+    } else {
+      setQualityLevel('');
+      setReviewState('');
+    }
+
     const s = Array.isArray(sorter) ? sorter[0] : sorter;
     if (s?.field) {
       const field = s.field as string;
@@ -370,6 +372,39 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
     [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription],
   );
 
+  const settingsItems = useMemo(() => {
+    const items: Array<{ key: string; label: string; icon?: React.ReactNode; danger?: boolean } | { type: 'divider' }> = [
+      { key: 'add-locale', label: 'Add locale', icon: <PlusOutlined /> },
+    ];
+    if (isSandbox && namespace) {
+      items.push({ type: 'divider' });
+      items.push({
+        key: 'reset-translations',
+        label: 'Reset translations',
+        icon: <SyncOutlined />,
+        danger: true,
+      });
+    }
+    return items;
+  }, [isSandbox, namespace]);
+
+  const handleSettingsClick = useCallback(
+    (key: string) => {
+      if (key === 'add-locale') {
+        setAddLocaleOpen(true);
+      } else if (key === 'reset-translations') {
+        Modal.confirm({
+          title: `Reset translations for "${namespace}"?`,
+          content: 'All sandbox translations in this namespace will be deleted and re-translated automatically. This cannot be undone.',
+          okText: 'Reset',
+          okButtonProps: { danger: true },
+          onOk: () => resetNsTranslationsMutation.mutateAsync(namespace),
+        });
+      }
+    },
+    [namespace, resetNsTranslationsMutation],
+  );
+
   return (
     <>
       <FilterBar
@@ -384,63 +419,16 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         searchInput={searchInput}
         onSearchInputChange={setSearchInput}
         onSearch={handleSearch}
-        qualityFilter={
-          qualityLevel
-            ? `level:${qualityLevel}`
-            : reviewState
-              ? `state:${reviewState}`
-              : ''
-        }
-        onQualityFilterChange={(val) => {
-          if (val.startsWith('level:')) {
-            setQualityLevel(val.slice(6));
-            setReviewState('');
-          } else if (val.startsWith('state:')) {
-            setQualityLevel('');
-            setReviewState(val.slice(6));
-          } else {
-            setQualityLevel('');
-            setReviewState('');
-          }
-          setPage(1);
-        }}
-        sortBy={sortBy}
-        onSortByChange={(val) => {
-          setSortBy(val);
-          setPage(1);
-        }}
         onAddKey={() => {
           setEditEntry(null);
           setIsNewEntry(true);
           setEditModalOpen(true);
         }}
         disabled={!projectDetails}
-        extraControls={
-          <>
-            {isSandbox && namespace && (
-              <Col>
-                <Popconfirm
-                  title={`Delete all translations in "${namespace}" and re-translate?`}
-                  description="Auto-translate will pick them up shortly. This cannot be undone."
-                  onConfirm={() => resetNsTranslationsMutation.mutate(namespace)}
-                  okText="Reset"
-                  okButtonProps={{ danger: true }}
-                >
-                  <Tooltip title="Delete all sandbox translations for this namespace and re-translate from scratch">
-                    <Button
-                      size="small"
-                      icon={<SyncOutlined />}
-                      loading={resetNsTranslationsMutation.isPending}
-                    >
-                      Reset translations
-                    </Button>
-                  </Tooltip>
-                </Popconfirm>
-              </Col>
-            )}
-            {extraControls}
-          </>
-        }
+        extraControls={extraControls}
+        settingsItems={settingsItems}
+        onSettingsClick={handleSettingsClick}
+        changedNamespaces={changedNamespaces}
       />
 
       <Table<Entry>
@@ -486,6 +474,14 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         isSandbox={isSandbox}
         onQualityUpdate={invalidate}
       />
+
+      <AddLocaleModal
+        open={addLocaleOpen}
+        onClose={() => setAddLocaleOpen(false)}
+        projectSlug={projectSlug}
+        existingLocaleCodes={locales}
+        namespaceCount={projectDetails?.namespaces.length ?? 0}
+      />
     </>
   );
 };
@@ -502,8 +498,10 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const [selectedRowKeys, setSelectedRowKeys] = useState<Set<string>>(
     new Set(),
   );
+  const [currentNs, setCurrentNs] = useState(
+    () => localStorage.getItem('translations_namespace') || '',
+  );
   const [reviewStatusFilter, setReviewStatusFilter] = useState<string>('');
-  const [reviewNsFilter, setReviewNsFilter] = useState<string>('');
   const [reviewQualityFilter, setReviewQualityFilter] = useState<string>('');
   const [reviewPage, setReviewPage] = useState(1);
   const REVIEW_PAGE_SIZE = 50;
@@ -531,38 +529,32 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     () => buildKeyStatusLookup(diff?.entries ?? []),
     [diff],
   );
-  const keyDiffs = useMemo(() => buildKeyDiffs(diff?.entries ?? []), [diff]);
   const keyDiffRows = useMemo(
     () => buildKeyDiffRows(diff?.entries ?? []),
     [diff],
   );
-  const keyAdded = keyDiffs.filter((k) => k.status === 'added').length;
-  const keyChanged = keyDiffs.filter((k) => k.status === 'changed').length;
-  const keyDeleted = keyDiffs.filter((k) => k.status === 'deleted').length;
-  const total = keyAdded + keyChanged + keyDeleted;
+
+  // Set of namespaces that have unpushed changes (for selector indicator)
+  const changedNamespaces = useMemo(
+    () => new Set(keyDiffRows.map((r) => r.namespace)),
+    [keyDiffRows],
+  );
+
+  // Namespace-scoped diff: only show changes for the currently viewed namespace
+  const nsKeyDiffRows = useMemo(
+    () => (currentNs ? keyDiffRows.filter((r) => r.namespace === currentNs) : keyDiffRows),
+    [keyDiffRows, currentNs],
+  );
+  const nsKeyAdded = nsKeyDiffRows.filter((k) => k.status === 'added').length;
+  const nsKeyChanged = nsKeyDiffRows.filter((k) => k.status === 'changed').length;
+  const nsKeyDeleted = nsKeyDiffRows.filter((k) => k.status === 'deleted').length;
+  const nsTotal = nsKeyAdded + nsKeyChanged + nsKeyDeleted;
 
   const invalidateSandbox = useCallback(() => {
     qc.invalidateQueries({ queryKey: ['sandbox-status', projectSlug] });
     qc.invalidateQueries({ queryKey: ['sandbox-diff', projectSlug] });
     qc.invalidateQueries({ queryKey: ['sandbox-entries', projectSlug] });
   }, [qc, projectSlug]);
-
-  const promoteMutation = useMutation({
-    mutationFn: () =>
-      apiClient
-        .post(`/translations/projects/${projectSlug}/sandbox/promote`)
-        .then((r) => r.data),
-    onSuccess: (data: any) => {
-      message.success(
-        `Pushed — ${data.promoted} entries are now live in production`,
-      );
-      invalidateSandbox();
-      qc.invalidateQueries({ queryKey: ['entries', projectSlug] });
-      setPushModalOpen(false);
-    },
-    onError: (e: any) =>
-      message.error(e.response?.data?.message ?? 'Push failed'),
-  });
 
   const promoteSelectiveMutation = useMutation({
     mutationFn: (keys: { namespace: string; key: string }[]) =>
@@ -606,25 +598,18 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       message.error(e.response?.data?.message ?? 'Revert failed'),
   });
 
-  // Auto-close review modal when all changes have been reverted
+  // Auto-close review modal when all ns changes have been pushed/reverted
   React.useEffect(() => {
-    if (pushModalOpen && diff && diff.total === 0) {
+    if (pushModalOpen && nsTotal === 0) {
       setPushModalOpen(false);
     }
-  }, [pushModalOpen, diff]);
+  }, [pushModalOpen, nsTotal]);
 
-  // ── Review modal: filtered + paginated data (must be before early returns) ──
-  const reviewNamespaces = useMemo(() => {
-    const ns = new Set(keyDiffRows.map((r) => r.namespace));
-    return Array.from(ns).sort();
-  }, [keyDiffRows]);
-
+  // ── Review modal: filtered + paginated (scoped to current namespace) ──
   const filteredDiffRows = useMemo(() => {
-    let rows = keyDiffRows;
+    let rows = nsKeyDiffRows;
     if (reviewStatusFilter)
       rows = rows.filter((r) => r.status === reviewStatusFilter);
-    if (reviewNsFilter)
-      rows = rows.filter((r) => r.namespace === reviewNsFilter);
     if (reviewQualityFilter) {
       if (reviewQualityFilter === 'unchecked') {
         rows = rows.filter((r) => r.worstQualityLevel === null);
@@ -633,7 +618,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       }
     }
     return rows;
-  }, [keyDiffRows, reviewStatusFilter, reviewNsFilter, reviewQualityFilter]);
+  }, [nsKeyDiffRows, reviewStatusFilter, reviewQualityFilter]);
 
   const paginatedDiffRows = useMemo(() => {
     const start = (reviewPage - 1) * REVIEW_PAGE_SIZE;
@@ -642,13 +627,12 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
 
   // Init selection when modal opens
   const handleOpenReview = useCallback(() => {
-    setSelectedRowKeys(new Set(keyDiffRows.map((r) => r.id)));
+    setSelectedRowKeys(new Set(nsKeyDiffRows.map((r) => r.id)));
     setReviewStatusFilter('');
-    setReviewNsFilter('');
     setReviewQualityFilter('');
     setReviewPage(1);
     setPushModalOpen(true);
-  }, [keyDiffRows]);
+  }, [nsKeyDiffRows]);
 
   // Selection helpers
   const allFilteredSelected =
@@ -657,7 +641,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   const someFilteredSelected = filteredDiffRows.some((r) =>
     selectedRowKeys.has(r.id),
   );
-  const selectedCount = keyDiffRows.filter((r) =>
+  const selectedCount = nsKeyDiffRows.filter((r) =>
     selectedRowKeys.has(r.id),
   ).length;
 
@@ -683,22 +667,11 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
   }, []);
 
   const handlePromoteSelected = useCallback(() => {
-    const selectedKeys = keyDiffRows
+    const selectedKeys = nsKeyDiffRows
       .filter((r) => selectedRowKeys.has(r.id))
       .map((r) => ({ namespace: r.namespace, key: r.key }));
-
-    if (selectedKeys.length === total) {
-      promoteMutation.mutate();
-    } else {
-      promoteSelectiveMutation.mutate(selectedKeys);
-    }
-  }, [
-    keyDiffRows,
-    selectedRowKeys,
-    total,
-    promoteMutation,
-    promoteSelectiveMutation,
-  ]);
+    promoteSelectiveMutation.mutate(selectedKeys);
+  }, [nsKeyDiffRows, selectedRowKeys, promoteSelectiveMutation]);
 
   if (!projectSlug)
     return <Empty description="Select a project" style={{ marginTop: 48 }} />;
@@ -709,10 +682,10 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
       </div>
     );
 
-  const hasChanges = !!status?.hasChanges;
-  const statusBg = hasChanges ? '#fffbe6' : '#f6ffed';
-  const statusBorder = hasChanges ? '#ffe58f' : '#b7eb8f';
-  const statusIcon = hasChanges ? (
+  const nsHasChanges = nsTotal > 0;
+  const statusBg = nsHasChanges ? '#fffbe6' : '#f6ffed';
+  const statusBorder = nsHasChanges ? '#ffe58f' : '#b7eb8f';
+  const statusIcon = nsHasChanges ? (
     <span style={{ fontSize: 18 }}>⚡</span>
   ) : (
     <CheckCircleOutlined style={{ fontSize: 18, color: '#52c41a' }} />
@@ -862,37 +835,39 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                     production
                   </Tag>
                 </Space>
-                {hasChanges ? (
+                {nsHasChanges ? (
                   <Text>
-                    Sandbox is{' '}
+                    <Text strong style={{ fontFamily: 'monospace' }}>{currentNs || 'sandbox'}</Text>
+                    {' '}is{' '}
                     <Text strong>
-                      ahead by {total} change{total !== 1 ? 's' : ''}
+                      ahead by {nsTotal} change{nsTotal !== 1 ? 's' : ''}
                     </Text>
-                    {total > 0 && (
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        {' '}
-                        (
-                        {[
-                          keyAdded > 0 ? `${keyAdded} added` : null,
-                          keyChanged > 0 ? `${keyChanged} changed` : null,
-                          keyDeleted > 0 ? `${keyDeleted} deleted` : null,
-                        ]
-                          .filter(Boolean)
-                          .join(', ')}
-                        )
-                      </Text>
-                    )}
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {' '}(
+                      {[
+                        nsKeyAdded > 0 ? `${nsKeyAdded} added` : null,
+                        nsKeyChanged > 0 ? `${nsKeyChanged} changed` : null,
+                        nsKeyDeleted > 0 ? `${nsKeyDeleted} deleted` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(', ')}
+                      )
+                    </Text>
                   </Text>
                 ) : (
                   <Text type="success">
-                    Sandbox is up to date with production — nothing to push.
+                    {currentNs ? (
+                      <><Text strong style={{ fontFamily: 'monospace' }}>{currentNs}</Text> is up to date — nothing to push.</>
+                    ) : (
+                      'Sandbox is up to date with production — nothing to push.'
+                    )}
                   </Text>
                 )}
               </Space>
             </Space>
           </Col>
           <Col>
-            {hasChanges && (
+            {nsHasChanges && (
               <Space>
                 <Popconfirm
                   title="Reset sandbox?"
@@ -931,6 +906,8 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
         deleteFn={deleteSandboxEntry}
         enabled={!!status}
         onMutationSuccess={invalidateSandbox}
+        onNamespaceChange={setCurrentNs}
+        changedNamespaces={changedNamespaces}
         isSandbox
         deleteConfirmTitle="Remove this key from sandbox?"
         deleteConfirmDescription="The key will be marked for deletion and removed from production when you push."
@@ -1003,14 +980,11 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
             key="push"
             type="primary"
             icon={<ArrowRightOutlined />}
-            loading={
-              promoteMutation.isPending || promoteSelectiveMutation.isPending
-            }
+            loading={promoteSelectiveMutation.isPending}
             disabled={selectedCount === 0}
             onClick={handlePromoteSelected}
           >
-            Push {selectedCount} of {total} key{total !== 1 ? 's' : ''} to
-            Production
+            Push {selectedCount} of {nsTotal} key{nsTotal !== 1 ? 's' : ''} to Production
           </Button>,
         ]}
       >
@@ -1023,16 +997,19 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
 
         {/* Summary tags */}
         <Space style={{ marginBottom: 12 }}>
+          <Tag style={{ fontFamily: 'monospace', fontSize: 13, padding: '2px 10px' }}>
+            {currentNs}
+          </Tag>
           <Tag color="green" style={{ fontSize: 13, padding: '2px 10px' }}>
-            +{keyAdded} added
+            +{nsKeyAdded} added
           </Tag>
           <Tag color="orange" style={{ fontSize: 13, padding: '2px 10px' }}>
-            {keyChanged} changed
+            {nsKeyChanged} changed
           </Tag>
           <Tag color="red" style={{ fontSize: 13, padding: '2px 10px' }}>
-            −{keyDeleted} deleted
+            −{nsKeyDeleted} deleted
           </Tag>
-          {selectedCount < total && (
+          {selectedCount < nsTotal && (
             <Tag color="blue" style={{ fontSize: 13, padding: '2px 10px' }}>
               {selectedCount} selected
             </Tag>
@@ -1054,20 +1031,6 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
                 { value: 'added', label: 'Added' },
                 { value: 'changed', label: 'Changed' },
                 { value: 'deleted', label: 'Deleted' },
-              ]}
-            />
-          </Col>
-          <Col>
-            <Select
-              value={reviewNsFilter}
-              onChange={(v) => {
-                setReviewNsFilter(v);
-                setReviewPage(1);
-              }}
-              style={{ width: 180 }}
-              options={[
-                { value: '', label: 'All namespaces' },
-                ...reviewNamespaces.map((ns) => ({ value: ns, label: ns })),
               ]}
             />
           </Col>

@@ -1,20 +1,21 @@
 import React from 'react';
-import { Row, Col, Select, Input, Button, Tooltip } from 'antd';
-import {
-  SearchOutlined,
-  PlusOutlined,
-  FilterOutlined,
-  SortAscendingOutlined,
-} from '@ant-design/icons';
+import { Row, Col, Select, Input, Button, Dropdown, Tooltip, Badge } from 'antd';
+import { SearchOutlined, PlusOutlined, SettingOutlined } from '@ant-design/icons';
 import type { FilterBarProps, NamespaceInfo } from './types';
 import { QUALITY_COLOR } from './QualityBadge';
 
 const scoreToLevel = (score: number) =>
   score >= 80 ? 'green' : score >= 60 ? 'yellow' : 'red';
 
-const nsLabel = ({ slug, avgScore }: NamespaceInfo) => (
+const nsLabel = (
+  { slug, avgScore }: NamespaceInfo,
+  hasChanges?: boolean,
+) => (
   <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-    {avgScore !== null && (
+    {hasChanges && (
+      <Badge color="orange" style={{ flexShrink: 0 }} />
+    )}
+    {avgScore !== null && !hasChanges && (
       <span
         style={{
           width: 8,
@@ -28,27 +29,16 @@ const nsLabel = ({ slug, avgScore }: NamespaceInfo) => (
     )}
     {slug}
     {avgScore !== null && (
-      <span style={{ fontSize: 11, color: QUALITY_COLOR[scoreToLevel(avgScore)], fontWeight: 500 }}>
-        {avgScore}/100
-      </span>
+      <Tooltip title="Avg quality score for all translations in this namespace">
+        <span style={{ fontSize: 11, color: QUALITY_COLOR[scoreToLevel(avgScore)], fontWeight: 500, cursor: 'help' }}>
+          {avgScore}/100
+        </span>
+      </Tooltip>
     )}
   </span>
 );
 
 // ─── Filter Bar ───────────────────────────────────────────────────────────────
-
-const QUALITY_FILTER_OPTIONS = [
-  { value: '', label: 'All' },
-  { value: 'level:green', label: 'Good (80-100)' },
-  { value: 'level:yellow', label: 'Review (50-80)' },
-  { value: 'level:red', label: 'Poor (0-50)' },
-  { value: 'level:unchecked', label: 'Not checked yet' },
-  { value: 'level:needs_context', label: 'Needs Context' },
-  { value: 'state:skipped', label: 'Skipped' },
-  { value: 'state:expected', label: 'Expected' },
-  { value: 'state:failed', label: 'Failed' },
-  { value: 'state:not_checked', label: 'Pending' },
-];
 
 const FilterBar: React.FC<FilterBarProps> = ({
   namespace,
@@ -57,13 +47,12 @@ const FilterBar: React.FC<FilterBarProps> = ({
   searchInput,
   onSearchInputChange,
   onSearch,
-  qualityFilter,
-  onQualityFilterChange,
-  sortBy,
-  onSortByChange,
   onAddKey,
   disabled,
   extraControls,
+  settingsItems,
+  onSettingsClick,
+  changedNamespaces,
 }) => {
   return (
     <Row gutter={12} style={{ marginBottom: 14 }}>
@@ -76,7 +65,7 @@ const FilterBar: React.FC<FilterBarProps> = ({
           disabled={disabled}
           options={namespaces.map((ns) => ({
             value: ns.slug,
-            label: nsLabel(ns),
+            label: nsLabel(ns, changedNamespaces?.has(ns.slug)),
           }))}
         />
       </Col>
@@ -97,33 +86,6 @@ const FilterBar: React.FC<FilterBarProps> = ({
         />
       </Col>
       <Col>
-        <Tooltip title="Filter by quality level">
-          <Select
-            value={qualityFilter || ''}
-            onChange={onQualityFilterChange}
-            style={{ width: 180 }}
-            placeholder="Filter by quality"
-            suffixIcon={<FilterOutlined />}
-            options={QUALITY_FILTER_OPTIONS}
-          />
-        </Tooltip>
-      </Col>
-      <Col>
-        <Tooltip title="Sort entries">
-          <Select
-            value={sortBy}
-            onChange={onSortByChange}
-            style={{ width: 160 }}
-            suffixIcon={<SortAscendingOutlined />}
-            options={[
-              { value: 'key', label: 'Sort: Key' },
-              { value: 'createdAt', label: 'Sort: Created' },
-              { value: 'qualityScore', label: 'Sort: Quality score' },
-            ]}
-          />
-        </Tooltip>
-      </Col>
-      <Col>
         <Button
           type="primary"
           icon={<PlusOutlined />}
@@ -134,6 +96,19 @@ const FilterBar: React.FC<FilterBarProps> = ({
         </Button>
       </Col>
       {extraControls}
+      {settingsItems && settingsItems.length > 0 && (
+        <Col>
+          <Dropdown
+            menu={{
+              items: settingsItems as any,
+              onClick: ({ key }) => onSettingsClick?.(key),
+            }}
+            trigger={['click']}
+          >
+            <Button icon={<SettingOutlined />} />
+          </Dropdown>
+        </Col>
+      )}
     </Row>
   );
 };

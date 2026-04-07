@@ -56,6 +56,16 @@ export interface QualityInfo {
   checkedAt: string | null;
 }
 
+const CONTEXT_NEED_PRIORITY: Record<string, number> = {
+  required: 2,
+  useful: 1,
+  none: 0,
+};
+
+function contextNeedPriority(need: string | null | undefined): number {
+  return CONTEXT_NEED_PRIORITY[need ?? ''] ?? -1;
+}
+
 export interface EntryRow {
   key: string;
   createdAt: Date;
@@ -1543,9 +1553,8 @@ export class TranslationsService {
           );
 
           if (
-            result.contextNeed &&
-            (keyEntity.contextNeed !== result.contextNeed ||
-              keyEntity.contextReason !== result.contextReason)
+            contextNeedPriority(result.contextNeed) >
+            contextNeedPriority(keyEntity.contextNeed)
           ) {
             keyEntity.contextNeed = result.contextNeed;
             keyEntity.contextReason = result.contextReason;

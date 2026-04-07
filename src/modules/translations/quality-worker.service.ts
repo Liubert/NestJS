@@ -17,7 +17,7 @@ import {
   scoreToLevel,
 } from './quality-constants.js';
 
-const POLL_INTERVAL_MS = 30_000;
+const POLL_INTERVAL_MS = 10_000;
 const BATCH_SIZE = 5;
 const MAX_KEYS_PER_CYCLE = 50;
 
@@ -44,7 +44,7 @@ export class QualityWorkerService
     this.timer = setInterval(() => {
       void this.pollAndProcess();
     }, POLL_INTERVAL_MS);
-    this.logger.log('Quality worker polling started (sandbox, every 30s)');
+    this.logger.log('Quality worker polling started (sandbox, every 10s)');
   }
 
   onModuleDestroy(): void {
@@ -291,8 +291,21 @@ export class QualityWorkerService
 
     try {
       const emptyResult = {
-        results: {},
-        contextInfo: {},
+        results: {} as Record<
+          string,
+          Record<
+            string,
+            {
+              score: number;
+              level: 'green' | 'yellow' | 'red';
+              comment: string;
+            }
+          >
+        >,
+        contextInfo: {} as Record<
+          string,
+          { need: 'required' | 'useful' | 'none'; reason: string | null }
+        >,
         skippedKeys: [] as string[],
       };
       const [mainResult, defaultResult] = await Promise.all([
@@ -315,10 +328,23 @@ export class QualityWorkerService
           : Promise.resolve(emptyResult),
       ]);
       results = { ...mainResult.results };
-      contextInfo = {
-        ...mainResult.contextInfo,
-        ...defaultResult.contextInfo,
+      // Merge contextInfo: take the higher-priority value per key (required > useful > none)
+      const contextPriority: Record<'required' | 'useful' | 'none', number> = {
+        required: 2,
+        useful: 1,
+        none: 0,
       };
+      contextInfo = { ...mainResult.contextInfo };
+      for (const [key, info] of Object.entries(defaultResult.contextInfo)) {
+        const existing = contextInfo[key];
+        if (
+          !existing ||
+          (contextPriority[info.need] ?? -1) >
+            (contextPriority[existing.need] ?? -1)
+        ) {
+          contextInfo[key] = info;
+        }
+      }
       for (const [key, localeMap] of Object.entries(defaultResult.results)) {
         results[key] = Object.assign({}, results[key] ?? {}, localeMap);
       }

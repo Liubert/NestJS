@@ -394,7 +394,11 @@ export class AiTranslateService {
 
     for (let i = 0; i < items.length; i += chunkSize) {
       const chunk = items.slice(i, i + chunkSize);
-      const prompt = this.buildBulkQualityPrompt(chunk, localeGuidance);
+      const prompt = this.buildBulkQualityPrompt(
+        chunk,
+        localeGuidance,
+        aiCfg.contextDetectionPrompt ?? undefined,
+      );
 
       let raw: string;
       try {
@@ -519,6 +523,7 @@ export class AiTranslateService {
       previousComment?: string | null;
     }>,
     localeGuidance?: Record<string, string>,
+    contextDetectionPrompt?: string,
   ): string {
     // Collect all locale codes from items and build guidance section
     let guidanceSection = '';
@@ -558,7 +563,7 @@ Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).
 
 If "previousReviewerNote" is present, treat it as prior feedback on an earlier version. Do not penalize for issues already resolved.
 
-For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.
+${contextDetectionPrompt ?? 'For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.'}
 
 Return ONLY valid JSON:
 {

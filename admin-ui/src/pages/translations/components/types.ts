@@ -138,6 +138,10 @@ export interface EditModalProps {
   onQualityUpdate?: () => void;
 }
 
+export type SettingsMenuItem =
+  | { key: string; label: string; icon?: React.ReactNode; danger?: boolean }
+  | { type: 'divider' };
+
 export interface FilterBarProps {
   namespace: string;
   namespaces: NamespaceInfo[];
@@ -145,13 +149,12 @@ export interface FilterBarProps {
   searchInput: string;
   onSearchInputChange: (val: string) => void;
   onSearch: () => void;
-  qualityFilter: string;
-  onQualityFilterChange: (val: string) => void;
-  sortBy: 'key' | 'createdAt' | 'qualityScore';
-  onSortByChange: (val: 'key' | 'createdAt' | 'qualityScore') => void;
   onAddKey: () => void;
   disabled: boolean;
   extraControls?: React.ReactNode;
+  settingsItems?: SettingsMenuItem[];
+  onSettingsClick?: (key: string) => void;
+  changedNamespaces?: Set<string>;
 }
 
 export interface EntriesTableProps {
@@ -183,6 +186,8 @@ export interface EntriesTableProps {
   deleteFn: (slug: string, ns: string, key: string) => Promise<void>;
   enabled?: boolean;
   onMutationSuccess?: () => void;
+  onNamespaceChange?: (ns: string) => void;
+  changedNamespaces?: Set<string>;
   // Sandbox customization
   getRowProps?: (
     record: Entry,

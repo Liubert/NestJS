@@ -18,7 +18,6 @@ import {
   Table,
   Alert,
   Tooltip,
-  Checkbox,
   Progress,
 } from 'antd';
 import {
@@ -33,6 +32,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import apiClient from '../../api/client';
 import { useSupportedLocales } from '../../hooks/useSupportedLocales';
+import AddLocaleModal from '../translations/components/AddLocaleModal';
 
 const { Title, Text } = Typography;
 
@@ -328,7 +328,6 @@ const ProjectSettingsPage: React.FC = () => {
     () => new Map(supportedLocales.map((l) => [l.code, l])),
     [supportedLocales],
   );
-  const [localeForm] = Form.useForm();
   const [nsForm] = Form.useForm();
   const [memberForm] = Form.useForm();
   const [editLocaleForm] = Form.useForm();
@@ -340,8 +339,6 @@ const ProjectSettingsPage: React.FC = () => {
   const [editLocaleCode, setEditLocaleCode] = useState('');
   const [editNsModalOpen, setEditNsModalOpen] = useState(false);
   const [editNsSlug, setEditNsSlug] = useState('');
-  const [selectedLocaleCode, setSelectedLocaleCode] = useState<string | null>(null);
-  const [initTranslateChecked, setInitTranslateChecked] = useState(true);
 
   const { data: project, isLoading } = useQuery({
     queryKey: ['project', slug],
@@ -363,23 +360,6 @@ const ProjectSettingsPage: React.FC = () => {
   const invalidateMembers = () => {
     qc.invalidateQueries({ queryKey: ['project-members', slug] });
   };
-
-  const addLocaleMutation = useMutation({
-    mutationFn: (vals: {
-      code: string;
-      aliases?: string[];
-      localeSkill?: string;
-      initTranslate?: boolean;
-    }) => apiClient.post(`/translations/projects/${slug}/locales`, vals),
-    onSuccess: () => {
-      message.success('Locale added');
-      invalidateProject();
-      setLocaleModalOpen(false);
-      localeForm.resetFields();
-    },
-    onError: (e: any) =>
-      message.error(e.response?.data?.message ?? 'Error adding locale'),
-  });
 
   const updateLocaleMutation = useMutation({
     mutationFn: ({
@@ -814,97 +794,14 @@ const ProjectSettingsPage: React.FC = () => {
       </div>
 
       {/* ── Modals ── */}
-      <Modal
+      <AddLocaleModal
         open={localeModalOpen}
-        title="Add locale"
-        width={600}
-        onCancel={() => {
-          setLocaleModalOpen(false);
-          setSelectedLocaleCode(null);
-          setInitTranslateChecked(true);
-          localeForm.resetFields();
-        }}
-        onOk={() =>
-          localeForm.validateFields().then((v) => {
-            const loc = localeMap.get(v.code as string);
-            addLocaleMutation.mutate({
-              code: v.code as string,
-              aliases: (v.aliases as string[] | undefined) ?? loc?.aliases ?? [],
-              localeSkill: (v.localeSkill as string | undefined) || undefined,
-              initTranslate: !!v.initTranslate,
-            });
-          })
-        }
-        confirmLoading={addLocaleMutation.isPending}
-        destroyOnHidden
-      >
-        <Form form={localeForm} layout="vertical" style={{ marginTop: 16 }} initialValues={{ initTranslate: true }}>
-          <Form.Item
-            name="code"
-            label="Language"
-            rules={[{ required: true, message: 'Select a language' }]}
-          >
-            <Select
-              showSearch
-              placeholder="Select language"
-              optionFilterProp="label"
-              onChange={(code: string) => {
-                setSelectedLocaleCode(code);
-                const loc = localeMap.get(code);
-                if (loc) localeForm.setFieldsValue({ aliases: loc.aliases });
-                const skill = loc?.localeSkill;
-                localeForm.setFieldsValue({
-                  localeSkill: Array.isArray(skill) ? skill.join('\n') : (skill ?? ''),
-                });
-              }}
-              options={supportedLocales.map((l) => {
-                const alreadyAdded = p.locales.some(
-                  (loc) => loc.code === l.code,
-                );
-                return {
-                  value: l.code,
-                  label: `${l.flag} ${l.name} (${l.code})`,
-                  disabled: alreadyAdded,
-                };
-              })}
-            />
-          </Form.Item>
-          <div style={{ visibility: selectedLocaleCode ? 'visible' : 'hidden' }}>
-            <Form.Item
-              name="aliases"
-              label="Aliases"
-              extra="Alternative locale codes that map to this language"
-            >
-              <Select mode="tags" placeholder="e.g. en-US, en-GB" />
-            </Form.Item>
-            <Form.Item
-              name="localeSkill"
-              label="Language translation skill"
-              extra={<span style={{ display: 'block', marginTop: 24 }}>Practical language-specific guide for AI: style, tone, grammar, anti-patterns, common mistakes, wording rules.</span>}
-            >
-              <Input.TextArea
-                rows={10}
-                maxLength={5000}
-                showCount
-                placeholder={`e.g.\n- Tone: formal "ви", not informal "ти"\n- Plural forms: 3 forms — 1 елемент, 2 елементи, 5 елементів\n- Anti-patterns: avoid anglicisms (налаштування, not сетинги)\n- UI wording: use imperative for buttons (Зберегти, not Збереження)\n- Common mistakes: "приймати участь" → "брати участь"\n- Quotation marks: «text» not "text"`}
-              />
-            </Form.Item>
-            <Form.Item name="initTranslate" valuePropName="checked">
-              <Checkbox onChange={(e) => setInitTranslateChecked(e.target.checked)}>
-                Auto-translate all existing keys for this locale
-              </Checkbox>
-            </Form.Item>
-            {!initTranslateChecked && p.namespaces.length > 0 && (
-              <Alert
-                type="warning"
-                showIcon
-                message="This locale will have empty values. You'll need to fill them manually or via an AI agent."
-                style={{ marginBottom: 16 }}
-              />
-            )}
-          </div>
-        </Form>
-      </Modal>
+        onClose={() => setLocaleModalOpen(false)}
+        projectSlug={slug!}
+        existingLocaleCodes={p.locales.map((l) => l.code)}
+        namespaceCount={p.namespaces.length}
+        onSuccess={invalidateProject}
+      />
 
       {/* Edit locale aliases modal */}
       <Modal

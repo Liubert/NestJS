@@ -37,6 +37,16 @@ import { scoreToLevel } from './quality-constants.js';
 
 const MAX_SNAPSHOTS = 5;
 
+const CONTEXT_NEED_PRIORITY: Record<string, number> = {
+  required: 2,
+  useful: 1,
+  none: 0,
+};
+
+function contextNeedPriority(need: string | null | undefined): number {
+  return CONTEXT_NEED_PRIORITY[need ?? ''] ?? -1;
+}
+
 export interface SandboxEntryRow {
   key: string;
   createdAt: Date;
@@ -877,6 +887,20 @@ export class SandboxService {
 
     if (result.length > 0) {
       await this.projectRepo.update(project.id, { sandboxHasChanges: true });
+    }
+
+    // Reset quality states for all remaining sandbox values in this namespace
+    // so quality worker re-runs and re-evaluates contextNeed after re-translation
+    await this.dataSource.query(
+      `UPDATE sandbox_values
+       SET quality_review_state = 'not_checked'
+       WHERE project_id = $1
+         AND key_id IN (SELECT id FROM translation_keys WHERE namespace_id = $2)
+         AND is_deleted = false`,
+      [project.id, ns.id],
+    );
+
+    if (result.length > 0) {
       // Trigger immediate re-translation for this namespace — bypasses auto_translate_enabled flag
       this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
     }
@@ -1611,11 +1635,10 @@ export class SandboxService {
             keyEntity.context ?? undefined,
           );
 
-          // Persist contextNeed/contextReason from AI evaluation
+          // Persist contextNeed/contextReason from AI evaluation (higher priority wins)
           if (
-            result.contextNeed &&
-            (keyEntity.contextNeed !== result.contextNeed ||
-              keyEntity.contextReason !== result.contextReason)
+            contextNeedPriority(result.contextNeed) >
+            contextNeedPriority(keyEntity.contextNeed)
           ) {
             keyEntity.contextNeed = result.contextNeed;
             keyEntity.contextReason = result.contextReason;

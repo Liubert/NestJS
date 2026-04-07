@@ -5,10 +5,48 @@ import {
   EditOutlined,
   DeleteOutlined,
   InfoCircleOutlined,
-  WarningOutlined,
+  CheckCircleOutlined,
+  StopOutlined,
+  CloseCircleOutlined,
+  MinusCircleOutlined,
 } from '@ant-design/icons';
 import QualityBadge, { QUALITY_COLOR } from './QualityBadge';
 import type { Entry } from './types';
+
+// ─── Filter label helpers ─────────────────────────────────────────────────────
+
+const dot = (color: string) => (
+  <span
+    style={{
+      display: 'inline-block',
+      width: 8,
+      height: 8,
+      borderRadius: '50%',
+      backgroundColor: color,
+      marginRight: 7,
+      flexShrink: 0,
+    }}
+  />
+);
+
+const filterLabel = (icon: React.ReactNode, text: string) => (
+  <span style={{ display: 'inline-flex', alignItems: 'center' }}>
+    {icon}
+    {text}
+  </span>
+);
+
+const QUALITY_FILTERS = [
+  { text: filterLabel(dot(QUALITY_COLOR.green), 'Good'), value: 'level:green' },
+  { text: filterLabel(dot(QUALITY_COLOR.yellow), 'Review'), value: 'level:yellow' },
+  { text: filterLabel(dot(QUALITY_COLOR.red), 'Poor'), value: 'level:red' },
+  { text: filterLabel(dot('#d9d9d9'), 'Unchecked'), value: 'level:unchecked' },
+  { text: filterLabel(dot('#8c8c8c'), 'Needs context'), value: 'level:needs_context' },
+  { text: filterLabel(<MinusCircleOutlined style={{ color: '#8c8c8c', marginRight: 7 }} />, 'Skipped'), value: 'state:skipped' },
+  { text: filterLabel(<CheckCircleOutlined style={{ color: QUALITY_COLOR.expected, marginRight: 7 }} />, 'Expected'), value: 'state:expected' },
+  { text: filterLabel(<CloseCircleOutlined style={{ color: QUALITY_COLOR.failed, marginRight: 7 }} />, 'Failed'), value: 'state:failed' },
+  { text: filterLabel(<StopOutlined style={{ color: '#bbb', marginRight: 7 }} />, 'Pending'), value: 'state:not_checked' },
+];
 
 const { Text } = Typography;
 
@@ -52,20 +90,26 @@ export function buildColumns(
           )}
           {record.contextNeed === 'required' && !record.context && (
             <Tooltip
-              title={`Context required — ${record.contextReason ?? 'ambiguous term'}. Quality scores capped.`}
+              title={record.contextReason ?? 'Ambiguous term — context required to ensure accurate translation. Quality scores are capped until context is added.'}
             >
-              <WarningOutlined
-                style={{ color: '#ff4d4f', fontSize: 12, cursor: 'help' }}
-              />
+              <Tag
+                color="error"
+                style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', cursor: 'help', marginLeft: 2 }}
+              >
+                needs context
+              </Tag>
             </Tooltip>
           )}
           {record.contextNeed === 'useful' && !record.context && (
             <Tooltip
-              title={`Context suggested — ${record.contextReason ?? 'would improve quality'}`}
+              title={record.contextReason ?? 'Context would improve translation quality'}
             >
-              <InfoCircleOutlined
-                style={{ color: '#faad14', fontSize: 12, cursor: 'help' }}
-              />
+              <Tag
+                color="warning"
+                style={{ fontSize: 10, padding: '0 4px', lineHeight: '16px', cursor: 'help', marginLeft: 2 }}
+              >
+                needs context
+              </Tag>
             </Tooltip>
           )}
           {renderKeyExtra?.(text, namespace)}
@@ -109,13 +153,15 @@ export function buildColumns(
     })),
     {
       title: (
-        <Tooltip title="Minimum quality score across all locales (sort to find worst translations)">
+        <Tooltip title="Minimum quality score across all locales. Sort or filter to find worst translations.">
           Quality
         </Tooltip>
       ),
       key: 'qualityScore',
       dataIndex: 'qualityScore',
       sorter: true,
+      filterMultiple: false,
+      filters: QUALITY_FILTERS,
       width: 90,
       render: (_: unknown, record: Entry) => {
         const scores = locales
