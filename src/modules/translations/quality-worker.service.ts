@@ -12,8 +12,8 @@ import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import {
-  CONTEXT_REQUIRED_CAP,
-  CONTEXT_USEFUL_CAP,
+  CONTEXT_REQUIRED_FACTOR,
+  CONTEXT_USEFUL_FACTOR,
   scoreToLevel,
 } from './quality-constants.js';
 
@@ -190,17 +190,20 @@ export class QualityWorkerService
         'sv.locale_id AS locale_id',
         'sv.value AS value',
         'sv.quality_comment AS quality_comment',
+        'sv.context AS context',
       ])
       .getRawMany<{
         key_id: string;
         locale_id: string;
         value: string | null;
         quality_comment: string | null;
+        context: string | null;
       }>();
 
-    // Group values by key; also collect previous quality comments per key
+    // Group values by key; also collect previous quality comments and sandbox context per key
     const valuesByKey = new Map<string, Map<string, string>>();
     const commentsByKey = new Map<string, string[]>();
+    const sandboxContextByKey = new Map<string, string>();
     for (const v of values) {
       if (!v.value) continue;
       if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, new Map());
@@ -208,6 +211,10 @@ export class QualityWorkerService
       if (v.quality_comment) {
         if (!commentsByKey.has(v.key_id)) commentsByKey.set(v.key_id, []);
         commentsByKey.get(v.key_id)!.push(v.quality_comment);
+      }
+      // Collect sandbox context — prefer first non-null value found
+      if (v.context && !sandboxContextByKey.has(v.key_id)) {
+        sandboxContextByKey.set(v.key_id, v.context);
       }
     }
 
@@ -228,7 +235,7 @@ export class QualityWorkerService
       const source = defaultLocale
         ? (valMap.get(defaultLocale.id) ?? null)
         : null;
-      const context = keyEntity.context;
+      const context = sandboxContextByKey.get(keyId) ?? keyEntity.context;
       const translations: Record<string, string> = {};
       for (const [localeId, value] of valMap.entries()) {
         const locale = localeById.get(localeId);
@@ -280,8 +287,11 @@ export class QualityWorkerService
       contextInfo = { ...mainResult.contextInfo };
       allSkippedKeys = new Set(mainResult.skippedKeys);
     } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      const stack = e instanceof Error ? e.stack : undefined;
       this.logger.error(
-        `Gemini failed for batch: ${e instanceof Error ? e.message : String(e)}`,
+        `Gemini failed for batch [keys: ${keyIds.join(', ')}]: ${msg}`,
+        stack,
       );
       await this.setStateForKeys(projectId, keyIds, 'failed');
       return;
@@ -301,36 +311,38 @@ export class QualityWorkerService
           keyEntity.contextNeed = info.need;
           keyEntity.contextReason = info.reason;
           await this.keyRepo.save(keyEntity);
-
-          // Update sandbox_values for this key
-          await this.sandboxRepo
-            .createQueryBuilder()
-            .update()
-            .set({ contextNeed: info.need, contextReason: info.reason })
-            .where('project_id = :projectId AND key_id = :keyId', {
-              projectId,
-              keyId,
-            })
-            .execute();
         }
+
+        // Always sync contextNeed/contextReason to sandbox_values — they may be
+        // stale (null) after a sandbox reset even when translation_keys already
+        // has the correct value from a previous quality check cycle.
+        await this.sandboxRepo
+          .createQueryBuilder()
+          .update()
+          .set({ contextNeed: info.need, contextReason: info.reason })
+          .where('project_id = :projectId AND key_id = :keyId', {
+            projectId,
+            keyId,
+          })
+          .execute();
       }
 
-      // Apply context penalty when context is missing
+      // Apply context penalty when context is missing — proportional reduction, min 1
       const keyResult = results[keyEntity.key];
       const need = info?.need ?? keyEntity.contextNeed;
-      if (need && need !== 'none' && !keyEntity.context && keyResult) {
-        const cap =
-          need === 'required' ? CONTEXT_REQUIRED_CAP : CONTEXT_USEFUL_CAP;
+      const effectiveContext =
+        sandboxContextByKey.get(keyId) ?? keyEntity.context;
+      if (need && need !== 'none' && !effectiveContext && keyResult) {
+        const factor =
+          need === 'required' ? CONTEXT_REQUIRED_FACTOR : CONTEXT_USEFUL_FACTOR;
         const note =
           need === 'required'
             ? 'Context is required but missing — confidence reduced.'
             : 'Context would improve this evaluation — consider adding it.';
         for (const [, r] of Object.entries(keyResult)) {
-          if (r.score > cap) {
-            r.score = cap;
-            r.level = scoreToLevel(cap);
-            r.comment = r.comment ? `${r.comment} ${note}` : note;
-          }
+          r.score = Math.max(1, Math.round(r.score * factor));
+          r.level = scoreToLevel(r.score);
+          r.comment = r.comment ? `${r.comment} ${note}` : note;
         }
       }
     }
