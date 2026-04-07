@@ -98,7 +98,11 @@ const EntryEditModal: React.FC<EditModalProps> = ({
       const { key: formKey, context: formContext, ...rest } = vals;
       const key = isNew ? formKey : (entry?.key ?? '');
       const values: Record<string, string> = {};
-      for (const locale of locales) values[locale] = rest[locale] ?? '';
+      for (const locale of locales) {
+        const v = rest[locale] ?? '';
+        if (locale === 'en' && !v.trim()) return; // blocked by form rules, safety guard
+        values[locale] = v;
+      }
       onSave(key, values, formContext);
     });
   };
@@ -513,7 +517,19 @@ const EntryEditModal: React.FC<EditModalProps> = ({
           );
 
           return (
-            <Form.Item key={locale} name={locale} label={labelContent}>
+            <Form.Item
+              key={locale}
+              name={locale}
+              label={labelContent}
+              rules={
+                locale === 'en'
+                  ? [
+                      { required: true, message: 'Source (en) value is required' },
+                      { whitespace: true, message: 'Source (en) value cannot be empty' },
+                    ]
+                  : []
+              }
+            >
               <Input.TextArea autoSize={{ minRows: 1, maxRows: 4 }} />
             </Form.Item>
           );
