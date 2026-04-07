@@ -900,10 +900,6 @@ export class SandboxService {
       [project.id, ns.id],
     );
 
-    if (result.length > 0) {
-      this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
-    }
-
     return { deleted: result.length };
   }
 
