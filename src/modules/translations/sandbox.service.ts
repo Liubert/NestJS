@@ -876,7 +876,10 @@ export class SandboxService {
     });
     if (!defaultLocale) throw new NotFoundException('No default locale found');
 
-    const result = await this.dataSource.query<{ id: string }[]>(
+    // TypeORM returns [rows, rowCount] for DELETE/UPDATE — use destructuring
+    const [deletedRows, deletedCount] = await this.dataSource.query<
+      [{ id: string }[], number]
+    >(
       `DELETE FROM sandbox_values
        WHERE project_id = $1
          AND locale_id != $2
@@ -885,7 +888,7 @@ export class SandboxService {
       [project.id, defaultLocale.id, ns.id],
     );
 
-    if (result.length > 0) {
+    if (deletedRows.length > 0) {
       await this.projectRepo.update(project.id, { sandboxHasChanges: true });
     }
 
@@ -900,7 +903,7 @@ export class SandboxService {
       [project.id, ns.id],
     );
 
-    return { deleted: result.length };
+    return { deleted: deletedCount };
   }
 
   async resetNamespaceQuality(
@@ -922,7 +925,9 @@ export class SandboxService {
     });
     if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
 
-    const result = await this.dataSource.query<{ id: string }[]>(
+    const [, resetCount] = await this.dataSource.query<
+      [{ id: string }[], number]
+    >(
       `UPDATE sandbox_values
        SET quality_review_state = 'not_checked',
            quality_score = NULL,
@@ -938,7 +943,7 @@ export class SandboxService {
       [project.id, ns.id],
     );
 
-    return { reset: result.length };
+    return { reset: resetCount };
   }
 
   // ─── Sandbox HTTP namespace (flat JSON for consumer apps) ────────────────
