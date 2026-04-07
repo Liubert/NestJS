@@ -114,8 +114,9 @@ Comment: empty string if ≥90; otherwise explain the main issue (max 60 words).
 
   return `You are a strict software localization and language quality reviewer. Evaluate each translation below.
 
-Context rule:
-- If a key has a "context" field: it is DEFINITIVE — evaluate against that meaning ONLY.
+CRITICAL — Context rule:
+- If a key has a "context" field: it is DEFINITIVE — evaluate the translation against that meaning ONLY.
+- When context is present, set "contextNeed" to "none" — context already resolves the ambiguity. Do NOT report the source as ambiguous or missing context when a "context" field was provided.
 ${guidanceSection}
 CRITICAL — Placeholder integrity (evaluate this BEFORE everything else):
 1. Extract every placeholder from the source text: patterns like {{name}}, {count}, %s, %d, {0}, %1$s.
@@ -280,7 +281,10 @@ export function buildBulkTranslatePrompt(
   return (
     `You are a software localization assistant. Translate each entry below.\n\n` +
     `${translateRules}\n\n` +
-    `Context rule: if an entry has a "context" field, use it to determine the exact intended meaning. If no context, translate using the most common UI interpretation.\n\n` +
+    `CRITICAL — Context rule:\n` +
+    `- If an entry has a "context" field: it defines the EXACT intended meaning. You MUST translate using only that one meaning. NEVER provide multiple alternatives or combined translations like "word1 / word2 (if X) / word3 (if Y)". Pick one correct translation that matches the context.\n` +
+    `- If no context: translate using the most common UI interpretation.\n` +
+    `- When context is provided, set "contextNeed" to "none" in your response — context already resolves any ambiguity.\n\n` +
     `${contextDetectionPrompt ?? 'For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.'}\n\n` +
     (localeGuidanceSection ? `${localeGuidanceSection}\n\n` : '') +
     `Return ONLY valid JSON (no markdown, no explanations):\n` +

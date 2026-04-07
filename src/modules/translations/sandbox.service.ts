@@ -1211,19 +1211,19 @@ export class SandboxService {
               COALESCE(
                 (SELECT sv_ctx.context FROM sandbox_values sv_ctx
                  WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false LIMIT 1),
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1),
                 tk.context
               ) AS context,
               COALESCE(
                 (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
                  WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false LIMIT 1),
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1),
                 tk.context_need
               ) AS context_need,
               COALESCE(
                 (SELECT sv_ctx.context_reason FROM sandbox_values sv_ctx
                  WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false LIMIT 1),
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context_reason IS NOT NULL LIMIT 1),
                 tk.context_reason
               ) AS context_reason${qualitySelectExpr}
        FROM translation_keys tk
@@ -1805,19 +1805,19 @@ export class SandboxService {
               COALESCE(
                 (SELECT sv_ctx.context FROM sandbox_values sv_ctx
                  WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false LIMIT 1),
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1),
                 tk.context
               ) AS context,
               COALESCE(
                 (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
                  WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false LIMIT 1),
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1),
                 tk.context_need
               ) AS context_need,
               COALESCE(
                 (SELECT sv_ctx.context_reason FROM sandbox_values sv_ctx
                  WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false LIMIT 1),
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context_reason IS NOT NULL LIMIT 1),
                 tk.context_reason
               ) AS context_reason,
               (SELECT MIN(sv_qs.quality_score) FROM sandbox_values sv_qs

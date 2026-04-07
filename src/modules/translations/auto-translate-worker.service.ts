@@ -22,6 +22,7 @@ interface MissingRow {
   key_name: string;
   source_text: string;
   default_locale_id: string;
+  key_context: string | null;
 }
 
 @Injectable()
@@ -73,10 +74,21 @@ export class AutoTranslateWorkerService
       if (!defaultLocale || !nonDefaultLocales.length) return;
 
       const rows = await this.dataSource.query<
-        { key_id: string; key_name: string; source_text: string }[]
+        {
+          key_id: string;
+          key_name: string;
+          source_text: string;
+          key_context: string | null;
+        }[]
       >(
         `SELECT tk.id AS key_id,
                 tk.key AS key_name,
+                COALESCE(
+                  (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+                   WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $2
+                     AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1),
+                  tk.context
+                ) AS key_context,
                 COALESCE(sv_def.value, tv_def.value) AS source_text
          FROM translation_keys tk
          LEFT JOIN sandbox_values sv_def
@@ -108,6 +120,7 @@ export class AutoTranslateWorkerService
             row.key_name,
             row.source_text,
             nonDefaultLocales,
+            row.key_context,
           );
           translated++;
         } catch (e: unknown) {
@@ -147,10 +160,16 @@ export class AutoTranslateWorkerService
 
       // Find all keys missing sandbox values for this locale
       const missingRows = await this.dataSource.query<
-        { key_id: string; key_name: string; source_text: string }[]
+        {
+          key_id: string;
+          key_name: string;
+          source_text: string;
+          key_context: string | null;
+        }[]
       >(
         `SELECT tk.id AS key_id,
                 tk.key AS key_name,
+                tk.context AS key_context,
                 COALESCE(sv_def.value, tv_def.value) AS source_text
          FROM translation_namespaces ns
          JOIN translation_keys tk ON tk.namespace_id = ns.id
@@ -191,6 +210,7 @@ export class AutoTranslateWorkerService
             row.key_name,
             row.source_text,
             [locale],
+            row.key_context,
           );
         } catch (e: unknown) {
           this.logger.warn(
@@ -216,6 +236,12 @@ export class AutoTranslateWorkerService
            ns.project_id,
            tk.id AS key_id,
            tk.key AS key_name,
+           COALESCE(
+             (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+              WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = p.id
+                AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1),
+             tk.context
+           ) AS key_context,
            COALESCE(sv_def.value, tv_def.value) AS source_text,
            dl.id AS default_locale_id
          FROM translation_projects p
@@ -254,7 +280,12 @@ export class AutoTranslateWorkerService
       // Group by project
       const byProject = new Map<
         string,
-        { keyId: string; keyName: string; sourceText: string }[]
+        {
+          keyId: string;
+          keyName: string;
+          sourceText: string;
+          context: string | null;
+        }[]
       >();
       for (const row of rows) {
         if (!byProject.has(row.project_id)) byProject.set(row.project_id, []);
@@ -262,6 +293,7 @@ export class AutoTranslateWorkerService
           keyId: row.key_id,
           keyName: row.key_name,
           sourceText: row.source_text,
+          context: row.key_context,
         });
       }
 
@@ -273,7 +305,7 @@ export class AutoTranslateWorkerService
         if (!nonDefaultLocales.length) continue;
 
         let projectLimitReached = false;
-        for (const { keyId, keyName, sourceText } of keys) {
+        for (const { keyId, keyName, sourceText, context } of keys) {
           if (projectLimitReached) break;
           try {
             await this.translateKey(
@@ -282,6 +314,7 @@ export class AutoTranslateWorkerService
               keyName,
               sourceText,
               nonDefaultLocales,
+              context,
             );
             totalTranslated++;
           } catch (e: unknown) {
@@ -315,6 +348,7 @@ export class AutoTranslateWorkerService
     keyName: string,
     sourceText: string,
     nonDefaultLocales: LocaleEntity[],
+    context?: string | null,
   ): Promise<void> {
     // Check which locales are actually missing sandbox values for this key
     const existingSandbox = await this.sandboxRepo.find({
@@ -352,6 +386,7 @@ export class AutoTranslateWorkerService
       targetLocales,
       projectId,
       Object.keys(localeGuidance).length ? localeGuidance : undefined,
+      context,
     );
 
     // Write results to sandbox_values
