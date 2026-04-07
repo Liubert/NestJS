@@ -1693,6 +1693,8 @@ export class SandboxService {
               qualityComment: result.comment,
               qualityCheckedAt: new Date(),
               qualityReviewState: 'checked',
+              contextNeed: result.contextNeed,
+              contextReason: result.contextReason,
             })
             .where(
               'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
