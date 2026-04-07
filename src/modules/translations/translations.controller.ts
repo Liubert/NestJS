@@ -646,6 +646,26 @@ export class TranslationsController {
     );
   }
 
+  @Post('projects/:slug/namespaces/:ns/reset-quality')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Reset all quality scores in a namespace — quality worker will re-evaluate',
+  })
+  async resetNamespaceQuality(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<{ reset: number }> {
+    return this.sandboxService.resetNamespaceQuality(
+      slug,
+      ns,
+      user.userId,
+      user.role,
+    );
+  }
+
   // ─── Entries (protected) ──────────────────────────────────────────────────
 
   @Get('projects/:slug/namespaces/:ns/entries')
