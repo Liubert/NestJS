@@ -1313,17 +1313,6 @@ export class SandboxService {
     const data: SandboxEntryRow[] = keys.map((k) => {
       const vals = valuesByKey.get(k.id) ?? {};
       const qual = qualityByKey.get(k.id) ?? {};
-      for (const locale of Object.keys(vals)) {
-        if (!qual[locale]) {
-          qual[locale] = {
-            reviewState: 'not_checked',
-            score: null,
-            level: null,
-            comment: null,
-            checkedAt: null,
-          };
-        }
-      }
       return {
         key: k.key,
         createdAt: k.created_at,
@@ -1905,17 +1894,6 @@ export class SandboxService {
     const data: SandboxEntryRow[] = keys.map((k) => {
       const vals = valuesByKey.get(k.id) ?? {};
       const qual = qualityByKey.get(k.id) ?? {};
-      for (const locale of Object.keys(vals)) {
-        if (!qual[locale]) {
-          qual[locale] = {
-            reviewState: 'not_checked',
-            score: null,
-            level: null,
-            comment: null,
-            checkedAt: null,
-          };
-        }
-      }
       return {
         key: k.key,
         createdAt: k.created_at,

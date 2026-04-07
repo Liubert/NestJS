@@ -211,15 +211,8 @@ export class QualityWorkerService
       }
     }
 
-    // Build items for bulk quality check
+    // Build items for bulk quality check (non-default locales only)
     const items: Array<{
-      key: string;
-      source: string | null;
-      context: string | null;
-      translations: Record<string, string>;
-      previousComment?: string | null;
-    }> = [];
-    const defaultItems: Array<{
       key: string;
       source: string | null;
       context: string | null;
@@ -237,15 +230,10 @@ export class QualityWorkerService
         : null;
       const context = keyEntity.context;
       const translations: Record<string, string> = {};
-      let defaultValue: string | undefined;
       for (const [localeId, value] of valMap.entries()) {
         const locale = localeById.get(localeId);
-        if (!locale) continue;
-        if (locale.isDefault) {
-          defaultValue = value;
-        } else {
-          translations[locale.code] = value;
-        }
+        if (!locale || locale.isDefault) continue;
+        translations[locale.code] = value;
       }
 
       const comments = commentsByKey.get(keyId) ?? [];
@@ -260,18 +248,9 @@ export class QualityWorkerService
           previousComment,
         });
       }
-      if (defaultLocale && defaultValue) {
-        defaultItems.push({
-          key: keyEntity.key,
-          source: null,
-          context,
-          translations: { [defaultLocale.code]: defaultValue },
-          previousComment,
-        });
-      }
     }
 
-    if (!items.length && !defaultItems.length) {
+    if (!items.length) {
       await this.setStateForKeys(projectId, keyIds, 'checked');
       return;
     }
@@ -290,68 +269,16 @@ export class QualityWorkerService
     let allSkippedKeys = new Set<string>();
 
     try {
-      const emptyResult = {
-        results: {} as Record<
-          string,
-          Record<
-            string,
-            {
-              score: number;
-              level: 'green' | 'yellow' | 'red';
-              comment: string;
-            }
-          >
-        >,
-        contextInfo: {} as Record<
-          string,
-          { need: 'required' | 'useful' | 'none'; reason: string | null }
-        >,
-        skippedKeys: [] as string[],
-      };
-      const [mainResult, defaultResult] = await Promise.all([
-        items.length
-          ? this.aiTranslateService.bulkCheckQuality(
-              items,
-              5,
-              90_000,
-              projectId,
-              guidanceParam,
-            )
-          : Promise.resolve(emptyResult),
-        defaultItems.length
-          ? this.aiTranslateService.bulkCheckQuality(
-              defaultItems,
-              5,
-              90_000,
-              projectId,
-            )
-          : Promise.resolve(emptyResult),
-      ]);
+      const mainResult = await this.aiTranslateService.bulkCheckQuality(
+        items,
+        5,
+        90_000,
+        projectId,
+        guidanceParam,
+      );
       results = { ...mainResult.results };
-      // Merge contextInfo: take the higher-priority value per key (required > useful > none)
-      const contextPriority: Record<'required' | 'useful' | 'none', number> = {
-        required: 2,
-        useful: 1,
-        none: 0,
-      };
       contextInfo = { ...mainResult.contextInfo };
-      for (const [key, info] of Object.entries(defaultResult.contextInfo)) {
-        const existing = contextInfo[key];
-        if (
-          !existing ||
-          (contextPriority[info.need] ?? -1) >
-            (contextPriority[existing.need] ?? -1)
-        ) {
-          contextInfo[key] = info;
-        }
-      }
-      for (const [key, localeMap] of Object.entries(defaultResult.results)) {
-        results[key] = Object.assign({}, results[key] ?? {}, localeMap);
-      }
-      allSkippedKeys = new Set([
-        ...mainResult.skippedKeys,
-        ...defaultResult.skippedKeys,
-      ]);
+      allSkippedKeys = new Set(mainResult.skippedKeys);
     } catch (e: unknown) {
       this.logger.error(
         `Gemini failed for batch: ${e instanceof Error ? e.message : String(e)}`,

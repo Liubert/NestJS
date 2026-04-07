@@ -20,14 +20,10 @@ Rules:
 - No explanations, no commentary, no markdown fences — only raw JSON
 
 Target languages: {{languages}}
-
-Context (if provided): "{{context}}"
-- If context is present, use it to determine the intended meaning and choose the most appropriate translation.
-- If context is empty or not provided, translate using the most common UI interpretation.
-
+{{context}}
 English text: "{{text}}"
 
-Required output format: {"uk": "...", "nb": "...", "sv": "...", "da": "..."}`;
+Required output format: {"<locale_code>": "..."}`;
 
 export const DEFAULT_QUALITY_TRANSLATE_PROMPT = `\
 You are a strict software localization and language quality reviewer.
@@ -41,33 +37,30 @@ Checks:
 - Grammar, spelling, punctuation ({{locale}} conventions)
 - Natural, idiomatic phrasing for software/product UI
 - Nuance and meaning preserved
-- Placeholders ({{name}}, %s, {count}, {0}) preserved exactly
+- Placeholders ({{name}}, %s, {count}, {0}) must be preserved EXACTLY — same names, same count. Any renaming, removal, or addition = score 1–3 regardless of other quality
 
 Scoring (1–100):
-- 95–100: excellent, production-ready
-- 80–94: strong, minor improvements only
+- 90–100: excellent, production-ready
+- 80–89: strong, minor improvements only
 - 60–79: understandable but imperfect
 - below 60: significant errors
 
-Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).
+Comment: empty string if ≥90; otherwise explain the main issue (max 60 words).
 
 Context need — evaluate the ENGLISH SOURCE TEXT only, not the translation quality:
 
-Step 1: List ALL distinct meanings this English word/phrase could have in a software product.
-Step 2: If there are 2+ distinct meanings that would require different translations → "required".
-         If there is 1 clear dominant meaning but knowing context would help → "useful".
-         If meaning is unambiguous in any software context → "none".
+"required" — ANY of the following is true:
+  - The word/phrase has 2+ meanings that would produce DIFFERENT words in translation.
+  - It is a short label (1–2 words) with no surrounding sentence to anchor its meaning.
+  - Do NOT apply "dominant meaning" reasoning — if another meaning is plausible in a UI, mark "required".
 
-Examples where contextNeed = "required":
-- "Train" → transportation vs exercise/ML training
-- "Light" → weight/theme mode vs illumination
-- "Save" → save file/data vs save/rescue
-- "Draft" → document draft vs air draft vs military draft
-- "by" → "Sort by", "Created by", "Approved by", "Powered by" — meaning depends entirely on UI context
-- "Log" → event log vs log in/out vs log (wood)
+"useful" — phrase is 3+ words giving ~85% confidence, but UI location would still confirm intent.
 
-Examples where contextNeed = "none":
-- "Email address", "Password", "Sign in" — universally clear in software
+"none" — meaning is 100% unambiguous in any software context.
+
+Examples — "required": "Train", "Light", "Draft", "By", "Log", "Save", "Match", "Charge", "Issue", "Open", "File", "Record", "Run", "Post"
+Examples — "useful": "Delete account", "Approve request"
+Examples — "none": "Email address", "Password", "Sign in", "Cancel", "Loading..."
 
 Do NOT let a high translation score influence contextNeed. A translation can be correct AND the source can still be ambiguous.
 Add "contextReason" if required or useful (1 sentence, max 30 words explaining what other meanings are possible).
@@ -99,34 +92,31 @@ Checks to apply:
 - Placeholders, variables, interpolation tokens ({{name}}, %s, {count}, {0}) and markup must be preserved exactly
 
 Scoring rules — be strict. Do NOT round up. Do NOT give benefit of the doubt. Score on a 1–100 scale:
-- 95–100: excellent, production-ready, no meaningful issues
-- 80–94: very strong, minor improvement opportunities
+- 90–100: excellent, production-ready, no meaningful issues
+- 80–89: very strong, minor improvement opportunities
 - 60–79: understandable, but clearly imperfect
 - below 60: noticeable quality problems
 
 Comment rules:
-- score 95–100: comment should be empty string
-- score 80–94: comment must explain what could still be improved
+- score 90–100: comment should be empty string
+- score 80–89: comment must explain what could still be improved
 - score below 80: comment must explain the main issue
 - keep comment practical and concise, up to 60 words
 
 Context need — evaluate the TEXT itself, independently of quality score:
 
-Step 1: List ALL distinct meanings this word/phrase could have in a software product.
-Step 2: If there are 2+ distinct meanings that would require different translations → "required".
-         If there is 1 clear dominant meaning but knowing context would help → "useful".
-         If meaning is unambiguous → "none".
+"required" — ANY of the following is true:
+  - The word/phrase has 2+ meanings that would produce DIFFERENT words in translation.
+  - It is a short label (1–2 words) with no surrounding sentence to anchor its meaning.
+  - Do NOT apply "dominant meaning" reasoning — if another meaning is plausible in a UI, mark "required".
 
-Examples where contextNeed = "required":
-- "Train" → transportation vs exercise/ML training
-- "Light" → weight/theme mode vs illumination
-- "Save" → save file/data vs save/rescue
-- "Draft" → document draft vs air draft vs military draft
-- "by" → "Sort by", "Created by", "Approved by" — meaning depends entirely on UI context
-- "Log" → event log vs log in/out
+"useful" — phrase is 3+ words giving ~85% confidence, but UI location would still confirm intent.
 
-Examples where contextNeed = "none":
-- "Email address", "Password", "Sign in" — universally clear in software
+"none" — meaning is 100% unambiguous in any software context.
+
+Examples — "required": "Train", "Light", "Draft", "By", "Log", "Save", "Match", "Charge", "Issue", "Open", "File", "Record", "Run", "Post"
+Examples — "useful": "Delete account", "Approve request"
+Examples — "none": "Email address", "Password", "Sign in", "Cancel", "Loading..."
 
 Do NOT let a high quality score influence contextNeed.
 If contextNeed is "required" or "useful", add "contextReason" — a short plain-language explanation (1 sentence, max 30 words).
@@ -135,21 +125,17 @@ Return ONLY valid JSON, no markdown, no extra text:
 {"score": <1-100>, "comment": "<string>", "contextNeed": "<required|useful|none>", "contextReason": "<string or null>"}`;
 
 export const DEFAULT_CONTEXT_DETECTION_PROMPT = `\
-Context need:
+Context need — strict rules:
 
-Set "contextNeed" to:
-- "required" — when the text can mean different things and context is necessary to choose the correct translation or evaluate translation quality.
-- "useful" — when the text is understandable without context, but context would improve translation confidence or quality evaluation.
-- "none" — when the meaning is clear and context is not needed.
+RULE 1 (short labels): If the text is 1–3 words AND has ANY alternate meaning in a software product → ALWAYS "required". No exceptions. Do not apply "dominant meaning" reasoning.
+RULE 2 (longer phrases): If 4+ words give ~85% confidence in meaning but UI location would confirm → "useful".
+RULE 3: "none" only when meaning is 100% unambiguous in every possible software context.
 
-Use context need not only for translation, but also for translation quality evaluation. If missing context could affect confidence in correctness, fluency, or meaning, mark it accordingly.
+Single words and short prepositions are almost always "required": "By", "Log", "Draft", "Train", "Light", "Save", "Open", "Run", "Post", "File", "Issue", "Match", "Charge", "Record", "Close", "Set", "Tag"
+Longer phrases can be "useful": "Delete account", "Approve request", "Reset password"
+Clear phrases are "none": "Email address", "Password", "Sign in", "Cancel", "Loading..."
 
-Examples:
-- "required": "Charge", "Match"
-- "useful": "Open", "Issue"
-- "none": "Cancel", "Email"
-
-When contextNeed is "required" or "useful", provide "contextReason" — one sentence (max 30 words) explaining why context helps.`;
+When contextNeed is "required" or "useful", provide "contextReason" — one sentence (max 30 words) explaining the alternate meanings.`;
 
 // ─── Interpolation helper ─────────────────────────────────────────────────────
 

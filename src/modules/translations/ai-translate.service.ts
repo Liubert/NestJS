@@ -416,6 +416,24 @@ export class AiTranslateService {
       }
     }
 
+    // Placeholder integrity — AI cannot reliably detect renamed placeholders
+    const ph = (s: string) => new Set(s.match(/{{(\w+)}}/g) ?? []);
+    for (const item of items) {
+      if (!item.source) continue;
+      const src = ph(item.source);
+      if (!src.size) continue;
+      for (const [locale, val] of Object.entries(item.translations)) {
+        const bad = [...src].filter((p) => !ph(val).has(p));
+        if (!bad.length) continue;
+        results[item.key] ??= {};
+        results[item.key][locale] = {
+          score: 1,
+          level: scoreToLevel(1),
+          comment: `Placeholder mismatch — missing: ${bad.join(', ')}`,
+        };
+      }
+    }
+
     if (projectId) {
       const totalLocales = items.reduce(
         (sum, item) => sum + Object.keys(item.translations).length,

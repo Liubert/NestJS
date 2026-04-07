@@ -2,11 +2,11 @@
 export const GREEN_MIN_SCORE = 90;
 export const YELLOW_MIN_SCORE = 80;
 
-/** Score cap when contextNeed='required' but context is missing */
-export const CONTEXT_REQUIRED_CAP = GREEN_MIN_SCORE - 1; // 89
+/** Score cap when contextNeed='required' but context is missing — forces red */
+export const CONTEXT_REQUIRED_CAP = YELLOW_MIN_SCORE - 1; // 79
 
-/** Score cap when contextNeed='useful' but context is missing (soft — still green) */
-export const CONTEXT_USEFUL_CAP = 94;
+/** Score cap when contextNeed='useful' but context is missing — forces yellow or below */
+export const CONTEXT_USEFUL_CAP = GREEN_MIN_SCORE - 1; // 89
 
 export type ContextNeed = 'required' | 'useful' | 'none';
 

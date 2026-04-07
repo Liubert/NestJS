@@ -79,7 +79,8 @@ export function buildBulkQualityPrompt(
   // Collect all locale codes from items and build guidance section
   let guidanceSection = '';
   if (localeGuidance) {
-    const allLocales = new Set<string>();
+    // Include all locales with guidance — including source locale (e.g. 'en')
+    const allLocales = new Set<string>(Object.keys(localeGuidance));
     for (const item of items) {
       for (const code of Object.keys(item.translations)) {
         allLocales.add(code);
@@ -104,25 +105,32 @@ export function buildBulkQualityPrompt(
 - Placeholders ({{name}}, %s, {count}, {0}) preserved exactly
 
 Scoring (1–100):
-- 95–100: excellent, production-ready
-- 80–94: strong, minor improvements only
+- 90–100: excellent, production-ready
+- 80–89: strong, minor improvements only
 - 60–79: understandable but imperfect
 - below 60: significant errors
 
-Comment: empty string if ≥95; otherwise explain the main issue (max 60 words).`;
+Comment: empty string if ≥90; otherwise explain the main issue (max 60 words).`;
 
   return `You are a strict software localization and language quality reviewer. Evaluate each translation below.
 
 Context rule:
 - If a key has a "context" field: it is DEFINITIVE — evaluate against that meaning ONLY.
-- If a key has no "context" field: accept any translation that fits standard software UI usage.
 ${guidanceSection}
+CRITICAL — Placeholder integrity (evaluate this BEFORE everything else):
+1. Extract every placeholder from the source text: patterns like {{name}}, {count}, %s, %d, {0}, %1$s.
+2. Verify the translation contains the IDENTICAL set — exact same names, exact same count.
+3. If ANY placeholder is renamed (e.g. {{count}} → {{antall}}), missing, or extra: score MUST be 1–3. No exceptions. Comment must state which placeholder is wrong.
+
 Identical source/translation rule: if a translation value is IDENTICAL to the source text, treat it as potentially untranslated. Words that are legitimately the same across languages (e.g. "taxi", "hotel", "internet", abbreviations) should be scored normally. Otherwise score very low (1–5) and note it appears untranslated.
 
 If "previousReviewerNote" is present, treat it as prior feedback on an earlier version. Do not penalize for issues already resolved.
 
-${sharedCriteria}, в
+${sharedCriteria}
+
 ${contextDetectionPrompt ?? 'For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.'}
+
+English source quality: also evaluate the English source text itself for grammar, spelling, and natural phrasing. Apply the language-specific guidance for "en" if provided above. Return the result under locale "en" in the locales map. Use the same 1–100 scale.
 
 Return ONLY valid JSON:
 {
@@ -130,6 +138,7 @@ Return ONLY valid JSON:
     "contextNeed": "<required|useful|none>",
     "contextReason": "<string or null>",
     "locales": {
+      "en": { "score": <number 1-100>, "comment": "<string>" },
       "<locale>": { "score": <number 1-100>, "comment": "<string>" }
     }
   }
@@ -167,8 +176,14 @@ export function buildTranslatePrompt(
     .map(([code, name]) => `${name} (${code})`)
     .join(', ');
 
-  const vars: Record<string, string> = { text, languages };
-  if (context) vars.context = context;
+  const contextBlock = context?.trim()
+    ? `Context: "${context.trim()}"\nUse this context to determine the exact intended meaning.`
+    : '';
+  const vars: Record<string, string> = {
+    text,
+    languages,
+    context: contextBlock,
+  };
   let prompt = interpolate(aiCfg.translatePrompt, vars);
 
   if (localeGuidance) {
