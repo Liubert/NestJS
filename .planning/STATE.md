@@ -133,9 +133,10 @@ None yet.
 | 260406-wje | Add average quality score per namespace to project details and ProjectSettingsPage | 2026-04-06 | 145ae9a | [260406-wje-add-average-quality-score-per-namespace-](./quick/260406-wje-add-average-quality-score-per-namespace-/) |
 | 260407-hur | Quality column-header filters, FilterBar settings gear, AddLocaleModal, contextNeed priority merge, vite preview config | 2026-04-07 | 7511168 | [260407-hur-deploy-uncommitted-changes-to-stage](./quick/260407-hur-deploy-uncommitted-changes-to-stage/) |
 | 260407-iem | Add background polling with silent refetch and error surfacing to TranslationsPage | 2026-04-07 | 42f369d | [260407-iem-background-polling-on-translations-page-](./quick/260407-iem-background-polling-on-translations-page-/) |
+| 260407-ils | Migration replacing stale nb-NO/da-DK with canonical nb/da in all four ai_config prompt columns | 2026-04-07 | 1190c23 | [260407-ils-fix-ai-config-translate-prompt-nb-no-to-](./quick/260407-ils-fix-ai-config-translate-prompt-nb-no-to-/) |
 
 ## Session Continuity
 
-Last session: 2026-04-07T10:19:42Z
-Stopped at: Completed quick task 260407-iem: background polling on translations page
+Last session: 2026-04-07T10:26:00Z
+Stopped at: Completed quick task 260407-ils: fix ai_config locale codes migration (nb-NO->nb, da-DK->da)
 Resume file: None
