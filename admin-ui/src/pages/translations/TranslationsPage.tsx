@@ -24,6 +24,7 @@ import {
   SyncOutlined,
   CheckCircleOutlined,
   PlusOutlined,
+  ClearOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
@@ -313,6 +314,19 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       message.error(e.response?.data?.message ?? 'Error resetting translations'),
   });
 
+  const resetNsQualityMutation = useMutation({
+    mutationFn: (ns: string) =>
+      apiClient.post(
+        `/translations/projects/${projectSlug}/namespaces/${ns}/reset-quality`,
+      ),
+    onSuccess: (_data, ns) => {
+      message.success(`Quality scores for "${ns}" reset — re-evaluation queued`);
+      invalidate();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error resetting quality scores'),
+  });
+
   const handleSearch = useCallback(() => {
     setSearch(searchInput);
     setPage(1);
@@ -387,6 +401,12 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         icon: <SyncOutlined />,
         danger: true,
       });
+      items.push({
+        key: 'reset-quality',
+        label: 'Reset quality scores',
+        icon: <ClearOutlined />,
+        danger: false,
+      });
     }
     return items;
   }, [isSandbox, namespace]);
@@ -403,9 +423,17 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           okButtonProps: { danger: true },
           onOk: () => resetNsTranslationsMutation.mutateAsync(namespace),
         });
+      } else if (key === 'reset-quality') {
+        Modal.confirm({
+          title: `Reset quality scores for "${namespace}"?`,
+          content: 'All quality scores in this namespace will be cleared and re-evaluated automatically. Manually confirmed (expected) entries are not affected.',
+          okText: 'Reset quality',
+          okButtonProps: { style: { background: '#faad14', borderColor: '#faad14' } },
+          onOk: () => resetNsQualityMutation.mutateAsync(namespace),
+        });
       }
     },
-    [namespace, resetNsTranslationsMutation],
+    [namespace, resetNsTranslationsMutation, resetNsQualityMutation],
   );
 
   return (
