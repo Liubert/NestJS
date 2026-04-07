@@ -908,6 +908,44 @@ export class SandboxService {
     return { deleted: result.length };
   }
 
+  async resetNamespaceQuality(
+    projectSlug: string,
+    nsSlug: string,
+    userId: string,
+    role: UserRole,
+  ): Promise<{ reset: number }> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!this.isAdmin(role) && project.ownerId !== userId) {
+      throw new ForbiddenException(
+        'Only the project owner or admin can reset namespace quality scores',
+      );
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const result = await this.dataSource.query<{ id: string }[]>(
+      `UPDATE sandbox_values
+       SET quality_review_state = 'not_checked',
+           quality_score = NULL,
+           quality_level = NULL,
+           quality_comment = NULL,
+           quality_checked_at = NULL,
+           quality_content_hash = NULL
+       WHERE project_id = $1
+         AND key_id IN (SELECT id FROM translation_keys WHERE namespace_id = $2)
+         AND is_deleted = false
+         AND quality_review_state != 'expected'
+       RETURNING id`,
+      [project.id, ns.id],
+    );
+
+    return { reset: result.length };
+  }
+
   // ─── Sandbox HTTP namespace (flat JSON for consumer apps) ────────────────
 
   /**
