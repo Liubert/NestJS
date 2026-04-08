@@ -78,6 +78,74 @@ describe('runSandboxQualityCheck', () => {
     return { qbMock, executeMock, whereMock, setMock, updateMock };
   }
 
+  // Input:  key "Save", en="Save" (default), uk="Зберегти"
+  // checkQuality mock returns score=70 for en, score=90 for uk
+  //
+  // Expected (current behaviour):
+  //   en → checkQuality("Save", "Save", "en", "language_quality")
+  //        i.e. source === translation — same text compared against itself
+  //   uk → checkQuality("Save", "Зберегти", "uk", "translation_quality")
+  //        i.e. normal source vs translation comparison
+  it('calls checkQuality for EN with source===translation (language_quality mode)', async () => {
+    const { qbMock } = makeQbChain();
+
+    const checkQuality = jest.fn().mockResolvedValue({
+      score: 70,
+      level: 'yellow',
+      comment: 'Identical source/translation',
+      contextNeed: 'none',
+      contextReason: null,
+    });
+
+    const EN_ID = 'en-id';
+    const UK_ID = 'uk-id';
+
+    const sandboxRepo = {
+      findOne: jest
+        .fn()
+        .mockImplementation((opts: { where?: { localeId?: string } }) => {
+          if (opts.where?.localeId === EN_ID)
+            return Promise.resolve({ value: 'Save', qualityReviewState: 'not_checked' });
+          if (opts.where?.localeId === UK_ID)
+            return Promise.resolve({ value: 'Зберегти', qualityReviewState: 'not_checked' });
+          return Promise.resolve({ context: null });
+        }),
+      createQueryBuilder: jest.fn().mockReturnValue(qbMock),
+    };
+
+    const locales = [
+      { id: EN_ID, code: 'en', isDefault: true },
+      { id: UK_ID, code: 'uk', isDefault: false },
+    ];
+
+    const service = buildSandboxService({
+      projectRepo: { findOne: jest.fn().mockResolvedValue({ id: PROJECT_ID, sandboxInitializedAt: new Date() }) },
+      sandboxRepo,
+      namespaceRepo: { findOne: jest.fn().mockResolvedValue({ id: NS_ID }) },
+      keyRepo: { findOne: jest.fn().mockResolvedValue({ id: KEY_ID, contextNeed: null, contextReason: null }), save: jest.fn() },
+      localeRepo: { findBy: jest.fn().mockResolvedValue(locales) },
+      aiTranslateService: { checkQuality },
+    });
+
+    await service.runSandboxQualityCheck('my-project', 'common', 'Save', 'user-id', 'USER' as any);
+
+    const calls = checkQuality.mock.calls as unknown[][];
+
+    // EN call: source === translation, mode = language_quality
+    const enCall = calls.find((c) => c[2] === 'en');
+    expect(enCall).toBeDefined();
+    expect(enCall![0]).toBe('Save');      // source
+    expect(enCall![1]).toBe('Save');      // translation — same as source!
+    expect(enCall![3]).toBe('language_quality');
+
+    // UK call: source !== translation, mode = translation_quality
+    const ukCall = calls.find((c) => c[2] === 'uk');
+    expect(ukCall).toBeDefined();
+    expect(ukCall![0]).toBe('Save');       // source
+    expect(ukCall![1]).toBe('Зберегти'); // translation
+    expect(ukCall![3]).toBe('translation_quality');
+  });
+
 });
 
 // ─── persistQualityResults ────────────────────────────────────────────────────

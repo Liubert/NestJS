@@ -545,8 +545,7 @@ export class AiTranslateService {
     const items = [
       {
         key: '__solo__',
-        // language_quality mode has no source to compare against
-        source: mode === 'translation_quality' ? source : null,
+        source: source || null,
         context: context ?? null,
         translations: { [locale]: translation },
       },
