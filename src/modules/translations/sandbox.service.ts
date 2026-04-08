@@ -1602,13 +1602,6 @@ export class SandboxService {
 
     await Promise.allSettled(
       locales.map(async (locale) => {
-        // Skip default locale — scoring source against itself is meaningless
-        // (matches quality-worker.service.ts:242 pattern)
-        if (locale.isDefault) {
-          results[locale.code] = null;
-          return;
-        }
-
         // Read from sandbox
         const sandboxValue = await this.sandboxRepo.findOne({
           where: {
@@ -1638,10 +1631,14 @@ export class SandboxService {
         }
 
         try {
-          const mode = source ? 'translation_quality' : 'language_quality';
+          const mode = locale.isDefault
+            ? 'language_quality'
+            : source
+              ? 'translation_quality'
+              : 'language_quality';
 
           const result = await this.aiTranslateService.checkQuality(
-            source ?? translation,
+            locale.isDefault ? translation : (source ?? translation),
             translation,
             locale.code,
             mode,
