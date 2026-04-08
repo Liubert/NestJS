@@ -1602,6 +1602,13 @@ export class SandboxService {
 
     await Promise.allSettled(
       locales.map(async (locale) => {
+        // Skip default locale — scoring source against itself is meaningless
+        // (matches quality-worker.service.ts:242 pattern)
+        if (locale.isDefault) {
+          results[locale.code] = null;
+          return;
+        }
+
         // Read from sandbox
         const sandboxValue = await this.sandboxRepo.findOne({
           where: {
@@ -1627,6 +1634,24 @@ export class SandboxService {
         const translation = sandboxValue?.value;
         if (!translation) {
           results[locale.code] = null;
+          return;
+        }
+
+        // Cache hit: same value already checked — return cached result without calling Gemini
+        const currentHash = createHash('sha256')
+          .update(translation)
+          .digest('hex');
+        if (
+          sandboxValue.qualityReviewState === 'checked' &&
+          sandboxValue.qualityContentHash === currentHash
+        ) {
+          results[locale.code] = {
+            reviewState: 'checked',
+            score: sandboxValue.qualityScore ?? 0,
+            level: sandboxValue.qualityLevel ?? 'green',
+            comment: sandboxValue.qualityComment ?? null,
+            checkedAt: sandboxValue.qualityCheckedAt?.toISOString() ?? null,
+          };
           return;
         }
 
@@ -1666,6 +1691,7 @@ export class SandboxService {
               qualityComment: result.comment,
               qualityCheckedAt: new Date(),
               qualityReviewState: 'checked',
+              qualityContentHash: currentHash,
               contextNeed: result.contextNeed,
               contextReason: result.contextReason,
             })
@@ -2329,6 +2355,9 @@ export class SandboxService {
           where: { projectId, keyId: keyEntity.id, localeId: locale.id },
         });
         if (!sandboxValue || !sandboxValue.value) continue;
+
+        // Preserve expected state — do not overwrite manually accepted translations
+        if (sandboxValue.qualityReviewState === 'expected') continue;
 
         const hash = createHash('sha256')
           .update(sandboxValue.value)
