@@ -134,9 +134,10 @@ None yet.
 | 260407-hur | Quality column-header filters, FilterBar settings gear, AddLocaleModal, contextNeed priority merge, vite preview config | 2026-04-07 | 7511168 | [260407-hur-deploy-uncommitted-changes-to-stage](./quick/260407-hur-deploy-uncommitted-changes-to-stage/) |
 | 260407-iem | Add background polling with silent refetch and error surfacing to TranslationsPage | 2026-04-07 | 42f369d | [260407-iem-background-polling-on-translations-page-](./quick/260407-iem-background-polling-on-translations-page-/) |
 | 260407-ils | Migration replacing stale nb-NO/da-DK with canonical nb/da in all four ai_config prompt columns | 2026-04-07 | 1190c23 | [260407-ils-fix-ai-config-translate-prompt-nb-no-to-](./quick/260407-ils-fix-ai-config-translate-prompt-nb-no-to-/) |
+| 260408-kgy | Fix bulk_translate_and_save bug — buildBulkTranslatePrompt sends object-keyed JSON so Gemini returns key names not numeric indices | 2026-04-08 | 5dad3ed | [260408-kgy-fix-bulk-translate-and-save-bug-gemini-r](./quick/260408-kgy-fix-bulk-translate-and-save-bug-gemini-r/) |
 
 ## Session Continuity
 
-Last session: 2026-04-07T10:26:00Z
-Stopped at: Completed quick task 260407-ils: fix ai_config locale codes migration (nb-NO->nb, da-DK->da)
+Last session: 2026-04-08T11:51:37Z
+Stopped at: Completed quick task 260408-kgy: fix buildBulkTranslatePrompt object-keyed format
 Resume file: None
