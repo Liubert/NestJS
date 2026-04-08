@@ -235,7 +235,7 @@ export class QualityWorkerService
       const source = defaultLocale
         ? (valMap.get(defaultLocale.id) ?? null)
         : null;
-      const context = sandboxContextByKey.get(keyId) ?? keyEntity.context;
+      const context = sandboxContextByKey.get(keyId) ?? null;
       const translations: Record<string, string> = {};
       for (const [localeId, value] of valMap.entries()) {
         const locale = localeById.get(localeId);
@@ -297,41 +297,27 @@ export class QualityWorkerService
       return;
     }
 
-    // Persist contextNeed/contextReason to both sandbox_values and translation_keys
+    // Persist contextNeed/contextReason to sandbox_values only
     for (const keyId of keyIds) {
       const keyEntity = keyById.get(keyId);
       if (!keyEntity) continue;
 
       const info = contextInfo[keyEntity.key];
       if (info) {
-        const needChanged = keyEntity.contextNeed !== info.need;
-        const reasonChanged = keyEntity.contextReason !== info.reason;
-        if (needChanged || reasonChanged) {
-          // Update translation_keys (source of truth for context metadata)
-          keyEntity.contextNeed = info.need;
-          keyEntity.contextReason = info.reason;
-          await this.keyRepo.save(keyEntity);
-        }
-
-        // Always sync contextNeed/contextReason to sandbox_values — they may be
-        // stale (null) after a sandbox reset even when translation_keys already
-        // has the correct value from a previous quality check cycle.
-        await this.sandboxRepo
-          .createQueryBuilder()
-          .update()
-          .set({ contextNeed: info.need, contextReason: info.reason })
-          .where('project_id = :projectId AND key_id = :keyId', {
-            projectId,
-            keyId,
-          })
-          .execute();
+        // Only fill contextNeed when translate worker has not already set it —
+        // translate-time signal is more reliable (no existing translations to bias Gemini)
+        await this.dataSource.query(
+          `UPDATE sandbox_values
+           SET context_need = $1, context_reason = $2
+           WHERE project_id = $3 AND key_id = $4 AND context_need IS NULL`,
+          [info.need, info.reason, projectId, keyId],
+        );
       }
 
       // Apply context penalty when context is missing — proportional reduction, min 1
       const keyResult = results[keyEntity.key];
-      const need = info?.need ?? keyEntity.contextNeed;
-      const effectiveContext =
-        sandboxContextByKey.get(keyId) ?? keyEntity.context;
+      const need = info?.need ?? null;
+      const effectiveContext = sandboxContextByKey.get(keyId) ?? null;
       if (need && need !== 'none' && !effectiveContext && keyResult) {
         const factor =
           need === 'required' ? CONTEXT_REQUIRED_FACTOR : CONTEXT_USEFUL_FACTOR;

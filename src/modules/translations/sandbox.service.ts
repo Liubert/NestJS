@@ -115,64 +115,19 @@ export class SandboxService {
   // ─── Initialize sandbox ───────────────────────────────────────────────────
 
   /**
-   * Copies all current production values into sandbox_values.
-   * Safe to call multiple times — existing sandbox rows are preserved (ON CONFLICT DO NOTHING).
-   * Call explicitly to reset: pass force=true to wipe and re-copy.
+   * Marks the sandbox as initialized (empty start — no production copy).
+   * All changes flow: sandbox → promote → production.
+   * To reset sandbox to production state, use resetSandbox().
    */
   async initSandbox(
     projectSlug: string,
-    userId: string,
-    role: UserRole,
-    force = false,
-  ): Promise<{ initialized: boolean; copiedRows: number }> {
+    _userId: string,
+    _role: UserRole,
+  ): Promise<{ initialized: boolean }> {
     const project = await this.requireProject(projectSlug);
 
-    if (force) {
-      await this.sandboxRepo.delete({ projectId: project.id });
-    } else if (project.sandboxInitializedAt) {
-      return { initialized: false, copiedRows: 0 };
-    }
-
-    // Copy all production values for this project into sandbox
-    let copiedRows = 0;
-    try {
-      const result = await this.dataSource.query<{ id: string }[]>(
-        `
-        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
-          context, context_need, context_reason,
-          quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
-        SELECT
-          ns.project_id,
-          tv.key_id,
-          tv.locale_id,
-          tv.value,
-          false,
-          now(),
-          tk.context,
-          tk.context_need,
-          tk.context_reason,
-          tv.quality_score,
-          tv.quality_level,
-          tv.quality_comment,
-          tv.quality_checked_at,
-          tv.quality_review_state,
-          tv.quality_content_hash
-        FROM translation_values tv
-        JOIN translation_keys tk ON tk.id = tv.key_id
-        JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-        WHERE ns.project_id = $1
-        ON CONFLICT (project_id, key_id, locale_id) DO NOTHING
-        RETURNING id
-      `,
-        [project.id],
-      );
-      copiedRows = Array.isArray(result) ? result.length : 0;
-    } catch (err) {
-      this.logger.error(
-        `initSandbox SQL failed for project ${projectSlug}: ${err instanceof Error ? err.message : String(err)}`,
-        err instanceof Error ? err.stack : undefined,
-      );
-      throw err;
+    if (project.sandboxInitializedAt) {
+      return { initialized: false };
     }
 
     await this.projectRepo.update(project.id, {
@@ -180,7 +135,7 @@ export class SandboxService {
       sandboxHasChanges: false,
     });
 
-    return { initialized: true, copiedRows };
+    return { initialized: true };
   }
 
   // ─── Get sandbox status ───────────────────────────────────────────────────
@@ -848,8 +803,42 @@ export class SandboxService {
       );
     }
 
-    const result = await this.initSandbox(projectSlug, userId, role, true);
-    return { copiedRows: result.copiedRows };
+    await this.sandboxRepo.delete({ projectId: project.id });
+
+    let copiedRows = 0;
+    try {
+      const result = await this.dataSource.query<{ id: string }[]>(
+        `
+        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+          context, context_need, context_reason,
+          quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
+        SELECT
+          ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(),
+          tk.context, tk.context_need, tk.context_reason,
+          tv.quality_score, tv.quality_level, tv.quality_comment, tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
+        FROM translation_values tv
+        JOIN translation_keys tk ON tk.id = tv.key_id
+        JOIN translation_namespaces ns ON ns.id = tk.namespace_id
+        WHERE ns.project_id = $1
+        RETURNING id
+        `,
+        [project.id],
+      );
+      copiedRows = Array.isArray(result) ? result.length : 0;
+    } catch (err) {
+      this.logger.error(
+        `resetSandbox SQL failed for project ${projectSlug}: ${err instanceof Error ? err.message : String(err)}`,
+        err instanceof Error ? err.stack : undefined,
+      );
+      throw err;
+    }
+
+    await this.projectRepo.update(project.id, {
+      sandboxInitializedAt: new Date(),
+      sandboxHasChanges: false,
+    });
+
+    return { copiedRows };
   }
 
   async deleteNamespaceSandboxTranslations(
@@ -1099,15 +1088,18 @@ export class SandboxService {
         `;
       } else if (qualityLevel === 'needs_context') {
         qualityCondition = `
-          AND tk.context_need IN ('required', 'useful') AND tk.context IS NULL
+          AND (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1 AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1) IN ('required', 'useful')
+          AND (SELECT sv_ctx.context FROM sandbox_values sv_ctx WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1 AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1) IS NULL
         `;
       } else if (qualityLevel === 'context_required') {
         qualityCondition = `
-          AND tk.context_need = 'required' AND tk.context IS NULL
+          AND (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1 AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1) = 'required'
+          AND (SELECT sv_ctx.context FROM sandbox_values sv_ctx WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1 AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1) IS NULL
         `;
       } else if (qualityLevel === 'context_useful') {
         qualityCondition = `
-          AND tk.context_need = 'useful' AND tk.context IS NULL
+          AND (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1 AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1) = 'useful'
+          AND (SELECT sv_ctx.context FROM sandbox_values sv_ctx WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1 AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1) IS NULL
         `;
       } else if (qualityLevel === 'expected') {
         qualityCondition = `
@@ -1208,24 +1200,15 @@ export class SandboxService {
       }[]
     >(
       `SELECT DISTINCT tk.id, tk.key, tk.created_at,
-              COALESCE(
-                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1),
-                tk.context
-              ) AS context,
-              COALESCE(
-                (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1),
-                tk.context_need
-              ) AS context_need,
-              COALESCE(
-                (SELECT sv_ctx.context_reason FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context_reason IS NOT NULL LIMIT 1),
-                tk.context_reason
-              ) AS context_reason${qualitySelectExpr}
+              (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+               WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                 AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1) AS context,
+              (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
+               WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                 AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1) AS context_need,
+              (SELECT sv_ctx.context_reason FROM sandbox_values sv_ctx
+               WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                 AND sv_ctx.is_deleted = false AND sv_ctx.context_reason IS NOT NULL LIMIT 1) AS context_reason${qualitySelectExpr}
        FROM translation_keys tk
        WHERE ${baseWhere}
        ORDER BY ${qualityOrderCol || sortCol} ${sortDir}${nullsLast}
@@ -1414,9 +1397,11 @@ export class SandboxService {
       where: { keyId: keyEntity.id, projectId: project.id, isDeleted: false },
       select: ['context'],
     });
-    const oldContext = sandboxCtxRow?.context ?? keyEntity.context;
+    const oldContext = sandboxCtxRow?.context ?? null;
     const newContext =
-      dto.context !== undefined ? (dto.context ?? null) : keyEntity.context;
+      dto.context !== undefined
+        ? (dto.context ?? null)
+        : (sandboxCtxRow?.context ?? null);
     const contextChanged =
       dto.context !== undefined && oldContext !== newContext;
 
@@ -1485,10 +1470,9 @@ export class SandboxService {
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
-      context: sandboxRow?.context ?? keyEntity.context,
-      contextNeed: sandboxRow?.contextNeed ?? keyEntity.contextNeed ?? null,
-      contextReason:
-        sandboxRow?.contextReason ?? keyEntity.contextReason ?? null,
+      context: sandboxRow?.context ?? null,
+      contextNeed: sandboxRow?.contextNeed ?? null,
+      contextReason: sandboxRow?.contextReason ?? null,
       values: resultValues,
       quality: {},
     };
@@ -1590,6 +1574,13 @@ export class SandboxService {
     });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
 
+    // Read sandbox context — do NOT fall back to production
+    const sandboxCtxForCheck = await this.sandboxRepo.findOne({
+      where: { keyId: keyEntity.id, projectId: project.id, isDeleted: false },
+      select: ['context'],
+    });
+    const sandboxContext = sandboxCtxForCheck?.context ?? null;
+
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const defaultLocale = locales.find((l) => l.isDefault);
 
@@ -1652,7 +1643,7 @@ export class SandboxService {
             locale.code,
             mode,
             project.id,
-            keyEntity.context ?? undefined,
+            sandboxContext ?? undefined,
           );
 
           // Persist contextNeed/contextReason from AI evaluation (higher priority wins)
@@ -1762,7 +1753,14 @@ export class SandboxService {
       !options.qualityLevels.length
     ) {
       conditions.push(
-        `(tk.context_need IN ('required', 'useful') AND tk.context IS NULL)`,
+        `(
+          (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
+           WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+             AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1) IN ('required', 'useful')
+          AND (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+               WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                 AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1) IS NULL
+        )`,
       );
     }
 
@@ -1802,24 +1800,15 @@ export class SandboxService {
       }[]
     >(
       `SELECT DISTINCT tk.id, tk.key, tk.created_at,
-              COALESCE(
-                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1),
-                tk.context
-              ) AS context,
-              COALESCE(
-                (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1),
-                tk.context_need
-              ) AS context_need,
-              COALESCE(
-                (SELECT sv_ctx.context_reason FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context_reason IS NOT NULL LIMIT 1),
-                tk.context_reason
-              ) AS context_reason,
+              (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+               WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                 AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1) AS context,
+              (SELECT sv_ctx.context_need FROM sandbox_values sv_ctx
+               WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                 AND sv_ctx.is_deleted = false AND sv_ctx.context_need IS NOT NULL LIMIT 1) AS context_need,
+              (SELECT sv_ctx.context_reason FROM sandbox_values sv_ctx
+               WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $1
+                 AND sv_ctx.is_deleted = false AND sv_ctx.context_reason IS NOT NULL LIMIT 1) AS context_reason,
               (SELECT MIN(sv_qs.quality_score) FROM sandbox_values sv_qs
                WHERE sv_qs.key_id = tk.id AND sv_qs.project_id = $1
                  AND sv_qs.is_deleted = false AND sv_qs.quality_score IS NOT NULL) AS _qs

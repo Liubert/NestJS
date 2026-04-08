@@ -215,6 +215,10 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
 
   const locales: string[] = projectDetails?.locales?.map((l) => l.code) ?? [];
 
+  const namespaceIsValid = !!projectDetails?.namespaces.some(
+    (ns) => ns.slug === namespace,
+  );
+
   const { data: entriesData, isLoading: entriesLoading, error: entriesError, isError: entriesIsError } =
     useQuery<PaginatedEntries>({
       queryKey: [
@@ -241,7 +245,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           qualityLevel || undefined,
           reviewState || undefined,
         ),
-      enabled: !!projectSlug && !!namespace && enabled,
+      enabled: !!projectSlug && namespaceIsValid && enabled,
       refetchInterval: POLL_INTERVAL_MS,
     });
 

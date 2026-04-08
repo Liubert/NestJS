@@ -227,11 +227,17 @@ export class AiTranslateService {
     projectId?: string,
     localeGuidance?: Record<string, string>,
     context?: string | null,
-  ): Promise<Record<string, string>> {
+  ): Promise<{
+    translations: Record<string, string>;
+    contextNeed: 'required' | 'useful' | 'none' | null;
+    contextReason: string | null;
+  }> {
     const codes = Object.keys(targetLocales);
-    if (codes.length === 0) return {};
+    if (codes.length === 0) {
+      return { translations: {}, contextNeed: null, contextReason: null };
+    }
 
-    const { results } = await this.bulkTranslate(
+    const { results, contextInfo } = await this.bulkTranslate(
       [
         {
           key: '__solo__',
@@ -244,7 +250,12 @@ export class AiTranslateService {
       localeGuidance,
     );
 
-    return results['__solo__'] ?? {};
+    const info = contextInfo['__solo__'];
+    return {
+      translations: results['__solo__'] ?? {},
+      contextNeed: info?.need ?? null,
+      contextReason: info?.reason ?? null,
+    };
   }
 
   /**

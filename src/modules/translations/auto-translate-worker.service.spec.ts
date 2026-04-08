@@ -80,9 +80,12 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
     const nbNoLocale = makeLocale('nb-NO');
 
     // Gemini normalises nb-NO → nb in the response JSON
-    translateForLocalesMock.mockResolvedValue({ nb: 'Hei verden' });
+    translateForLocalesMock.mockResolvedValue({
+      translations: { nb: 'Hei verden' },
+      contextNeed: null,
+      contextReason: null,
+    });
 
-    // @ts-expect-error accessing private method for testing
     await service['translateKey'](projectId, keyId, 'hello', 'Hello world', [
       nbNoLocale,
     ]);
@@ -102,9 +105,12 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
     const nbLocale = makeLocale('nb');
 
     // Gemini returns nb (same as locale.code now)
-    translateForLocalesMock.mockResolvedValue({ nb: 'Hei verden' });
+    translateForLocalesMock.mockResolvedValue({
+      translations: { nb: 'Hei verden' },
+      contextNeed: null,
+      contextReason: null,
+    });
 
-    // @ts-expect-error accessing private method for testing
     await service['translateKey'](projectId, keyId, 'hello', 'Hello world', [
       nbLocale,
     ]);
@@ -120,16 +126,41 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
     expect(params[3]).toEqual(['Hei verden']); // value saved
   });
 
+  it('passes key context to translateForLocales', async () => {
+    const ukLocale = makeLocale('uk');
+    translateForLocalesMock.mockResolvedValue({
+      translations: { uk: 'Забронювати' },
+      contextNeed: 'required',
+      contextReason: 'Ambiguous',
+    });
+
+    await service['translateKey'](
+      projectId,
+      keyId,
+      'book',
+      'book',
+      [ukLocale],
+      'reservation',
+    );
+
+    expect(translateForLocalesMock).toHaveBeenCalledWith(
+      'book',
+      expect.any(Object),
+      projectId,
+      undefined,
+      'reservation',
+    );
+  });
+
   it('FIXED: simple 2-char codes (uk, sv, da) always match Gemini response keys', async () => {
     const locales = [makeLocale('uk'), makeLocale('sv'), makeLocale('da')];
 
     translateForLocalesMock.mockResolvedValue({
-      uk: 'Привіт',
-      sv: 'Hej',
-      da: 'Hej',
+      translations: { uk: 'Привіт', sv: 'Hej', da: 'Hej' },
+      contextNeed: null,
+      contextReason: null,
     });
 
-    // @ts-expect-error accessing private method for testing
     await service['translateKey'](
       projectId,
       keyId,

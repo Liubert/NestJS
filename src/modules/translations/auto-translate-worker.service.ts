@@ -83,23 +83,19 @@ export class AutoTranslateWorkerService
       >(
         `SELECT tk.id AS key_id,
                 tk.key AS key_name,
-                COALESCE(
-                  (SELECT sv_ctx.context FROM sandbox_values sv_ctx
-                   WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $2
-                     AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1),
-                  tk.context
+                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $2
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1
                 ) AS key_context,
-                COALESCE(sv_def.value, tv_def.value) AS source_text
+                sv_def.value AS source_text
          FROM translation_keys tk
-         LEFT JOIN sandbox_values sv_def
+         JOIN sandbox_values sv_def
            ON sv_def.key_id = tk.id
            AND sv_def.locale_id = $1
            AND sv_def.project_id = $2
            AND sv_def.is_deleted = false
-         LEFT JOIN translation_values tv_def
-           ON tv_def.key_id = tk.id AND tv_def.locale_id = $1
          WHERE tk.namespace_id = $3
-           AND COALESCE(sv_def.value, tv_def.value) IS NOT NULL
+           AND sv_def.value IS NOT NULL
          LIMIT $4`,
         [defaultLocale.id, projectId, namespaceId, MAX_KEYS_PER_CYCLE],
       );
@@ -169,24 +165,25 @@ export class AutoTranslateWorkerService
       >(
         `SELECT tk.id AS key_id,
                 tk.key AS key_name,
-                tk.context AS key_context,
-                COALESCE(sv_def.value, tv_def.value) AS source_text
+                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $2
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1
+                ) AS key_context,
+                sv_def.value AS source_text
          FROM translation_namespaces ns
          JOIN translation_keys tk ON tk.namespace_id = ns.id
-         LEFT JOIN sandbox_values sv_def
+         JOIN sandbox_values sv_def
            ON sv_def.key_id = tk.id
            AND sv_def.locale_id = $1
            AND sv_def.project_id = $2
            AND sv_def.is_deleted = false
-         LEFT JOIN translation_values tv_def
-           ON tv_def.key_id = tk.id AND tv_def.locale_id = $1
          LEFT JOIN sandbox_values sv_tgt
            ON sv_tgt.key_id = tk.id
            AND sv_tgt.locale_id = $3
            AND sv_tgt.project_id = $2
            AND sv_tgt.is_deleted = false
          WHERE ns.project_id = $2
-           AND COALESCE(sv_def.value, tv_def.value) IS NOT NULL
+           AND sv_def.value IS NOT NULL
            AND sv_tgt.id IS NULL
          LIMIT $4`,
         [defaultLocale.id, locale.projectId, locale.id, MAX_KEYS_PER_CYCLE],
@@ -236,26 +233,21 @@ export class AutoTranslateWorkerService
            ns.project_id,
            tk.id AS key_id,
            tk.key AS key_name,
-           COALESCE(
-             (SELECT sv_ctx.context FROM sandbox_values sv_ctx
-              WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = p.id
-                AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1),
-             tk.context
+           (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+            WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = p.id
+              AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1
            ) AS key_context,
-           COALESCE(sv_def.value, tv_def.value) AS source_text,
+           sv_def.value AS source_text,
            dl.id AS default_locale_id
          FROM translation_projects p
          JOIN translation_namespaces ns ON ns.project_id = p.id
          JOIN translation_keys tk ON tk.namespace_id = ns.id
          JOIN translation_locales dl ON dl.project_id = p.id AND dl.is_default = true
-         -- source: prefer sandbox value, fall back to production
-         LEFT JOIN sandbox_values sv_def
+         JOIN sandbox_values sv_def
            ON sv_def.key_id = tk.id
            AND sv_def.locale_id = dl.id
            AND sv_def.project_id = p.id
            AND sv_def.is_deleted = false
-         LEFT JOIN translation_values tv_def
-           ON tv_def.key_id = tk.id AND tv_def.locale_id = dl.id
          -- find at least one missing target locale
          JOIN translation_locales tl
            ON tl.project_id = p.id AND tl.is_default = false
@@ -266,7 +258,7 @@ export class AutoTranslateWorkerService
            AND sv_tgt.is_deleted = false
          WHERE p.sandbox_initialized_at IS NOT NULL
            AND p.auto_translate_enabled = true
-           AND COALESCE(sv_def.value, tv_def.value) IS NOT NULL
+           AND sv_def.value IS NOT NULL
            AND sv_tgt.id IS NULL
          LIMIT $1`,
         [MAX_KEYS_PER_CYCLE],
@@ -381,13 +373,14 @@ export class AutoTranslateWorkerService
       `Translating key "${keyName}" to ${Object.keys(targetLocales).join(', ')}`,
     );
 
-    const translations = await this.aiTranslateService.translateForLocales(
-      sourceText,
-      targetLocales,
-      projectId,
-      Object.keys(localeGuidance).length ? localeGuidance : undefined,
-      context,
-    );
+    const { translations, contextNeed, contextReason } =
+      await this.aiTranslateService.translateForLocales(
+        sourceText,
+        targetLocales,
+        projectId,
+        Object.keys(localeGuidance).length ? localeGuidance : undefined,
+        context,
+      );
 
     // Write results to sandbox_values
     const values: Partial<SandboxValueEntity>[] = [];
@@ -423,6 +416,16 @@ export class AutoTranslateWorkerService
 
       // Mark project as having sandbox changes
       await this.projectRepo.update(projectId, { sandboxHasChanges: true });
+
+      // Persist contextNeed from translate so quality worker does not overwrite it
+      if (contextNeed) {
+        await this.dataSource.query(
+          `UPDATE sandbox_values
+           SET context_need = $1, context_reason = $2
+           WHERE project_id = $3 AND key_id = $4`,
+          [contextNeed, contextReason, projectId, keyId],
+        );
+      }
     }
   }
 }

@@ -125,17 +125,19 @@ Return ONLY valid JSON, no markdown, no extra text:
 {"score": <1-100>, "comment": "<string>", "contextNeed": "<required|useful|none>", "contextReason": "<string or null>"}`;
 
 export const DEFAULT_CONTEXT_DETECTION_PROMPT = `\
-Context need — strict rules:
+Context need — reason about translation ambiguity:
 
-RULE 1 (short labels): If the text is 1–3 words AND has ANY alternate meaning in a software product → ALWAYS "required". No exceptions. Do not apply "dominant meaning" reasoning.
-RULE 2 (longer phrases): If 4+ words give ~85% confidence in meaning but UI location would confirm → "useful".
-RULE 3: "none" only when meaning is 100% unambiguous in every possible software context.
+For each key, ask: could this text map to multiple distinct real-world concepts that translate to different words?
 
-Single words and short prepositions are almost always "required": "By", "Log", "Draft", "Train", "Light", "Save", "Open", "Run", "Post", "File", "Issue", "Match", "Charge", "Record", "Close", "Set", "Tag"
-Longer phrases can be "useful": "Delete account", "Approve request", "Reset password"
-Clear phrases are "none": "Email address", "Password", "Sign in", "Cancel", "Loading..."
+- "required": yes — wrong concept = wrong translation. List 2–3 meanings in "contextReason".
+- "useful": dominant meaning clear, but UI location or tone would increase confidence.
+- "none": only one reasonable interpretation exists.
 
-When contextNeed is "required" or "useful", provide "contextReason" — one sentence (max 30 words) explaining the alternate meanings.`;
+Examples:
+- "Home" → homepage vs address vs device screen → required
+- "Book" → reserve/schedule vs book to read → required
+- "Reservation" → a booking vs a doubt/hesitation ("I have reservations") → required
+- "Delete account" → clearly removes the account → none`;
 
 // ─── Interpolation helper ─────────────────────────────────────────────────────
 
