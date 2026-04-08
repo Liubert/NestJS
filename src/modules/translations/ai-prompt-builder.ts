@@ -266,17 +266,20 @@ export function buildBulkTranslatePrompt(
   contextDetectionPrompt: string | null | undefined,
   localeGuidanceSection: string,
 ): string {
-  const chunkData = chunk.map((e) => {
+  const chunkData: Record<
+    string,
+    { text: string; targetLanguages: string; context?: string }
+  > = {};
+  for (const e of chunk) {
     const codes = e.targetLocales ?? [];
-    return {
-      key: e.key,
+    chunkData[e.key] = {
       text: e.text,
       targetLanguages: codes
         .map((code) => `${getLocaleName(code)} (${code})`)
         .join(', '),
       ...(e.context ? { context: e.context } : {}),
     };
-  });
+  }
 
   return (
     `You are a software localization assistant. Translate each entry below.\n\n` +
