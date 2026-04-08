@@ -1637,33 +1637,11 @@ export class SandboxService {
           return;
         }
 
-        // Cache hit: same value already checked — return cached result without calling Gemini
-        const currentHash = createHash('sha256')
-          .update(translation)
-          .digest('hex');
-        if (
-          sandboxValue.qualityReviewState === 'checked' &&
-          sandboxValue.qualityContentHash === currentHash
-        ) {
-          results[locale.code] = {
-            reviewState: 'checked',
-            score: sandboxValue.qualityScore ?? 0,
-            level: sandboxValue.qualityLevel ?? 'green',
-            comment: sandboxValue.qualityComment ?? null,
-            checkedAt: sandboxValue.qualityCheckedAt?.toISOString() ?? null,
-          };
-          return;
-        }
-
         try {
-          const mode = locale.isDefault
-            ? 'language_quality'
-            : source
-              ? 'translation_quality'
-              : 'language_quality';
+          const mode = source ? 'translation_quality' : 'language_quality';
 
           const result = await this.aiTranslateService.checkQuality(
-            locale.isDefault ? translation : (source ?? translation),
+            source ?? translation,
             translation,
             locale.code,
             mode,
@@ -1691,7 +1669,6 @@ export class SandboxService {
               qualityComment: result.comment,
               qualityCheckedAt: new Date(),
               qualityReviewState: 'checked',
-              qualityContentHash: currentHash,
               contextNeed: result.contextNeed,
               contextReason: result.contextReason,
             })

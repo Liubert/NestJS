@@ -1,11 +1,6 @@
-import { createHash } from 'crypto';
 import { SandboxService } from './sandbox.service.js';
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-
-function sha256(value: string): string {
-  return createHash('sha256').update(value).digest('hex');
-}
 
 function buildSandboxService(
   overrides: Record<string, unknown> = {},
@@ -68,7 +63,6 @@ describe('runSandboxQualityCheck', () => {
   const LOCALE_ID = 'locale-uuid';
   const LOCALE_CODE = 'uk';
   const TEST_VALUE = 'test translation value';
-  const TEST_HASH = sha256(TEST_VALUE);
 
   function makeQbChain() {
     const executeMock = jest.fn().mockResolvedValue(undefined);
@@ -83,156 +77,6 @@ describe('runSandboxQualityCheck', () => {
     };
     return { qbMock, executeMock, whereMock, setMock, updateMock };
   }
-
-  describe('Bug 1 — cache hit: same value already checked', () => {
-    it('does NOT call checkQuality when hash matches and state is checked', async () => {
-      const { qbMock, executeMock } = makeQbChain();
-      const checkQuality = jest.fn().mockResolvedValue({
-        score: 90,
-        level: 'green',
-        comment: 'ok',
-        contextNeed: null,
-        contextReason: null,
-      });
-
-      const sandboxRepo = {
-        findOne: jest
-          .fn()
-          .mockImplementation((opts: { where?: { localeId?: string } }) => {
-            if (opts.where?.localeId === LOCALE_ID) {
-              return Promise.resolve({
-                value: TEST_VALUE,
-                qualityReviewState: 'checked',
-                qualityContentHash: TEST_HASH,
-                qualityScore: 85,
-                qualityLevel: 'green',
-                qualityComment: 'Good translation',
-                qualityCheckedAt: new Date('2024-01-01'),
-              });
-            }
-            // context lookup (no localeId)
-            return Promise.resolve({ context: null });
-          }),
-        createQueryBuilder: jest.fn().mockReturnValue(qbMock),
-      };
-
-      const project = { id: PROJECT_ID, sandboxInitializedAt: new Date() };
-      const projectRepo = { findOne: jest.fn().mockResolvedValue(project) };
-      const namespaceRepo = {
-        findOne: jest.fn().mockResolvedValue({ id: NS_ID }),
-      };
-      const keyRepo = {
-        findOne: jest.fn().mockResolvedValue({
-          id: KEY_ID,
-          contextNeed: null,
-          contextReason: null,
-        }),
-        save: jest.fn(),
-      };
-      const locales = [{ id: LOCALE_ID, code: LOCALE_CODE, isDefault: false }];
-      const localeRepo = { findBy: jest.fn().mockResolvedValue(locales) };
-
-      const service = buildSandboxService({
-        projectRepo,
-        sandboxRepo,
-        namespaceRepo,
-        keyRepo,
-        localeRepo,
-        aiTranslateService: { checkQuality },
-      });
-
-      const results = await service.runSandboxQualityCheck(
-        'my-project',
-        'common',
-        'my.key',
-        'user-id',
-        'USER' as any,
-      );
-
-      expect(checkQuality).not.toHaveBeenCalled();
-      expect(executeMock).not.toHaveBeenCalled();
-      expect(results[LOCALE_CODE]).toMatchObject({
-        reviewState: 'checked',
-        score: 85,
-        level: 'green',
-        comment: 'Good translation',
-      });
-    });
-  });
-
-  describe('Bug 1 — cache miss: changed value should trigger re-check', () => {
-    it('calls checkQuality when qualityContentHash does not match current value hash', async () => {
-      const { qbMock, executeMock } = makeQbChain();
-      const checkQuality = jest.fn().mockResolvedValue({
-        score: 75,
-        level: 'yellow',
-        comment: 'Needs improvement',
-        contextNeed: null,
-        contextReason: null,
-      });
-
-      const sandboxRepo = {
-        findOne: jest
-          .fn()
-          .mockImplementation((opts: { where?: { localeId?: string } }) => {
-            if (opts.where?.localeId === LOCALE_ID) {
-              return Promise.resolve({
-                value: TEST_VALUE,
-                qualityReviewState: 'checked',
-                qualityContentHash: 'stale-hash-does-not-match',
-                qualityScore: 85,
-                qualityLevel: 'green',
-                qualityComment: 'Old comment',
-                qualityCheckedAt: new Date('2024-01-01'),
-              });
-            }
-            return Promise.resolve({ context: null });
-          }),
-        createQueryBuilder: jest.fn().mockReturnValue(qbMock),
-      };
-
-      const project = { id: PROJECT_ID, sandboxInitializedAt: new Date() };
-      const projectRepo = { findOne: jest.fn().mockResolvedValue(project) };
-      const namespaceRepo = {
-        findOne: jest.fn().mockResolvedValue({ id: NS_ID }),
-      };
-      const keyRepo = {
-        findOne: jest.fn().mockResolvedValue({
-          id: KEY_ID,
-          contextNeed: null,
-          contextReason: null,
-        }),
-        save: jest.fn(),
-      };
-      const locales = [{ id: LOCALE_ID, code: LOCALE_CODE, isDefault: false }];
-      const localeRepo = { findBy: jest.fn().mockResolvedValue(locales) };
-
-      const service = buildSandboxService({
-        projectRepo,
-        sandboxRepo,
-        namespaceRepo,
-        keyRepo,
-        localeRepo,
-        aiTranslateService: { checkQuality },
-      });
-
-      const results = await service.runSandboxQualityCheck(
-        'my-project',
-        'common',
-        'my.key',
-        'user-id',
-        'USER' as any,
-      );
-
-      expect(checkQuality).toHaveBeenCalledTimes(1);
-      expect(executeMock).toHaveBeenCalledTimes(1);
-      expect(results[LOCALE_CODE]).toMatchObject({
-        reviewState: 'checked',
-        score: 75,
-        level: 'yellow',
-      });
-    });
-  });
 
   describe('Bug 2 — default locale: must be skipped entirely', () => {
     it('returns null for default locale and does NOT call checkQuality', async () => {

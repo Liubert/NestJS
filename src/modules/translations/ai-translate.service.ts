@@ -89,7 +89,10 @@ export class AiTranslateService {
 
     const aiCfg = await this.aiConfig.getConfig();
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: aiCfg.model });
+    const model = genAI.getGenerativeModel(
+      { model: aiCfg.model },
+      { generationConfig: { temperature: 1.0 } },
+    );
 
     if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
 
@@ -300,7 +303,10 @@ export class AiTranslateService {
 
     const aiCfg = await this.aiConfig.getConfig();
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: aiCfg.model });
+    const model = genAI.getGenerativeModel(
+      { model: aiCfg.model },
+      { generationConfig: { temperature: 0.1 } },
+    );
 
     if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
 
