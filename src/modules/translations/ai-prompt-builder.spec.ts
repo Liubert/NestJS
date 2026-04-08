@@ -89,6 +89,104 @@ describe('buildBulkTranslatePrompt — context handling', () => {
   });
 });
 
+// ─── buildBulkTranslatePrompt — dot-notation key format (regression) ──────────
+
+describe('buildBulkTranslatePrompt — dot-notation key format (regression)', () => {
+  const baseRules = 'Use natural, concise wording suitable for UI labels.';
+
+  it('serializes entries as a JSON object keyed by translation key, not an array', () => {
+    const prompt = buildBulkTranslatePrompt(
+      [
+        { key: 'nav.home', text: 'Home', targetLocales: ['nb'] },
+        { key: 'btn.save', text: 'Save', targetLocales: ['nb'] },
+        { key: 'errors.required', text: 'Required', targetLocales: ['nb'] },
+      ],
+      baseRules,
+      null,
+      '',
+    );
+
+    const entriesJson = prompt.split('Entries to translate:')[1].trim();
+    const parsed = JSON.parse(entriesJson) as unknown;
+
+    expect(Array.isArray(parsed)).toBe(false);
+    expect(typeof parsed).toBe('object');
+    expect(parsed).not.toBeNull();
+
+    const keys = Object.keys(parsed as Record<string, unknown>);
+    expect(keys).toContain('nav.home');
+    expect(keys).toContain('btn.save');
+    expect(keys).toContain('errors.required');
+
+    // Should NOT have numeric keys (which is what happens with array input)
+    expect(keys).not.toContain('0');
+    expect(keys).not.toContain('1');
+    expect(keys).not.toContain('2');
+  });
+
+  it('preserves dot-notation keys verbatim in the JSON payload', () => {
+    const prompt = buildBulkTranslatePrompt(
+      [
+        { key: 'nav.home', text: 'Home', targetLocales: ['nb'] },
+        { key: 'btn.save', text: 'Save', targetLocales: ['nb'] },
+      ],
+      baseRules,
+      null,
+      '',
+    );
+
+    expect(prompt).toContain('"nav.home":');
+    expect(prompt).toContain('"btn.save":');
+  });
+
+  it('includes text and targetLanguages in each entry value', () => {
+    const prompt = buildBulkTranslatePrompt(
+      [
+        { key: 'nav.home', text: 'Home', targetLocales: ['nb'] },
+        { key: 'btn.save', text: 'Save', targetLocales: ['nb'] },
+      ],
+      baseRules,
+      null,
+      '',
+    );
+
+    const entriesJson = prompt.split('Entries to translate:')[1].trim();
+    const parsed = JSON.parse(entriesJson) as Record<
+      string,
+      { text: string; targetLanguages: string; context?: string }
+    >;
+
+    expect(typeof parsed['nav.home'].text).toBe('string');
+    expect(typeof parsed['nav.home'].targetLanguages).toBe('string');
+    expect(parsed['nav.home'].text).toBe('Home');
+
+    expect(typeof parsed['btn.save'].text).toBe('string');
+    expect(typeof parsed['btn.save'].targetLanguages).toBe('string');
+    expect(parsed['btn.save'].text).toBe('Save');
+  });
+
+  it('omits context field when entry has no context', () => {
+    const prompt = buildBulkTranslatePrompt(
+      [
+        { key: 'nav.home', text: 'Home', context: 'Main navigation link', targetLocales: ['nb'] },
+        { key: 'btn.save', text: 'Save', targetLocales: ['nb'] },
+      ],
+      baseRules,
+      null,
+      '',
+    );
+
+    const entriesJson = prompt.split('Entries to translate:')[1].trim();
+    const parsed = JSON.parse(entriesJson) as Record<
+      string,
+      { text: string; targetLanguages: string; context?: string }
+    >;
+
+    expect(parsed['nav.home'].context).toBe('Main navigation link');
+    expect('context' in parsed['btn.save']).toBe(false);
+  });
+});
+
 // ─── buildBulkQualityPrompt — context handling ────────────────────────────────
 
 describe('buildBulkQualityPrompt — context handling', () => {
