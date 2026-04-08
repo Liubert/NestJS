@@ -135,9 +135,10 @@ None yet.
 | 260407-iem | Add background polling with silent refetch and error surfacing to TranslationsPage | 2026-04-07 | 42f369d | [260407-iem-background-polling-on-translations-page-](./quick/260407-iem-background-polling-on-translations-page-/) |
 | 260407-ils | Migration replacing stale nb-NO/da-DK with canonical nb/da in all four ai_config prompt columns | 2026-04-07 | 1190c23 | [260407-ils-fix-ai-config-translate-prompt-nb-no-to-](./quick/260407-ils-fix-ai-config-translate-prompt-nb-no-to-/) |
 | 260408-kgy | Fix bulk_translate_and_save bug — buildBulkTranslatePrompt sends object-keyed JSON so Gemini returns key names not numeric indices | 2026-04-08 | 5dad3ed | [260408-kgy-fix-bulk-translate-and-save-bug-gemini-r](./quick/260408-kgy-fix-bulk-translate-and-save-bug-gemini-r/) |
+| 260408-oem | Fix 3 quality checker bugs: SHA256 cache hit, skip default locale, expected guard in persistQualityResults | 2026-04-08 | 0a42c27 | [260408-oem-fix-3-quality-checker-bugs-from-feedback](./quick/260408-oem-fix-3-quality-checker-bugs-from-feedback/) |
 
 ## Session Continuity
 
-Last session: 2026-04-08T11:51:37Z
-Stopped at: Completed quick task 260408-kgy: fix buildBulkTranslatePrompt object-keyed format
+Last session: 2026-04-08T14:44:16Z
+Stopped at: Completed quick task 260408-oem: fix 3 quality checker bugs in sandbox service
 Resume file: None
