@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: "Completed quick task 260406-ihm: add prompt preview endpoint and UI in AI Settings"
-last_updated: "2026-04-06T10:35:00.000Z"
-last_activity: "2026-04-06 - Completed quick task 260406-ihm: buildTranslatePrompt/buildQualityPrompt extractors, POST /translations/ai-preview-prompt, Prompt Preview tab in AI Settings"
+stopped_at: "Completed quick task 260408-kgy: fix bulk_translate_and_save — buildBulkTranslatePrompt sends object-keyed JSON"
+last_updated: "2026-04-08T11:44:20.000Z"
+last_activity: "2026-04-08 - Completed quick task 260408-kgy: fix Gemini returning numeric indices for dot-notation keys in buildBulkTranslatePrompt"
 progress:
   total_phases: 1
   completed_phases: 0
