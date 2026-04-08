@@ -168,7 +168,12 @@ describe('buildBulkTranslatePrompt — dot-notation key format (regression)', ()
   it('omits context field when entry has no context', () => {
     const prompt = buildBulkTranslatePrompt(
       [
-        { key: 'nav.home', text: 'Home', context: 'Main navigation link', targetLocales: ['nb'] },
+        {
+          key: 'nav.home',
+          text: 'Home',
+          context: 'Main navigation link',
+          targetLocales: ['nb'],
+        },
         { key: 'btn.save', text: 'Save', targetLocales: ['nb'] },
       ],
       baseRules,
