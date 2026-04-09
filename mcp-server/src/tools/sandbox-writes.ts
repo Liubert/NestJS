@@ -597,7 +597,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
     },
   );
 
-  // ─── validate_keys ──────────────────────────────────────────────────────────
+  // ─── analyze_entries ────────────────────────────────────────────────────────
   interface AnalyzeResponse {
     sourceLocale: string;
     results: Array<{
@@ -624,13 +624,14 @@ export function registerSandboxWriteTools(server: McpServer): void {
   }
 
   server.tool(
-    'validate_keys',
+    'analyze_entries',
     [
-      'Analyze a batch of planned translation keys for conflicts and duplicates BEFORE creating them.',
-      'Returns per-item analysis: whether each key is safe to create, already exists, or duplicates existing source text.',
-      'Call this BEFORE bulk_translate_and_save or set_translation when adding many new keys.',
-      'Helps avoid duplicate keys and redundant source text across the namespace.',
-      'Does NOT create or modify anything — read-only preflight check.',
+      'Read-only preflight analysis of a planned batch of translation keys.',
+      'Checks: (1) duplicate keys within the submitted batch,',
+      '(2) conflicts with existing keys in the namespace (same key, different value),',
+      '(3) source text overlap — signals a potential reuse opportunity, but NOT a hard rule (the same word can have different translations in different contexts).',
+      'Call BEFORE bulk_translate_and_save or set_translation when adding many new keys.',
+      'Does NOT create or modify anything.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug'),
