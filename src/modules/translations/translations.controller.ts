@@ -47,7 +47,6 @@ import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { BulkQualityCheckAiDto } from './dto/bulk-quality-check-ai.dto.js';
 import { PreviewPromptDto } from './dto/preview-prompt.dto.js';
 import { BulkMarkExpectedDto } from './dto/bulk-mark-expected.dto.js';
-import { BulkContextUpdateDto } from './dto/bulk-context.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
 @ApiTags('translations')
@@ -734,25 +733,6 @@ export class TranslationsController {
       ns,
       dto.keys,
       dto.locale,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Patch('projects/:slug/namespaces/:ns/entries/bulk-context')
-  @UseGuards(JwtAuthGuard, BlockMcpGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update context for multiple keys' })
-  async bulkUpdateContext(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: BulkContextUpdateDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.translationsService.bulkUpdateContext(
-      slug,
-      ns,
-      dto.updates,
       user.userId,
       user.role,
     );

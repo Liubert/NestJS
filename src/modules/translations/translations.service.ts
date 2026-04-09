@@ -1932,31 +1932,4 @@ export class TranslationsService {
 
     return { marked };
   }
-
-  async bulkUpdateContext(
-    projectSlug: string,
-    nsSlug: string,
-    updates: Array<{ key: string; context: string }>,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<{ updated: number }> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
-
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
-
-    let updated = 0;
-    for (const item of updates) {
-      const result = await this.keyRepo.update(
-        { namespaceId: ns.id, key: item.key },
-        { context: item.context },
-      );
-      updated += result.affected ?? 0;
-    }
-
-    return { updated };
-  }
 }
