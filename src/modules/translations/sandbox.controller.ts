@@ -31,6 +31,7 @@ import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
 import { AnalyzeEntriesDto } from './dto/analyze-entries.dto.js';
+import { DiffQueryDto } from './dto/diff-query.dto.js';
 
 class RevertDto {
   @IsUUID()
@@ -55,8 +56,23 @@ export class SandboxController {
 
   @Get('diff')
   @ApiOperation({ summary: 'Get diff between sandbox and production' })
-  diff(@Param('slug') slug: string, @CurrentUser() user: CurrentUserType) {
-    return this.sandboxService.getDiff(slug, user.userId, user.role);
+  diff(
+    @Param('slug') slug: string,
+    @Query() query: DiffQueryDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.getDiff(
+      slug,
+      user.userId,
+      user.role,
+      query.page,
+      query.limit,
+      {
+        namespace: query.namespace,
+        locale: query.locale,
+        status: query.status,
+      },
+    );
   }
 
   @Post('promote')
