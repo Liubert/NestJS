@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: "Completed quick task 260409-ff6: implement bulk analyze preflight endpoint and validate_keys MCP tool"
-last_updated: "2026-04-09T08:24:08.336Z"
-last_activity: "2026-04-05 - Completed quick task 260405-p2j: implement bulk_translate_and_save MCP tool and backend endpoint"
+stopped_at: "Completed quick task 260409-pby: clean up dead/misrouted production quality endpoints"
+last_updated: "2026-04-09T15:28:00Z"
+last_activity: "2026-04-09 - Completed quick task 260409-pby: remove dead production quality endpoints, migrate bulk-quality-check to sandbox"
 progress:
   total_phases: 1
   completed_phases: 0
@@ -138,9 +138,10 @@ None yet.
 | 260408-oem | Fix 3 quality checker bugs: SHA256 cache hit, skip default locale, expected guard in persistQualityResults | 2026-04-08 | 0a42c27 | [260408-oem-fix-3-quality-checker-bugs-from-feedback](./quick/260408-oem-fix-3-quality-checker-bugs-from-feedback/) |
 | 260409-ff6 | Implement bulk analyze/preflight endpoint for translation key deduplication | 2026-04-09 | 474838c | [260409-ff6-implement-bulk-analyze-preflight-endpoin](./quick/260409-ff6-implement-bulk-analyze-preflight-endpoin/) |
 | 260409-p0k | Remove production attention endpoint, route MCP to sandbox | 2026-04-09 | c0a9d4b | [260409-p0k-remove-production-attention-endpoint-rou](./quick/260409-p0k-remove-production-attention-endpoint-rou/) |
+| 260409-pby | Clean up dead/misrouted production quality endpoints — migrate bulk-quality-check to sandbox, remove mark-expected | 2026-04-09 | 7879da5 | [260409-pby-clean-up-dead-misrouted-production-quali](./quick/260409-pby-clean-up-dead-misrouted-production-quali/) |
 
 ## Session Continuity
 
-Last session: 2026-04-09T08:24:08.329Z
-Stopped at: Completed quick task 260409-ff6: implement bulk analyze preflight endpoint and validate_keys MCP tool
+Last session: 2026-04-09T15:28:00Z
+Stopped at: Completed quick task 260409-pby: clean up dead/misrouted production quality endpoints
 Resume file: None
