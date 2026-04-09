@@ -143,9 +143,10 @@ None yet.
 | 260409-q9j | Add key naming guide to MCP setup prompt and analyze_entries tool description | 2026-04-09 | 8950fc2 | [260409-q9j-add-key-naming-guide-to-mcp-prompts-and-](./quick/260409-q9j-add-key-naming-guide-to-mcp-prompts-and-/) |
 | 260409-qyy | Add per-locale sandbox reset feature — endpoint + frontend reset button in locale column headers | 2026-04-09 | 060abcf | [260409-qyy-add-reset-per-locale-feature-to-sandbox-](./quick/260409-qyy-add-reset-per-locale-feature-to-sandbox-/) |
 | 260409-r9s | Add per-key-locale reset button to sandbox — DELETE endpoint + inline cell Popconfirm button | 2026-04-09 | ddc828d | [260409-r9s-add-reset-per-key-locale-button-to-sandb](./quick/260409-r9s-add-reset-per-key-locale-button-to-sandb/) |
+| 260409-rsv | Replace reset-namespace-translations confirm with multi-locale select modal | 2026-04-09 | 448f5b4 | [260409-rsv-replace-reset-namespace-translations-wit](./quick/260409-rsv-replace-reset-namespace-translations-wit/) |
 
 ## Session Continuity
 
-Last session: 2026-04-09T16:31:00Z
-Stopped at: Completed quick task 260409-qyy: add per-locale sandbox reset feature
+Last session: 2026-04-09T17:10:00Z
+Stopped at: Completed quick task 260409-rsv: replace reset-translations confirm with multi-locale select modal
 Resume file: None
