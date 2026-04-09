@@ -184,6 +184,8 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const [editEntry, setEditEntry] = useState<Entry | null>(null);
   const [isNewEntry, setIsNewEntry] = useState(false);
   const [addLocaleOpen, setAddLocaleOpen] = useState(false);
+  const [resetLocalesModalOpen, setResetLocalesModalOpen] = useState(false);
+  const [selectedLocalesForReset, setSelectedLocalesForReset] = useState<string[]>([]);
 
   const { data: supportedLocales = [] } = useSupportedLocales();
   const getFlagForCode = useCallback(
@@ -301,19 +303,6 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
     },
     onError: (e: any) =>
       message.error(e.response?.data?.message ?? 'Error deleting'),
-  });
-
-  const resetNsTranslationsMutation = useMutation({
-    mutationFn: (ns: string) =>
-      apiClient.post(
-        `/translations/projects/${projectSlug}/namespaces/${ns}/reset-translations`,
-      ),
-    onSuccess: (_data, ns) => {
-      message.success(`Translations for "${ns}" deleted — auto-translate will re-translate`);
-      invalidate();
-    },
-    onError: (e: any) =>
-      message.error(e.response?.data?.message ?? 'Error resetting translations'),
   });
 
   const resetNsQualityMutation = useMutation({
@@ -447,13 +436,9 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       if (key === 'add-locale') {
         setAddLocaleOpen(true);
       } else if (key === 'reset-translations') {
-        Modal.confirm({
-          title: `Reset translations for "${namespace}"?`,
-          content: 'All sandbox translations in this namespace will be deleted and re-translated automatically. This cannot be undone.',
-          okText: 'Reset',
-          okButtonProps: { danger: true },
-          onOk: () => resetNsTranslationsMutation.mutateAsync(namespace),
-        });
+        const nonDefault = locales.filter((l) => l !== defaultLocale);
+        setSelectedLocalesForReset(nonDefault);
+        setResetLocalesModalOpen(true);
       } else if (key === 'reset-quality') {
         Modal.confirm({
           title: `Reset quality scores for "${namespace}"?`,
@@ -464,7 +449,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         });
       }
     },
-    [namespace, resetNsTranslationsMutation, resetNsQualityMutation],
+    [namespace, resetNsQualityMutation, locales, defaultLocale],
   );
 
   return (
@@ -560,6 +545,60 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         existingLocaleCodes={locales}
         namespaceCount={projectDetails?.namespaces.length ?? 0}
       />
+
+      <Modal
+        open={resetLocalesModalOpen}
+        title={`Reset translations for "${namespace}"?`}
+        okText="Reset"
+        okButtonProps={{ danger: true, disabled: selectedLocalesForReset.length === 0 }}
+        onCancel={() => setResetLocalesModalOpen(false)}
+        onOk={async () => {
+          await Promise.all(
+            selectedLocalesForReset.map((locale) =>
+              apiClient.post(
+                `/translations/projects/${projectSlug}/namespaces/${namespace}/locales/${locale}/reset-translations`,
+              ),
+            ),
+          );
+          message.success(
+            `${selectedLocalesForReset.length} locale(s) reset — auto-translate will re-translate`,
+          );
+          invalidate();
+          setResetLocalesModalOpen(false);
+        }}
+      >
+        <p style={{ marginBottom: 12 }}>
+          Select locales to reset. Translations will be deleted and re-translated
+          automatically. This cannot be undone.
+        </p>
+        <Checkbox
+          checked={
+            selectedLocalesForReset.length ===
+            locales.filter((l) => l !== defaultLocale).length
+          }
+          indeterminate={
+            selectedLocalesForReset.length > 0 &&
+            selectedLocalesForReset.length <
+              locales.filter((l) => l !== defaultLocale).length
+          }
+          onChange={(e) =>
+            setSelectedLocalesForReset(
+              e.target.checked ? locales.filter((l) => l !== defaultLocale) : [],
+            )
+          }
+          style={{ marginBottom: 8 }}
+        >
+          Select all
+        </Checkbox>
+        <Checkbox.Group
+          options={locales
+            .filter((l) => l !== defaultLocale)
+            .map((l) => ({ label: l, value: l }))}
+          value={selectedLocalesForReset}
+          onChange={(vals) => setSelectedLocalesForReset(vals as string[])}
+          style={{ display: 'flex', flexDirection: 'column', gap: 6 }}
+        />
+      </Modal>
     </>
   );
 };
