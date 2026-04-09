@@ -155,6 +155,9 @@ export class AutoTranslateWorkerService
       const locales = await this.localeRepo.findBy({ projectId });
       const defaultLocale = locales.find((l) => l.isDefault);
       const nonDefaultLocales = locales.filter((l) => !l.isDefault);
+      this.logger.log(
+        `triggerForKey: start key=${keyId} defaultLocale=${defaultLocale?.code ?? 'none'} nonDefault=${nonDefaultLocales.map((l) => l.code).join(',')}`,
+      );
       if (!defaultLocale || !nonDefaultLocales.length) return;
 
       const rows = await this.dataSource.query<
@@ -187,8 +190,8 @@ export class AutoTranslateWorkerService
       );
 
       if (!rows.length) {
-        this.logger.debug(
-          `triggerForKey: no source text found for key ${keyId}`,
+        this.logger.warn(
+          `triggerForKey: no source text found for key ${keyId} (defaultLocaleId=${defaultLocale.id})`,
         );
         return;
       }
@@ -425,7 +428,10 @@ export class AutoTranslateWorkerService
       (l) => !existingLocaleIds.has(l.id),
     );
 
-    if (!missingLocales.length) return;
+    if (!missingLocales.length) {
+      this.logger.log(`translateKey: all locales present for key ${keyId}, skipping`);
+      return;
+    }
 
     // Build target locales map for Gemini
     const targetLocales: Record<string, string> = {};
