@@ -141,9 +141,10 @@ None yet.
 | 260409-pby | Clean up dead/misrouted production quality endpoints — migrate bulk-quality-check to sandbox, remove mark-expected | 2026-04-09 | 7879da5 | [260409-pby-clean-up-dead-misrouted-production-quali](./quick/260409-pby-clean-up-dead-misrouted-production-quali/) |
 | 260409-q1i | Rename MCP tool validate_keys to analyze_entries and check_keys_exist | 2026-04-09 | e3aa919 | [260409-q1i-rename-mcp-tool-validate-keys-to-analyze](./quick/260409-q1i-rename-mcp-tool-validate-keys-to-analyze/) |
 | 260409-q9j | Add key naming guide to MCP setup prompt and analyze_entries tool description | 2026-04-09 | 8950fc2 | [260409-q9j-add-key-naming-guide-to-mcp-prompts-and-](./quick/260409-q9j-add-key-naming-guide-to-mcp-prompts-and-/) |
+| 260409-qyy | Add per-locale sandbox reset feature — endpoint + frontend reset button in locale column headers | 2026-04-09 | 060abcf | [260409-qyy-add-reset-per-locale-feature-to-sandbox-](./quick/260409-qyy-add-reset-per-locale-feature-to-sandbox-/) |
 
 ## Session Continuity
 
-Last session: 2026-04-09T15:58:00Z
-Stopped at: Completed quick task 260409-q9j: add key naming guide to MCP prompts
+Last session: 2026-04-09T16:31:00Z
+Stopped at: Completed quick task 260409-qyy: add per-locale sandbox reset feature
 Resume file: None
