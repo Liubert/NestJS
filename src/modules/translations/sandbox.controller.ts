@@ -25,7 +25,7 @@ import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { BulkImportDto } from './dto/bulk-import.dto.js';
 import { BulkDeleteDto } from './dto/bulk-delete.dto.js';
-import { BulkTranslateDto } from './dto/bulk-translate.dto.js';
+
 import { BulkRevertDto } from './dto/bulk-revert.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
@@ -322,26 +322,6 @@ export class SandboxController {
       dto.keys,
       user.userId,
       user.role,
-    );
-  }
-
-  @Post('namespaces/:ns/entries/bulk-translate')
-  @ApiOperation({
-    summary: 'AI-translate multiple keys and save results to sandbox',
-  })
-  async bulkTranslateEntries(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: BulkTranslateDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.sandboxService.bulkTranslate(
-      slug,
-      ns,
-      dto.keys,
-      user.userId,
-      user.role,
-      dto.targetLocales,
     );
   }
 
