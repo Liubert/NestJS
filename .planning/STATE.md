@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 Phase: 05
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-09 - Completed quick task 260409-ff6: Implement bulk analyze/preflight endpoint for translation key deduplication
+Last activity: 2026-04-09 - Completed quick task 260409-p0k: Remove production attention endpoint, route MCP to sandbox
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -137,6 +137,7 @@ None yet.
 | 260408-kgy | Fix bulk_translate_and_save bug — buildBulkTranslatePrompt sends object-keyed JSON so Gemini returns key names not numeric indices | 2026-04-08 | 5dad3ed | [260408-kgy-fix-bulk-translate-and-save-bug-gemini-r](./quick/260408-kgy-fix-bulk-translate-and-save-bug-gemini-r/) |
 | 260408-oem | Fix 3 quality checker bugs: SHA256 cache hit, skip default locale, expected guard in persistQualityResults | 2026-04-08 | 0a42c27 | [260408-oem-fix-3-quality-checker-bugs-from-feedback](./quick/260408-oem-fix-3-quality-checker-bugs-from-feedback/) |
 | 260409-ff6 | Implement bulk analyze/preflight endpoint for translation key deduplication | 2026-04-09 | 474838c | [260409-ff6-implement-bulk-analyze-preflight-endpoin](./quick/260409-ff6-implement-bulk-analyze-preflight-endpoin/) |
+| 260409-p0k | Remove production attention endpoint, route MCP to sandbox | 2026-04-09 | c0a9d4b | [260409-p0k-remove-production-attention-endpoint-rou](./quick/260409-p0k-remove-production-attention-endpoint-rou/) |
 
 ## Session Continuity
 
