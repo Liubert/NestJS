@@ -2451,8 +2451,12 @@ export class SandboxService {
     // 6. Classify each entry
     const results: AnalysisItemResult[] = [];
 
-    // Track keys already seen within the batch for duplicate detection
+    // Track keys and source texts already seen within the batch for duplicate detection
     const batchKeysSeen = new Map<string, number>(); // key -> index in results
+    const batchTextsSeen = new Map<
+      string,
+      { resultIdx: number; key: string }
+    >(); // text -> {resultIdx, key}
 
     for (const entry of entries) {
       // Step A: batch duplicate by key
@@ -2483,7 +2487,41 @@ export class SandboxService {
         continue;
       }
 
+      // Step A2: batch duplicate by source text (same text, different key)
+      if (batchTextsSeen.has(entry.text)) {
+        const first = batchTextsSeen.get(entry.text)!;
+        // Retroactively mark the first occurrence as duplicate
+        if (results[first.resultIdx].status !== 'duplicate_in_batch') {
+          results[first.resultIdx] = {
+            ...results[first.resultIdx],
+            status: 'duplicate_in_batch',
+            recommendation: 'review',
+            conflict: {
+              reason:
+                'Source text appears more than once in the submitted batch',
+              batchConflictWith: entry.key,
+            },
+          };
+        }
+        results.push({
+          key: entry.key,
+          text: entry.text,
+          status: 'duplicate_in_batch',
+          recommendation: 'review',
+          conflict: {
+            reason: 'Source text appears more than once in the submitted batch',
+            batchConflictWith: first.key,
+          },
+        });
+        batchKeysSeen.set(entry.key, results.length - 1);
+        continue;
+      }
+
       batchKeysSeen.set(entry.key, results.length);
+      batchTextsSeen.set(entry.text, {
+        resultIdx: results.length,
+        key: entry.key,
+      });
 
       // Step B: check if key already exists in the namespace
       if (existingKeyMap.has(entry.key)) {
