@@ -28,6 +28,7 @@ const DEFAULT_SETUP_CONTENT = [
   "- `get_translation_diff <slug>` — see what changed in sandbox vs production",
   "",
   "### 3. Write to sandbox",
+  "- `validate_keys` — **preflight before bulk create**: checks each key for conflicts (key exists with different value) and source-text reuse (same text already exists under another key). Call this before bulk_translate_and_save or set_translation when adding many new keys.",
   "- `set_translation` — upsert one key (source/default locale value MUST always be included in values)",
   "- `bulk_set_locale` — fill many keys for a single locale at once",
   "- `bulk_import` — import multiple locales from a JSON map",
