@@ -903,6 +903,70 @@ export class SandboxService {
     return { deleted: deletedCount };
   }
 
+  async deleteLocaleSandboxTranslations(
+    projectSlug: string,
+    nsSlug: string,
+    localeCode: string,
+    userId: string,
+    role: UserRole,
+  ): Promise<{ deleted: number }> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!this.isAdmin(role) && project.ownerId !== userId) {
+      throw new ForbiddenException(
+        'Only the project owner or admin can reset locale translations',
+      );
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const locale = await this.localeRepo.findOne({
+      where: { projectId: project.id, code: localeCode },
+    });
+    if (!locale)
+      throw new NotFoundException(`Locale "${localeCode}" not found`);
+
+    if (locale.isDefault) {
+      throw new BadRequestException('Cannot reset the default (source) locale');
+    }
+
+    // TypeORM returns [rows, rowCount] for DELETE/UPDATE — use destructuring
+    const [deletedRows, deletedCount] = await this.dataSource.query<
+      [{ id: string }[], number]
+    >(
+      `DELETE FROM sandbox_values
+       WHERE project_id = $1
+         AND locale_id = $2
+         AND key_id IN (SELECT id FROM translation_keys WHERE namespace_id = $3)
+       RETURNING id`,
+      [project.id, locale.id, ns.id],
+    );
+
+    if (deletedRows.length > 0) {
+      await this.projectRepo.update(project.id, { sandboxHasChanges: true });
+    }
+
+    // Always trigger re-translation after reset — even if sandbox was empty
+    this.autoTranslateWorkerService.triggerForNamespace(project.id, ns.id);
+
+    // Reset quality states for remaining sandbox values for this locale
+    // After DELETE this may match 0 rows, which is fine — safety net
+    await this.dataSource.query(
+      `UPDATE sandbox_values
+       SET quality_review_state = 'not_checked'
+       WHERE project_id = $1
+         AND locale_id = $2
+         AND key_id IN (SELECT id FROM translation_keys WHERE namespace_id = $3)
+         AND is_deleted = false`,
+      [project.id, locale.id, ns.id],
+    );
+
+    return { deleted: deletedCount };
+  }
+
   async resetNamespaceQuality(
     projectSlug: string,
     nsSlug: string,

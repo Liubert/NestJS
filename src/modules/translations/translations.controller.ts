@@ -648,6 +648,28 @@ export class TranslationsController {
     );
   }
 
+  @Post('projects/:slug/namespaces/:ns/locales/:locale/reset-translations')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Delete sandbox translations for a specific locale in a namespace — auto-translate worker will re-translate',
+  })
+  async resetLocaleTranslations(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('locale') locale: string,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<{ deleted: number }> {
+    return this.sandboxService.deleteLocaleSandboxTranslations(
+      slug,
+      ns,
+      locale,
+      user.userId,
+      user.role,
+    );
+  }
+
   @Post('projects/:slug/namespaces/:ns/reset-quality')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
