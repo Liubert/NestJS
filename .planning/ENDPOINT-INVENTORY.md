@@ -42,7 +42,7 @@ Audit of all backend controllers reveals 60 routes across 10 controller files. T
 | 24 | POST | `/translations/projects/:slug/namespaces/:ns/entries` | TranslationsController | Admin UI: TranslationsPage | active |
 | 25 | PATCH | `/translations/projects/:slug/namespaces/:ns/entries/:key` | TranslationsController | Admin UI: TranslationsPage | active |
 | 26 | DELETE | `/translations/projects/:slug/namespaces/:ns/entries/:key` | TranslationsController | Admin UI: TranslationsPage | active |
-| 27 | GET | `/translations/projects/:slug/namespaces/:ns/attention` | TranslationsController | MCP: `get_translations_needing_attention` | active |
+| 27 | GET | `/translations/projects/:slug/namespaces/:ns/attention` | TranslationsController | None (was incorrectly reading production table) | removed |
 | 28 | POST | `/translations/projects/:slug/namespaces/:ns/entries/:key/check-quality` | TranslationsController | MCP: `check_entry_quality` | active |
 | 29 | POST | `/translations/projects/:slug/namespaces/:ns/entries/:key/locales/:locale/mark-expected` | TranslationsController | Admin UI: TranslationsPage | active |
 | 30 | DELETE | `/translations/projects/:slug/namespaces/:ns/entries/:key/locales/:locale/mark-expected` | TranslationsController | Admin UI: TranslationsPage | active |
@@ -63,6 +63,7 @@ Audit of all backend controllers reveals 60 routes across 10 controller files. T
 | 45 | POST | `/translations/projects/:slug/sandbox/namespaces/:ns/entries/:key/rename` | SandboxController | MCP: `rename_key` | active |
 | 46 | POST | `/translations/projects/:slug/sandbox/namespaces/:ns/entries/:key/locales/:locale/mark-expected` | SandboxController | Admin UI: TranslationsPage | active |
 | 47 | DELETE | `/translations/projects/:slug/sandbox/namespaces/:ns/entries/:key/locales/:locale/mark-expected` | SandboxController | Admin UI: TranslationsPage | active |
+| 47a | GET | `/translations/projects/:slug/sandbox/namespaces/:ns/attention` | SandboxController | MCP: `get_translations_needing_attention` | active |
 | 48 | PATCH | `/translations/projects/:slug/sandbox/settings` | SandboxController | Admin UI: ProjectSettingsPage (auto-translate toggle) | active |
 | 49 | GET | `/translations/ai-config` | AiConfigController | Admin UI: AiConfigPage (via AiSettingsPage) | active |
 | 50 | POST | `/translations/ai-config` | AiConfigController | Admin UI: AiConfigPage (save) | active |
