@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: "Completed quick task 260409-qyy: add per-locale sandbox reset feature"
-last_updated: "2026-04-09T16:31:00Z"
-last_activity: "2026-04-09 - Completed quick task 260409-qyy: add per-locale sandbox translation reset endpoint + UI button"
+stopped_at: "Completed quick task 260409-r9s: add per-key-locale reset button to sandbox"
+last_updated: "2026-04-09T16:50:00Z"
+last_activity: "2026-04-09 - Completed quick task 260409-r9s: add per-key-locale sandbox reset endpoint + inline cell reset button"
 progress:
   total_phases: 1
   completed_phases: 0
@@ -142,6 +142,7 @@ None yet.
 | 260409-q1i | Rename MCP tool validate_keys to analyze_entries and check_keys_exist | 2026-04-09 | e3aa919 | [260409-q1i-rename-mcp-tool-validate-keys-to-analyze](./quick/260409-q1i-rename-mcp-tool-validate-keys-to-analyze/) |
 | 260409-q9j | Add key naming guide to MCP setup prompt and analyze_entries tool description | 2026-04-09 | 8950fc2 | [260409-q9j-add-key-naming-guide-to-mcp-prompts-and-](./quick/260409-q9j-add-key-naming-guide-to-mcp-prompts-and-/) |
 | 260409-qyy | Add per-locale sandbox reset feature — endpoint + frontend reset button in locale column headers | 2026-04-09 | 060abcf | [260409-qyy-add-reset-per-locale-feature-to-sandbox-](./quick/260409-qyy-add-reset-per-locale-feature-to-sandbox-/) |
+| 260409-r9s | Add per-key-locale reset button to sandbox — DELETE endpoint + inline cell Popconfirm button | 2026-04-09 | ddc828d | [260409-r9s-add-reset-per-key-locale-button-to-sandb](./quick/260409-r9s-add-reset-per-key-locale-button-to-sandb/) |
 
 ## Session Continuity
 
