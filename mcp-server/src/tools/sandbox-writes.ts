@@ -705,6 +705,81 @@ export function registerSandboxWriteTools(server: McpServer): void {
       }
     },
   );
+
+  // ─── reset_namespace_translations ──────────────────────────────────────────
+  server.tool(
+    'reset_namespace_translations',
+    [
+      'Delete all non-default-locale translations for a namespace in sandbox.',
+      'The auto-translate worker will re-populate them asynchronously.',
+      'Use when you need to regenerate all translations (e.g. after updating AI config or locale skill).',
+      'Only non-default locales are affected — source/default locale values are preserved.',
+    ].join(' '),
+    {
+      projectSlug: z.string().describe('Project slug'),
+      namespace: z.string().describe('Namespace slug'),
+    },
+    async ({ projectSlug, namespace }) => {
+      try {
+        const result = await apiPost<{ deleted: number }>(
+          `/translations/projects/${projectSlug}/namespaces/${namespace}/reset-translations`,
+        );
+        logWrite(
+          'reset_namespace_translations',
+          { projectSlug, namespace },
+          result,
+        );
+        return textResult(
+          [
+            `Reset translations: ${projectSlug}/${namespace}`,
+            `  Deleted: ${result.deleted} non-default locale values`,
+            ``,
+            `Auto-translate worker will re-populate translations asynchronously.`,
+            `Use get_namespace_coverage to monitor fill progress.`,
+          ].join('\n'),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  // ─── reset_namespace_quality ────────────────────────────────────────────────
+  server.tool(
+    'reset_namespace_quality',
+    [
+      'Clear all quality scores in a namespace to trigger fresh re-evaluation.',
+      'The quality worker will re-assess all translations asynchronously.',
+      'Use after updating translation content, locale skill, or AI config and need fresh quality feedback.',
+    ].join(' '),
+    {
+      projectSlug: z.string().describe('Project slug'),
+      namespace: z.string().describe('Namespace slug'),
+    },
+    async ({ projectSlug, namespace }) => {
+      try {
+        const result = await apiPost<{ reset: number }>(
+          `/translations/projects/${projectSlug}/namespaces/${namespace}/reset-quality`,
+        );
+        logWrite(
+          'reset_namespace_quality',
+          { projectSlug, namespace },
+          result,
+        );
+        return textResult(
+          [
+            `Reset quality scores: ${projectSlug}/${namespace}`,
+            `  Reset: ${result.reset} entries`,
+            ``,
+            `Quality worker will re-evaluate translations asynchronously.`,
+            `Use get_translations_needing_attention or list_translations with qualityLevel filter to review results.`,
+          ].join('\n'),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
 }
 
 function successContent(

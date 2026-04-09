@@ -200,8 +200,10 @@ export function registerProjectManagementTools(server: McpServer): void {
     'create_locale',
     [
       'Add a locale to a project.',
-      "Use 2-char ISO 639-1 codes: 'nb', 'da', 'sv', 'en', 'uk'. Do NOT use BCP 47 variants like 'nb-NO' — they are aliases, not primary codes.",
-      'After adding a locale, use get_namespace_coverage to see fill gaps, then bulk_set_locale to fill them.',
+      "The primary code must be a 2–3 char ISO 639 code (e.g. 'nb', 'da', 'uk', 'en').",
+      "Use aliases to register BCP 47 variants served by this locale (e.g. aliases=['nb-NO', 'no'] for code='nb').",
+      "Set initTranslate=true to auto-translate all existing namespace keys for this locale via AI immediately after creation.",
+      'After adding a locale, use get_namespace_coverage to see fill gaps, then bulk_set_locale or bulk_translate_and_save to fill them.',
       'Locale skill (translation style rules) can be set via the localeSkill param — if omitted, known locales get auto-filled defaults.',
     ].join(' '),
     {
@@ -213,12 +215,26 @@ export function registerProjectManagementTools(server: McpServer): void {
           '2-3 char ISO 639 code only (e.g. nb, da, uk)',
         )
         .describe(
-          "ISO 639-1 locale code (e.g. 'nb', 'da', 'sv', 'uk'). Use 2-char codes only — NOT BCP 47 like 'nb-NO'.",
+          "Primary ISO 639 locale code (e.g. 'nb', 'da', 'sv', 'uk'). Must be 2–3 lowercase chars.",
         ),
       isDefault: z
         .boolean()
         .default(false)
         .describe('Whether this is the default locale for the project'),
+      aliases: z
+        .array(z.string())
+        .optional()
+        .describe(
+          "BCP 47 variant codes that serve the same translations as this locale. " +
+            "Example: ['nb-NO', 'no'] for code='nb' — requests for 'nb-NO' or 'no' will resolve to 'nb' translations.",
+        ),
+      initTranslate: z
+        .boolean()
+        .default(false)
+        .describe(
+          'When true, triggers one-time auto-translation of all existing keys for this locale via AI immediately after creation. ' +
+            'Useful when adding a locale to an established project with many existing keys.',
+        ),
       localeSkill: z
         .string()
         .max(5000)
@@ -227,7 +243,7 @@ export function registerProjectManagementTools(server: McpServer): void {
           'Language-specific translation guide for AI — style, tone, grammar rules, anti-patterns, common mistakes, wording preferences (up to ~500 words). If omitted, server auto-fills from built-in defaults for known locales.',
         ),
     },
-    async ({ projectSlug, code, isDefault, localeSkill }) => {
+    async ({ projectSlug, code, isDefault, aliases, initTranslate, localeSkill }) => {
       try {
         // Fetch existing namespaces to guide the next step.
         let namespaces: string[] = [];
@@ -242,22 +258,28 @@ export function registerProjectManagementTools(server: McpServer): void {
 
         const body: Record<string, unknown> = { code, isDefault };
         if (localeSkill) body.localeSkill = localeSkill;
+        if (aliases && aliases.length > 0) body.aliases = aliases;
+        if (initTranslate) body.initTranslate = true;
         const created = await apiPost<LocaleCreated>(
           `/translations/projects/${projectSlug}/locales`,
           body,
         );
-        logWrite('create_locale', { projectSlug, code, isDefault, localeSkill }, created);
+        logWrite('create_locale', { projectSlug, code, isDefault, aliases, initTranslate, localeSkill }, created);
 
-        const nextSteps =
-          namespaces.length > 0
+        const nextSteps = initTranslate
+          ? [
+              ``,
+              `Auto-translate triggered — AI will populate all existing keys for "${code}".`,
+              `Use get_namespace_coverage to monitor fill progress.`,
+            ]
+          : namespaces.length > 0
             ? [
                 ``,
                 `Next steps to fill translations for "${code}":`,
                 `1. get_namespace_coverage for each namespace to see fill gaps`,
                 `   Namespaces: ${namespaces.join(', ')}`,
                 `2. list_translations with missingLocale="${code}" to find keys needing translation`,
-                `3. bulk_set_locale to fill many keys at once for "${code}"`,
-                `   Or: set_translation for individual keys`,
+                `3. bulk_translate_and_save or bulk_set_locale to fill keys for "${code}"`,
               ]
             : [
                 ``,
@@ -267,13 +289,19 @@ export function registerProjectManagementTools(server: McpServer): void {
         const localeSkillNote = localeSkill
           ? 'Locale skill: custom (provided)'
           : 'Locale skill: auto-filled from defaults (if available)';
+        const aliasNote = aliases && aliases.length > 0
+          ? `Aliases: ${aliases.join(', ')}`
+          : '';
 
         return textResult(
           [
             `Added locale: ${code}${isDefault ? ' (default)' : ''} to project ${projectSlug}`,
             localeSkillNote,
+            aliasNote,
             ...nextSteps,
-          ].join('\n'),
+          ]
+            .filter(Boolean)
+            .join('\n'),
         );
       } catch (error) {
         return errorResult(error);

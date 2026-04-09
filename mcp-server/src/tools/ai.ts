@@ -414,4 +414,50 @@ export function registerAiTools(server: McpServer): void {
       }
     },
   );
+
+  // ─── bulk_check_quality ────────────────────────────────────────────────────
+  server.tool(
+    'bulk_check_quality',
+    [
+      'Run AI quality check on multiple keys in a namespace at once.',
+      'When keys is omitted, checks ALL keys in the namespace.',
+      'Results are persisted to the database and visible in Admin UI.',
+      'Use this after bulk translate or bulk import to verify translation quality at scale.',
+      'For a single key use check_entry_quality instead.',
+    ].join(' '),
+    {
+      projectSlug: z.string().describe('Project slug'),
+      namespace: z.string().describe('Namespace slug'),
+      keys: z
+        .array(z.string())
+        .max(500)
+        .optional()
+        .describe(
+          'Keys to check (1–500). When omitted, all keys in the namespace are checked.',
+        ),
+    },
+    async ({ projectSlug, namespace, keys }) => {
+      try {
+        const body: Record<string, unknown> = {};
+        if (keys && keys.length > 0) body.keys = keys;
+
+        const result = await apiPost<{ checked: number; skipped: number }>(
+          `/translations/projects/${projectSlug}/namespaces/${namespace}/entries/bulk-quality-check`,
+          body,
+        );
+
+        return textResult(
+          [
+            `Bulk quality check: ${projectSlug}/${namespace}`,
+            `  Checked: ${result.checked}`,
+            `  Skipped: ${result.skipped}`,
+            ``,
+            `Results saved to database. Use get_translations_needing_attention or list_translations with qualityLevel filter to review issues.`,
+          ].join('\n'),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
 }
