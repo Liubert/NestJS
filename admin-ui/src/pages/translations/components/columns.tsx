@@ -9,6 +9,7 @@ import {
   StopOutlined,
   CloseCircleOutlined,
   MinusCircleOutlined,
+  SyncOutlined,
 } from '@ant-design/icons';
 import QualityBadge, { QUALITY_COLOR } from './QualityBadge';
 import type { Entry } from './types';
@@ -64,6 +65,8 @@ export function buildColumns(
   renderKeyExtra?: (key: string, namespace: string) => React.ReactNode,
   deleteConfirmTitle?: string,
   deleteConfirmDescription?: string,
+  onResetLocale?: (locale: string) => void,
+  defaultLocale?: string,
 ): ColumnsType<Entry> {
   const readOnly = !onEdit && !onDelete;
   return [
@@ -119,9 +122,28 @@ export function buildColumns(
     },
     ...locales.map((locale) => ({
       title: (
-        <Tag color="blue">
-          {getFlagForCode(locale)} {locale}
-        </Tag>
+        <Space size={4}>
+          <Tag color="blue">
+            {getFlagForCode(locale)} {locale}
+          </Tag>
+          {isSandbox && onResetLocale && locale !== defaultLocale && (
+            <Popconfirm
+              title={`Reset "${locale}" translations?`}
+              description="All sandbox translations for this locale will be deleted and re-translated automatically."
+              onConfirm={() => onResetLocale(locale)}
+              okText="Reset"
+              okButtonProps={{ danger: true }}
+            >
+              <Button
+                type="text"
+                size="small"
+                icon={<SyncOutlined />}
+                danger
+                style={{ padding: '0 2px', height: 20, width: 20, minWidth: 20 }}
+              />
+            </Popconfirm>
+          )}
+        </Space>
       ),
       key: locale,
       width: 150,
