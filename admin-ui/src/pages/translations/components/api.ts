@@ -215,29 +215,6 @@ export const revertSandboxKey = async (
   );
 };
 
-export const markExpected = async (
-  slug: string,
-  ns: string,
-  key: string,
-  locale: string,
-): Promise<QualityInfo> => {
-  const res = await apiClient.post<QualityInfo>(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
-  );
-  return res.data;
-};
-
-export const unmarkExpected = async (
-  slug: string,
-  ns: string,
-  key: string,
-  locale: string,
-): Promise<void> => {
-  await apiClient.delete(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}/locales/${locale}/mark-expected`,
-  );
-};
-
 export const markSandboxExpected = async (
   slug: string,
   ns: string,

@@ -24,8 +24,6 @@ import type { EditModalProps, QualityResult } from './types';
 import {
   aiTranslate,
   checkQuality,
-  markExpected,
-  unmarkExpected,
   markSandboxExpected,
   unmarkSandboxExpected,
 } from './api';
@@ -343,35 +341,24 @@ const EntryEditModal: React.FC<EditModalProps> = ({
           const canToggleExpected = !isNew && projectSlug && namespace && entry;
 
           const handleToggleExpected = async () => {
-            if (!canToggleExpected) return;
+            if (!canToggleExpected || !isSandbox) return;
             setExpectedLoading(locale);
             try {
               if (storedQuality?.reviewState === 'expected') {
-                if (isSandbox)
-                  await unmarkSandboxExpected(
-                    projectSlug,
-                    namespace,
-                    entry.key,
-                    locale,
-                  );
-                else
-                  await unmarkExpected(
-                    projectSlug,
-                    namespace,
-                    entry.key,
-                    locale,
-                  );
+                await unmarkSandboxExpected(
+                  projectSlug,
+                  namespace,
+                  entry.key,
+                  locale,
+                );
                 message.success('Unmarked as expected');
               } else {
-                if (isSandbox)
-                  await markSandboxExpected(
-                    projectSlug,
-                    namespace,
-                    entry.key,
-                    locale,
-                  );
-                else
-                  await markExpected(projectSlug, namespace, entry.key, locale);
+                await markSandboxExpected(
+                  projectSlug,
+                  namespace,
+                  entry.key,
+                  locale,
+                );
                 message.success('Marked as expected');
               }
               onQualityUpdate?.();
@@ -417,8 +404,9 @@ const EntryEditModal: React.FC<EditModalProps> = ({
                   <SyncOutlined spin /> Reviewing...
                 </Tag>
               )}
-              {/* Expected toggle button */}
+              {/* Expected toggle button — only in sandbox; production is read-only */}
               {canToggleExpected &&
+                isSandbox &&
                 !isEnRow &&
                 storedQuality &&
                 storedQuality.reviewState !== 'not_checked' &&

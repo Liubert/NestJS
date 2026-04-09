@@ -6,12 +6,7 @@ import {
   WarningOutlined,
 } from '@ant-design/icons';
 import type { QualityBadgeProps } from './types';
-import {
-  markExpected,
-  unmarkExpected,
-  markSandboxExpected,
-  unmarkSandboxExpected,
-} from './api';
+import { markSandboxExpected, unmarkSandboxExpected } from './api';
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -75,7 +70,7 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
       </Tooltip>
     );
 
-    if (!canInteract) return badge;
+    if (!canInteract || !isSandbox) return badge;
 
     return (
       <Popconfirm
@@ -83,9 +78,7 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
         description="This will reset validation status. The item will be revalidated."
         onConfirm={async () => {
           try {
-            if (isSandbox)
-              await unmarkSandboxExpected(slug, namespace, entryKey, locale);
-            else await unmarkExpected(slug, namespace, entryKey, locale);
+            await unmarkSandboxExpected(slug, namespace, entryKey, locale);
             message.success('Unmarked');
             onUpdate?.();
           } catch {
@@ -144,7 +137,7 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
     </Tooltip>
   );
 
-  if (!canInteract) return badge;
+  if (!canInteract || !isSandbox) return badge;
 
   return (
     <Popconfirm
@@ -152,9 +145,7 @@ const QualityBadge: React.FC<QualityBadgeProps> = ({
       description="This translation will be marked as correct and skip future revalidation."
       onConfirm={async () => {
         try {
-          if (isSandbox)
-            await markSandboxExpected(slug, namespace, entryKey, locale);
-          else await markExpected(slug, namespace, entryKey, locale);
+          await markSandboxExpected(slug, namespace, entryKey, locale);
           message.success('Translation confirmed');
           onUpdate?.();
         } catch {
