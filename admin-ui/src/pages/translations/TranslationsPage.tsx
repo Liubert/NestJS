@@ -186,6 +186,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const [addLocaleOpen, setAddLocaleOpen] = useState(false);
   const [resetLocalesModalOpen, setResetLocalesModalOpen] = useState(false);
   const [selectedLocalesForReset, setSelectedLocalesForReset] = useState<string[]>([]);
+  const [retranslatingCells, setRetranslatingCells] = useState<Set<string>>(new Set());
 
   const { data: supportedLocales = [] } = useSupportedLocales();
   const getFlagForCode = useCallback(
@@ -324,8 +325,17 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         `/translations/projects/${projectSlug}/namespaces/${namespace}/entries/${encodeURIComponent(key)}/locales/${locale}/sandbox-value`,
       ),
     onSuccess: (_data: any, { key, locale }: { key: string; locale: string }) => {
-      message.success(`Translation for "${key}" (${locale}) reset — re-translating`);
-      invalidate();
+      message.success(`Translation for "${key}" (${locale}) reset — re-translating...`);
+      const cellKey = `${key}::${locale}`;
+      setRetranslatingCells((prev) => new Set(prev).add(cellKey));
+      setTimeout(() => {
+        void invalidate();
+        setRetranslatingCells((prev) => {
+          const next = new Set(prev);
+          next.delete(cellKey);
+          return next;
+        });
+      }, 4000);
     },
     onError: (e: any) =>
       message.error(e.response?.data?.message ?? 'Error resetting translation'),
@@ -390,9 +400,10 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         deleteConfirmDescription,
         defaultLocale,
         isSandbox ? (key, locale) => resetKeyLocaleMutation.mutate({ key, locale }) : undefined,
+        retranslatingCells,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription, defaultLocale],
+    [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription, defaultLocale, retranslatingCells],
   );
 
   const settingsItems = useMemo(() => {

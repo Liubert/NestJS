@@ -11,6 +11,7 @@ import {
   MinusCircleOutlined,
   ReloadOutlined,
   SettingOutlined,
+  LoadingOutlined,
 } from '@ant-design/icons';
 import QualityBadge, { QUALITY_COLOR } from './QualityBadge';
 import type { Entry } from './types';
@@ -68,6 +69,7 @@ export function buildColumns(
   deleteConfirmDescription?: string,
   defaultLocale?: string,
   onResetKeyLocale?: (key: string, locale: string) => void,
+  retranslatingCells?: Set<string>,
 ): ColumnsType<Entry> {
   const readOnly = !onEdit && !onDelete;
   return [
@@ -131,6 +133,7 @@ export function buildColumns(
       width: 150,
       render: (_: unknown, record: Entry) => {
         const val = record.values[locale];
+        const isRetranslating = retranslatingCells?.has(`${record.key}::${locale}`) ?? false;
         return (
           <Space size={4} align="start">
             <QualityBadge
@@ -142,7 +145,9 @@ export function buildColumns(
               isSandbox={isSandbox}
               onUpdate={onQualityUpdate}
             />
-            {val ? (
+            {isRetranslating ? (
+              <span style={{ color: '#1677ff', fontSize: 11 }}><LoadingOutlined spin /> translating...</span>
+            ) : val ? (
               <Text
                 style={{ maxWidth: 110, display: 'block', fontSize: 12 }}
                 ellipsis={{ tooltip: val }}
