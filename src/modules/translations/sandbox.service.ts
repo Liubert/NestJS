@@ -169,12 +169,16 @@ export class SandboxService {
     projectSlug: string,
     _userId: string,
     _role: UserRole,
+    page = 1,
+    limit = 50,
+    filters?: { namespace?: string; locale?: string; status?: string },
   ): Promise<{
     total: number;
     added: number;
     changed: number;
     deleted: number;
     entries: DiffEntry[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
     const project = await this.requireProject(projectSlug);
 
@@ -184,7 +188,17 @@ export class SandboxService {
       );
     }
 
-    // Raw SQL: FULL OUTER JOIN production vs sandbox for this project
+    const offset = (page - 1) * limit;
+    const params: unknown[] = [
+      project.id,
+      filters?.namespace ?? null,
+      filters?.locale ?? null,
+      filters?.status ?? null,
+      limit,
+      offset,
+    ];
+
+    // Raw SQL: FULL OUTER JOIN production vs sandbox, with window-function counts and pagination
     const rows = await this.dataSource.query<
       {
         ns_slug: string;
@@ -196,6 +210,10 @@ export class SandboxService {
         quality_score: number | null;
         quality_level: string | null;
         quality_comment: string | null;
+        total: string;
+        added: string;
+        changed: string;
+        deleted: string;
       }[]
     >(
       `
@@ -226,31 +244,72 @@ export class SandboxService {
         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
         JOIN translation_locales l ON l.id = sv.locale_id
         WHERE sv.project_id = $1
+      ),
+      diff AS (
+        SELECT
+          COALESCE(p.ns_slug, s.ns_slug)  AS ns_slug,
+          COALESCE(p.key,     s.key)      AS key,
+          COALESCE(p.locale,  s.locale)   AS locale,
+          p.value                         AS production_value,
+          s.value                         AS sandbox_value,
+          s.is_deleted                    AS is_deleted,
+          s.quality_score                 AS quality_score,
+          s.quality_level                 AS quality_level,
+          s.quality_comment               AS quality_comment,
+          CASE
+            WHEN p.key IS NULL THEN 'added'
+            WHEN s.is_deleted = true THEN 'deleted'
+            ELSE 'changed'
+          END AS status
+        FROM production p
+        FULL OUTER JOIN sandbox s
+          ON p.ns_slug = s.ns_slug
+         AND p.key = s.key
+         AND p.locale = s.locale
+        WHERE
+          p.key IS NULL
+          OR s.is_deleted = true
+          OR (p.value IS DISTINCT FROM s.value AND s.is_deleted IS NOT TRUE)
+      ),
+      filtered AS (
+        SELECT * FROM diff
+        WHERE ($2::text IS NULL OR ns_slug = $2)
+          AND ($3::text IS NULL OR locale = $3)
+          AND ($4::text IS NULL OR status = $4)
+      ),
+      counts AS (
+        SELECT
+          COUNT(*)                                    AS total,
+          COUNT(*) FILTER (WHERE status = 'added')   AS added,
+          COUNT(*) FILTER (WHERE status = 'changed') AS changed,
+          COUNT(*) FILTER (WHERE status = 'deleted') AS deleted
+        FROM filtered
       )
       SELECT
-        COALESCE(p.ns_slug, s.ns_slug)  AS ns_slug,
-        COALESCE(p.key,     s.key)      AS key,
-        COALESCE(p.locale,  s.locale)   AS locale,
-        p.value                         AS production_value,
-        s.value                         AS sandbox_value,
-        s.is_deleted                    AS is_deleted,
-        s.quality_score                 AS quality_score,
-        s.quality_level                 AS quality_level,
-        s.quality_comment               AS quality_comment
-      FROM production p
-      FULL OUTER JOIN sandbox s
-        ON p.ns_slug = s.ns_slug
-       AND p.key = s.key
-       AND p.locale = s.locale
-      WHERE
-        -- Only rows that differ between production and sandbox
-        p.key IS NULL                                          -- added in sandbox
-        OR s.is_deleted = true                                 -- deleted in sandbox
-        OR (p.value IS DISTINCT FROM s.value AND s.is_deleted IS NOT TRUE)  -- changed
-      ORDER BY ns_slug, key, locale
+        f.ns_slug,
+        f.key,
+        f.locale,
+        f.production_value,
+        f.sandbox_value,
+        f.is_deleted,
+        f.quality_score,
+        f.quality_level,
+        f.quality_comment,
+        c.total,
+        c.added,
+        c.changed,
+        c.deleted
+      FROM filtered f, counts c
+      ORDER BY f.ns_slug, f.key, f.locale
+      LIMIT $5 OFFSET $6
     `,
-      [project.id],
+      params,
     );
+
+    const total = rows.length > 0 ? parseInt(rows[0].total, 10) : 0;
+    const added = rows.length > 0 ? parseInt(rows[0].added, 10) : 0;
+    const changed = rows.length > 0 ? parseInt(rows[0].changed, 10) : 0;
+    const deleted = rows.length > 0 ? parseInt(rows[0].deleted, 10) : 0;
 
     const entries: DiffEntry[] = rows.map((r) => ({
       namespace: r.ns_slug,
@@ -274,11 +333,17 @@ export class SandboxService {
     }));
 
     return {
-      total: entries.length,
-      added: entries.filter((e) => e.status === 'added').length,
-      changed: entries.filter((e) => e.status === 'changed').length,
-      deleted: entries.filter((e) => e.status === 'deleted').length,
+      total,
+      added,
+      changed,
+      deleted,
       entries,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
