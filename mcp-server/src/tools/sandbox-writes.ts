@@ -423,43 +423,24 @@ export function registerSandboxWriteTools(server: McpServer): void {
   server.tool(
     'delete_translation',
     [
-      'Delete one or multiple translation keys from the sandbox (soft delete).',
-      'Pass a single key string or an array of keys — bulk deletes use one request.',
+      'Delete one or more translation keys from the sandbox (soft delete).',
       'Keys remain in production until you promote the sandbox.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug'),
       namespace: z.string().describe('Namespace slug'),
-      key: z
-        .union([z.string(), z.array(z.string()).min(1).max(500)])
-        .describe('Single key or array of keys to delete (max 500)'),
+      keys: z.array(z.string()).min(1).max(500).describe('Keys to delete (1–500)'),
     },
-    async ({ projectSlug, namespace, key }) => {
-      const basePath = `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}`;
-      const keys = Array.isArray(key) ? key : [key];
-
+    async ({ projectSlug, namespace, keys }) => {
       try {
-        if (keys.length === 1) {
-          await apiDelete(`${basePath}/entries/${encodeURIComponent(keys[0])}`);
-          logWrite('delete_translation', { projectSlug, namespace, key: keys[0] }, { deleted: 1 });
-          return textResult(
-            [
-              `Deleted sandbox key: ${projectSlug}/${namespace}/${keys[0]}`,
-              ``,
-              `Marked for deletion in sandbox. Removed from production only after promote via Admin UI.`,
-              `Use get_translation_diff to review the pending deletion.`,
-            ].join('\n'),
-          );
-        }
-
         const result = await apiPost<{ deleted: number }>(
-          `${basePath}/entries/batch-delete`,
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/batch-delete`,
           { keys },
         );
         logWrite('delete_translation', { projectSlug, namespace, keys }, result);
         return textResult(
           [
-            `Deleted ${result.deleted} sandbox keys in ${projectSlug}/${namespace}`,
+            `Deleted ${result.deleted} sandbox key(s) in ${projectSlug}/${namespace}`,
             ``,
             `Marked for deletion in sandbox. Removed from production only after promote via Admin UI.`,
             `Use get_translation_diff to review pending deletions.`,
