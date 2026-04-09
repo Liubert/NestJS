@@ -632,6 +632,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
       '(3) source text overlap — signals a potential reuse opportunity, but NOT a hard rule (the same word can have different translations in different contexts).',
       'Call BEFORE bulk_translate_and_save or set_translation when adding many new keys.',
       'Does NOT create or modify anything.',
+      'Before submitting entries, follow key naming rules: short context-agnostic names consistent with existing project style; no location suffixes (e.g. submit_button not page_header_submit_button).',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug'),
