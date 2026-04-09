@@ -117,6 +117,48 @@ export function registerEnvironmentTools(server: McpServer): void {
   );
 
   server.tool(
+    'list_namespaces',
+    [
+      'List all namespaces in a translation project.',
+      'Returns namespace slugs and average quality scores.',
+      'Use this to see available namespaces before calling list_translations or bulk operations.',
+    ].join(' '),
+    { projectSlug: z.string().describe("Project slug (e.g. 'my-app')") },
+    async ({ projectSlug }) => {
+      try {
+        const project = await apiGet<ProjectDetails>(
+          `/translations/projects/${projectSlug}`,
+        );
+        const namespaces = project.namespaces;
+
+        if (namespaces.length === 0) {
+          return textResult(
+            `Project "${projectSlug}" has no namespaces yet.\nCreate one with create_namespace.`,
+          );
+        }
+
+        const rows = namespaces.map((ns) => {
+          const scoreStr =
+            ns.avgScore !== null
+              ? ` — avg quality: ${ns.avgScore}/100`
+              : ' — no quality data';
+          return `• ${ns.slug}${scoreStr}`;
+        });
+
+        return textResult(
+          [
+            `Namespaces in "${projectSlug}" (${namespaces.length}):`,
+            '',
+            ...rows,
+          ].join('\n'),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.tool(
     'assess_integration_state',
     [
       'Starting point for localization integration assessment.',
