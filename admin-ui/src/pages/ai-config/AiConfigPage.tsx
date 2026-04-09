@@ -1,10 +1,12 @@
 import React from 'react';
 import {
+  Alert,
   Button,
   Card,
   Form,
   Input,
   message,
+  Select,
   Space,
   Spin,
   Typography,
@@ -26,6 +28,17 @@ interface AiConfig {
   updatedAt: string;
 }
 
+// Curated Gemini model list — Flash variants are fast and cheap;
+// Pro variants offer more reasoning depth. Validation on Save prevents
+// saving a model that isn't accessible with the current API key.
+const MODEL_OPTIONS = [
+  { value: 'gemini-2.0-flash', label: 'Gemini 2.0 Flash (default — fast, balanced)' },
+  { value: 'gemini-2.5-flash', label: 'Gemini 2.5 Flash (newer generation, fast)' },
+  { value: 'gemini-2.5-pro',   label: 'Gemini 2.5 Pro (most capable, slower)' },
+  { value: 'gemini-1.5-flash', label: 'Gemini 1.5 Flash (legacy — may require older API tier)' },
+  { value: 'gemini-1.5-pro',   label: 'Gemini 1.5 Pro (legacy — may require older API tier)' },
+];
+
 const fetchConfig = async (): Promise<AiConfig> => {
   const res = await apiClient.get<AiConfig>('/translations/ai-config');
   return res.data;
@@ -41,6 +54,10 @@ const resetConfig = async (): Promise<AiConfig> => {
   return res.data;
 };
 
+const validateModelApi = async (model: string): Promise<void> => {
+  await apiClient.post('/translations/ai-config/validate-model', { model });
+};
+
 const PROMPT_VARS: Record<string, string[]> = {
   translatePrompt: ['{{text}}', '{{languages}}'],
   qualityTranslatePrompt: ['{{source}}', '{{translation}}', '{{locale}}', '{{context}}'],
@@ -50,13 +67,14 @@ const PROMPT_VARS: Record<string, string[]> = {
 const AiConfigPage: React.FC = () => {
   const [form] = Form.useForm();
   const queryClient = useQueryClient();
+  const [validationError, setValidationError] = React.useState<string | null>(null);
+  const [validating, setValidating] = React.useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['ai-config'],
     queryFn: fetchConfig,
   });
 
-  // Populate form when data loads
   React.useEffect(() => {
     if (data) form.setFieldsValue(data);
   }, [data, form]);
@@ -66,6 +84,7 @@ const AiConfigPage: React.FC = () => {
     onSuccess: (updated) => {
       queryClient.setQueryData(['ai-config'], updated);
       message.success('Configuration saved');
+      setValidationError(null);
     },
     onError: () => message.error('Failed to save'),
   });
@@ -76,15 +95,35 @@ const AiConfigPage: React.FC = () => {
       queryClient.setQueryData(['ai-config'], updated);
       form.setFieldsValue(updated);
       message.success('Reset to defaults');
+      setValidationError(null);
     },
     onError: () => message.error('Failed to reset'),
   });
 
-  const onFinish = (values: AiConfig) => {
+  const onFinish = async (values: AiConfig) => {
+    setValidationError(null);
+
+    // Only validate if the model changed
+    const currentModel = data?.model;
+    if (values.model !== currentModel) {
+      setValidating(true);
+      try {
+        await validateModelApi(values.model);
+      } catch (err: unknown) {
+        const detail =
+          (err as { response?: { data?: { message?: string } } })?.response?.data?.message ??
+          'Model returned an incompatible response format';
+        setValidationError(typeof detail === 'string' ? detail : JSON.stringify(detail));
+        setValidating(false);
+        return;
+      }
+      setValidating(false);
+    }
+
     saveMutation.mutate(values);
   };
 
-  const busy = saveMutation.isPending || resetMutation.isPending;
+  const busy = saveMutation.isPending || resetMutation.isPending || validating;
 
   return (
     <div style={{ maxWidth: 900 }}>
@@ -102,9 +141,31 @@ const AiConfigPage: React.FC = () => {
       ) : (
         <Form form={form} layout="vertical" onFinish={onFinish}>
           <Card size="small" title="Model" style={{ marginBottom: 16 }}>
-            <Form.Item name="model" label="Model name" rules={[{ required: true }]}>
-              <Input placeholder="gemini-2.0-flash" />
+            <Form.Item name="model" label="Model" rules={[{ required: true }]}>
+              <Select
+                options={MODEL_OPTIONS}
+                placeholder="Select a model"
+                showSearch
+                filterOption={(input, option) =>
+                  (option?.value ?? '').toLowerCase().includes(input.toLowerCase())
+                }
+              />
             </Form.Item>
+            {validating && (
+              <Space style={{ marginTop: 8 }}>
+                <Spin size="small" />
+                <Text type="secondary">Validating model compatibility…</Text>
+              </Space>
+            )}
+            {validationError && (
+              <Alert
+                type="error"
+                showIcon
+                message="Model validation failed — model not saved"
+                description={validationError}
+                style={{ marginTop: 8 }}
+              />
+            )}
           </Card>
 
           <Card
@@ -167,10 +228,10 @@ const AiConfigPage: React.FC = () => {
               type="primary"
               htmlType="submit"
               icon={<SaveOutlined />}
-              loading={saveMutation.isPending}
+              loading={saveMutation.isPending || validating}
               disabled={busy}
             >
-              Save
+              {validating ? 'Validating…' : 'Save'}
             </Button>
             <Button
               icon={<ReloadOutlined />}

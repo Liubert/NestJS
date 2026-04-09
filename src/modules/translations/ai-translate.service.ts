@@ -582,4 +582,73 @@ export class AiTranslateService {
       contextReason: ctx?.reason ?? null,
     };
   }
+
+  // ─── Model validation ─────────────────────────────────────────────────────────
+
+  /**
+   * Validates that a Gemini model ID is usable by this system.
+   * Makes a single lightweight call and checks the response is valid JSON
+   * with the shape our system expects (score, comment fields).
+   * Does NOT evaluate translation quality — only contract compatibility.
+   */
+  async validateModel(
+    model: string,
+  ): Promise<{ valid: boolean; error?: string }> {
+    const apiKey = this.config.get<string>('GEMINI_API_KEY');
+    if (!apiKey) {
+      throw new ServiceUnavailableException(
+        'GEMINI_API_KEY is not configured on this server',
+      );
+    }
+
+    const genAI = new GoogleGenerativeAI(apiKey);
+    const geminiModel = genAI.getGenerativeModel(
+      { model },
+      { generationConfig: { temperature: 0.1 } },
+    );
+
+    // Minimal prompt that mirrors our quality-check contract:
+    // we expect {"score": number, "comment": string}
+    const prompt = `You are a translation quality reviewer. Respond ONLY with valid JSON, no markdown.
+Evaluate this translation:
+Source: "Hello"
+Translation (fr): "Bonjour"
+Return: {"score": <1-100>, "comment": "<string>"}`;
+
+    let raw: string;
+    try {
+      const result = await geminiModel.generateContent(prompt);
+      raw = result.response.text();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      return { valid: false, error: `Model API call failed: ${message}` };
+    }
+
+    const cleaned = raw
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/, '')
+      .trim();
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(cleaned) as Record<string, unknown>;
+    } catch {
+      return {
+        valid: false,
+        error: `Model did not return valid JSON. Response: ${cleaned.slice(0, 200)}`,
+      };
+    }
+
+    if (
+      typeof parsed.score !== 'number' ||
+      typeof parsed.comment !== 'string'
+    ) {
+      return {
+        valid: false,
+        error: `Response JSON is missing required fields (score, comment). Got: ${JSON.stringify(parsed).slice(0, 200)}`,
+      };
+    }
+
+    return { valid: true };
+  }
 }
