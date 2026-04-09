@@ -52,7 +52,7 @@ const DEFAULT_SETUP_CONTENT = [
   "### Key naming",
   "- **Match existing style** — look at keys already in the namespace (camelCase vs snake_case) and stay consistent",
   "- **Keep names short** — describe the meaning, not the location; avoid filler words",
-  "- **Reuse before creating** — run `check_keys_exist` or `list_translations` to check if a suitable key already exists",
+  "- **Reuse before creating** — run `analyze_entries` preflight: checks key conflicts AND source text overlap across the namespace in one call",
   "- **No location suffixes** — `submit_button` not `page_header_submit_button`; location-encoded names block reuse",
   "- **Source text overlap is a signal, not a rule** — if the same English text exists under another key, consider reusing it, but identical words can differ by context (e.g. \"Close\" on a dialog vs a date range)",
 ].join("\n");

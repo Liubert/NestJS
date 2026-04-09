@@ -70,9 +70,25 @@ export const TOOL_REGISTRY = {
   // ── AI tools ────────────────────────────────────────────────────────────────
   ai_translate: { env: "both", access: "read" },
   ai_quality_check: { env: "both", access: "read" },
-  check_entry_quality: { env: "both", access: "write" },
+  bulk_ai_translate: { env: "both", access: "read" },
+  bulk_translate_and_save: { env: "sandbox", access: "write" },
+  check_entry_quality: { env: "sandbox", access: "write" },
+  bulk_check_quality: { env: "sandbox", access: "write" },
+  get_ai_usage: { env: "both", access: "read" },
   // ── Sandbox key management ──────────────────────────────────────────────────
   rename_key: { env: "sandbox", access: "write" },
+  rename_namespace: { env: "both", access: "write" },
+  revert_sandbox_entry: { env: "sandbox", access: "write" },
+  // ── Quality / mark expected ──────────────────────────────────────────────────
+  mark_expected: { env: "sandbox", access: "write" },
+  unmark_expected: { env: "sandbox", access: "write" },
+  get_translations_needing_attention: { env: "sandbox", access: "read" },
+  // ── Namespace / locale management ────────────────────────────────────────────
+  reset_namespace_quality: { env: "sandbox", access: "write" },
+  reset_namespace_translations: { env: "sandbox", access: "write" },
+  delete_namespace: { env: "both", access: "write" },
+  delete_locale: { env: "both", access: "write" },
+  update_locale: { env: "both", access: "write" },
 } as const satisfies Record<string, ToolMeta>;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
