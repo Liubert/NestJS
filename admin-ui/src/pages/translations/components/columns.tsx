@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ColumnsType } from 'antd/es/table';
-import { Space, Tooltip, Tag, Button, Popconfirm, Typography } from 'antd';
+import { Space, Tooltip, Tag, Button, Popconfirm, Typography, Dropdown, Modal } from 'antd';
 import {
   EditOutlined,
   DeleteOutlined,
@@ -10,6 +10,7 @@ import {
   CloseCircleOutlined,
   MinusCircleOutlined,
   ReloadOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import QualityBadge, { QUALITY_COLOR } from './QualityBadge';
 import type { Entry } from './types';
@@ -151,22 +152,40 @@ export function buildColumns(
             ) : (
               <span style={{ color: '#d9d9d9', fontSize: 11 }}>—</span>
             )}
-            {isSandbox && onResetKeyLocale && locale !== defaultLocale && val && (
-              <Popconfirm
-                title="Reset this translation?"
-                description="This sandbox translation will be deleted and re-translated automatically."
-                onConfirm={() => onResetKeyLocale(record.key, locale)}
-                okText="Reset"
-                okButtonProps={{ danger: true }}
+            {isSandbox && locale !== defaultLocale && (onEdit || onResetKeyLocale) && (
+              <Dropdown
+                trigger={['click']}
+                menu={{
+                  items: [
+                    ...(onEdit ? [{
+                      key: 'edit',
+                      label: 'Edit',
+                      icon: <EditOutlined />,
+                      onClick: () => onEdit(record),
+                    }] : []),
+                    ...(onResetKeyLocale && val ? [{
+                      key: 'retranslate',
+                      label: 'Re-translate',
+                      icon: <ReloadOutlined />,
+                      danger: true,
+                      onClick: () => Modal.confirm({
+                        title: 'Re-translate this value?',
+                        content: 'The current translation will be deleted and re-generated automatically.',
+                        okText: 'Re-translate',
+                        okButtonProps: { danger: true },
+                        onOk: () => onResetKeyLocale(record.key, locale),
+                      }),
+                    }] : []),
+                  ],
+                }}
               >
                 <Button
                   type="text"
                   size="small"
-                  icon={<ReloadOutlined />}
-                  danger
-                  style={{ padding: '0 2px', height: 18, width: 18, minWidth: 18, fontSize: 11 }}
+                  icon={<SettingOutlined />}
+                  style={{ padding: '0 2px', height: 18, width: 18, minWidth: 18, fontSize: 11, color: '#8c8c8c' }}
                 />
-              </Popconfirm>
+              </Dropdown>
             )}
           </Space>
         );
