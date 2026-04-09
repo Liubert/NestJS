@@ -65,7 +65,8 @@ export const TOOL_REGISTRY = {
   export_namespace: { env: "both", access: "read" },
   get_namespace_coverage: { env: "both", access: "read" },
   compare_local_vs_server: { env: "both", access: "read" },
-  validate_keys: { env: "both", access: "read" },
+  analyze_entries: { env: "both", access: "read" },
+  check_keys_exist: { env: "both", access: "read" },
   // ── AI tools ────────────────────────────────────────────────────────────────
   ai_translate: { env: "both", access: "read" },
   ai_quality_check: { env: "both", access: "read" },

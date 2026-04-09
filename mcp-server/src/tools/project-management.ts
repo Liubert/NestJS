@@ -847,9 +847,9 @@ export function registerProjectManagementTools(server: McpServer): void {
     },
   );
 
-  // ─── validate_keys ─────────────────────────────────────────────────────────
+  // ─── check_keys_exist ──────────────────────────────────────────────────────
   server.tool(
-    'validate_keys',
+    'check_keys_exist',
     [
       'Check whether a list of translation keys exist in a namespace.',
       'Returns: found keys, missing keys.',

@@ -148,7 +148,8 @@ Projects, namespaces, locales, and webhooks — structural setup, not translatio
 | `export_namespace` | Full JSON export per locale | `projectSlug`, `namespace`, `env?`, `locale?` |
 | `get_namespace_coverage` | Per-locale fill percentage with missing key samples | `projectSlug`, `namespace`, `env?` |
 | `compare_local_vs_server` | Diff local JSON against server entries | `projectSlug`, `namespace`, `translations?`, `filePath?`, `env?` |
-| `validate_keys` | Check if a list of keys exist | `projectSlug`, `namespace`, `keys`, `env?` |
+| `analyze_entries` | Preflight analysis of planned keys — duplicates, conflicts, reuse signals | `projectSlug`, `namespace`, `entries`, `sourceLocale?` |
+| `check_keys_exist` | Check if a list of keys exist in a namespace | `projectSlug`, `namespace`, `keys`, `env?` |
 
 ### Translations — Write
 
