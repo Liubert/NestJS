@@ -1001,6 +1001,19 @@ export class TranslationsService {
       );
     }
 
+    const projectLocales = await this.localeRepo.findBy({
+      projectId: project.id,
+    });
+    const defaultLocale = projectLocales.find((l) => l.isDefault);
+    if (defaultLocale) {
+      const sourceVal = dto.values?.[defaultLocale.code];
+      if (!sourceVal || sourceVal.trim() === '') {
+        throw new BadRequestException(
+          `Source locale "${defaultLocale.code}" value is required`,
+        );
+      }
+    }
+
     const keyEntity = await this.keyRepo.save(
       this.keyRepo.create({
         namespaceId: ns.id,
@@ -1054,6 +1067,19 @@ export class TranslationsService {
       where: { namespaceId: ns.id, key },
     });
     if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+
+    const updateLocales = await this.localeRepo.findBy({
+      projectId: project.id,
+    });
+    const updateDefaultLocale = updateLocales.find((l) => l.isDefault);
+    if (updateDefaultLocale) {
+      const sourceVal = dto.values[updateDefaultLocale.code];
+      if (!sourceVal || sourceVal.trim() === '') {
+        throw new BadRequestException(
+          `Source locale "${updateDefaultLocale.code}" value is required`,
+        );
+      }
+    }
 
     if (dto.context !== undefined) {
       const oldContext = keyEntity.context;

@@ -214,6 +214,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   }, [projectDetails, namespace]);
 
   const locales: string[] = projectDetails?.locales?.map((l) => l.code) ?? [];
+  const defaultLocale = projectDetails?.locales?.find((l) => l.isDefault)?.code;
 
   const namespaceIsValid = !!projectDetails?.namespaces.some(
     (ns) => ns.slug === namespace,
@@ -509,6 +510,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         open={editModalOpen}
         entry={editEntry}
         locales={locales}
+        defaultLocale={defaultLocale}
         isNew={isNewEntry}
         onClose={() => setEditModalOpen(false)}
         onSave={(key, values, context) => {

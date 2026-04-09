@@ -126,6 +126,7 @@ export interface EditModalProps {
   open: boolean;
   entry: Entry | null;
   locales: string[];
+  defaultLocale?: string;
   isNew: boolean;
   onClose: () => void;
   onSave: (

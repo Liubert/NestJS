@@ -38,6 +38,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
   open,
   entry,
   locales,
+  defaultLocale,
   isNew,
   onClose,
   onSave,
@@ -100,7 +101,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
       const values: Record<string, string> = {};
       for (const locale of locales) {
         const v = rest[locale] ?? '';
-        if (locale === 'en' && !v.trim()) return; // blocked by form rules, safety guard
+        if (locale === defaultLocale && !v.trim()) return; // blocked by form rules, safety guard
         values[locale] = v;
       }
       onSave(key, values, formContext);
@@ -111,7 +112,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     if (contextNeed === 'none') return;
     setQualityResults((prev) => {
       const next = { ...prev };
-      for (const locale of locales.filter((l) => l !== 'en')) {
+      for (const locale of locales.filter((l) => l !== (defaultLocale ?? 'en'))) {
         if (!next[locale]) {
           next[locale] = { score: 0, level: 'green', comment: '', contextNeed, contextReason: contextReason ?? null };
         } else {
@@ -124,15 +125,15 @@ const EntryEditModal: React.FC<EditModalProps> = ({
 
   // ── AI Translate (all locales) ──
   const handleAiGenerateAll = async () => {
-    const enText: string = form.getFieldValue('en') ?? '';
+    const enText: string = form.getFieldValue(defaultLocale ?? 'en') ?? '';
     if (!enText.trim()) {
-      message.warning('Enter English text first');
+      message.warning('Enter source text first');
       return;
     }
     setAiLoadingLocale('all');
     try {
       const contextVal: string = form.getFieldValue('context') ?? '';
-      const targetLocales = locales.filter((l) => l !== 'en');
+      const targetLocales = locales.filter((l) => l !== defaultLocale);
       const result = await aiTranslate(
         enText,
         projectSlug,
@@ -156,9 +157,9 @@ const EntryEditModal: React.FC<EditModalProps> = ({
 
   // ── AI Translate (single locale) ──
   const handleAiGenerateOne = async (locale: string) => {
-    const enText: string = form.getFieldValue('en') ?? '';
+    const enText: string = form.getFieldValue(defaultLocale ?? 'en') ?? '';
     if (!enText.trim()) {
-      message.warning('Enter English text first');
+      message.warning('Enter source text first');
       return;
     }
     setAiLoadingLocale(locale);
@@ -187,9 +188,9 @@ const EntryEditModal: React.FC<EditModalProps> = ({
   // ── Quality Check (all locales) ──
   const handleCheckQualityAll = async () => {
     const vals = form.getFieldsValue();
-    const enText: string = vals['en'] ?? '';
+    const enText: string = vals[defaultLocale ?? 'en'] ?? '';
     if (!enText.trim()) {
-      message.warning('English (source) text is required');
+      message.warning('Source locale text is required');
       return;
     }
     const allQualityLocales = locales.filter((l) => vals[l]?.trim());
@@ -203,7 +204,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     try {
       const results = await Promise.all(
         allQualityLocales.map((locale) => {
-          const isDefault = locale === 'en';
+          const isDefault = locale === (defaultLocale ?? 'en');
           return checkQuality(
             enText,
             vals[locale],
@@ -225,9 +226,9 @@ const EntryEditModal: React.FC<EditModalProps> = ({
   // ── Quality Check (single locale) ──
   const handleCheckQualityOne = async (locale: string) => {
     const vals = form.getFieldsValue();
-    const enText: string = vals['en'] ?? '';
+    const enText: string = vals[defaultLocale ?? 'en'] ?? '';
     if (!enText.trim()) {
-      message.warning('English (source) text is required');
+      message.warning('Source locale text is required');
       return;
     }
     const text = vals[locale]?.trim();
@@ -238,7 +239,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     const contextVal: string = vals['context'] ?? '';
     setQualityLoadingLocale(locale);
     try {
-      const isDefault = locale === 'en';
+      const isDefault = locale === (defaultLocale ?? 'en');
       const result = await checkQuality(
         enText,
         vals[locale],
@@ -255,8 +256,10 @@ const EntryEditModal: React.FC<EditModalProps> = ({
     }
   };
 
-  const hasEnLocale = locales.includes('en');
-  const hasOtherLocales = locales.some((l) => l !== 'en');
+  const hasEnLocale = defaultLocale ? locales.includes(defaultLocale) : locales.includes('en');
+  const hasOtherLocales = defaultLocale
+    ? locales.some((l) => l !== defaultLocale)
+    : locales.some((l) => l !== 'en');
   const isAiLoading = aiLoadingLocale !== null;
   const isQualityLoading = qualityLoadingLocale !== null;
 
@@ -336,7 +339,7 @@ const EntryEditModal: React.FC<EditModalProps> = ({
         {(!isNew || hasKey) && locales.map((locale) => {
           const qr = qualityResults[locale];
           const storedQuality = entry?.quality?.[locale];
-          const isEnRow = locale === 'en';
+          const isEnRow = locale === (defaultLocale ?? 'en');
           const canToggleExpected = !isNew && projectSlug && namespace && entry;
 
           const handleToggleExpected = async () => {
@@ -522,10 +525,10 @@ const EntryEditModal: React.FC<EditModalProps> = ({
               name={locale}
               label={labelContent}
               rules={
-                locale === 'en'
+                locale === (defaultLocale ?? 'en')
                   ? [
-                      { required: true, message: 'Source (en) value is required' },
-                      { whitespace: true, message: 'Source (en) value cannot be empty' },
+                      { required: true, message: `Source (${defaultLocale ?? 'en'}) value is required` },
+                      { whitespace: true, message: `Source (${defaultLocale ?? 'en'}) value cannot be empty` },
                     ]
                   : []
               }

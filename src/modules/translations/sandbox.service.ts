@@ -1337,6 +1337,16 @@ export class SandboxService {
     );
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
+    const defaultLocale = locales.find((l) => l.isDefault);
+    if (defaultLocale) {
+      const sourceVal = dto.values?.[defaultLocale.code];
+      if (!sourceVal || sourceVal.trim() === '') {
+        throw new BadRequestException(
+          `Source locale "${defaultLocale.code}" value is required`,
+        );
+      }
+    }
+
     const resultValues: Record<string, string> = {};
 
     for (const locale of locales) {
@@ -1449,9 +1459,9 @@ export class SandboxService {
 
     if (defaultLocale) {
       const sourceVal = dto.values[defaultLocale.code];
-      if (sourceVal !== undefined && sourceVal.trim() === '') {
+      if (!sourceVal || sourceVal.trim() === '') {
         throw new BadRequestException(
-          `Source locale "${defaultLocale.code}" value cannot be empty`,
+          `Source locale "${defaultLocale.code}" value is required`,
         );
       }
     }
