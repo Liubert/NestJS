@@ -163,16 +163,18 @@ export function buildColumns(
                       icon: <EditOutlined />,
                       onClick: () => onEdit(record),
                     }] : []),
-                    ...(onResetKeyLocale && val ? [{
+                    ...(onResetKeyLocale ? [{
                       key: 'retranslate',
-                      label: 'Re-translate',
+                      label: val ? 'Re-translate' : 'Translate',
                       icon: <ReloadOutlined />,
-                      danger: true,
+                      danger: !!val,
                       onClick: () => Modal.confirm({
-                        title: 'Re-translate this value?',
-                        content: 'The current translation will be deleted and re-generated automatically.',
-                        okText: 'Re-translate',
-                        okButtonProps: { danger: true },
+                        title: val ? 'Re-translate this value?' : 'Auto-translate this value?',
+                        content: val
+                          ? 'The current translation will be deleted and re-generated automatically.'
+                          : 'A translation will be generated automatically.',
+                        okText: val ? 'Re-translate' : 'Translate',
+                        okButtonProps: { danger: !!val },
                         onOk: () => onResetKeyLocale(record.key, locale),
                       }),
                     }] : []),
