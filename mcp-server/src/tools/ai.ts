@@ -62,26 +62,32 @@ export function registerAiTools(server: McpServer): void {
           targetLocales = allProjectLocales;
         }
 
-        const result = await apiPost<Record<string, string>>(
-          '/translations/ai-translate',
-          {
-            text,
-            projectSlug,
-            targetLocales,
-            ...(context ? { context } : {}),
-          },
-        );
+        const result = await apiPost<{
+          translations: Record<string, string>;
+          contextNeed: string;
+          contextReason: string | null;
+        }>('/translations/ai-translate', {
+          text,
+          projectSlug,
+          targetLocales,
+          ...(context ? { context } : {}),
+        });
         logWrite('ai_translate', { projectSlug, text }, result);
 
         const lines = [
           `AI Translation (project: ${projectSlug}):`,
           `Source (en): ${text}`,
           ``,
-          ...Object.entries(result).map(
+          ...Object.entries(result.translations).map(
             ([locale, translation]) => `  [${locale}] ${translation}`,
           ),
           ``,
         ];
+        if (result.contextNeed && result.contextNeed !== 'none') {
+          lines.push(
+            `Context need: ${result.contextNeed}${result.contextReason ? ` — ${result.contextReason}` : ''}`,
+          );
+        }
         if (ignoredLocales.length > 0) {
           lines.push(
             `Note: ignored unknown locales: ${ignoredLocales.join(', ')}`,

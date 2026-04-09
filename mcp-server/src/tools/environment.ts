@@ -24,7 +24,7 @@ interface ProjectDetails {
   name: string | null;
   ownerId: string;
   locales: LocaleInfo[];
-  namespaces: string[];
+  namespaces: { slug: string; avgScore: number | null }[];
 }
 
 interface SandboxStatus {
@@ -104,7 +104,7 @@ export function registerEnvironmentTools(server: McpServer): void {
           ``,
           namespaces.length === 0
             ? `Namespaces: none — project has no namespaces yet`
-            : `Namespaces (${namespaces.length}): ${namespaces.join(', ')}`,
+            : `Namespaces (${namespaces.length}): ${namespaces.map((n) => n.slug).join(', ')}`,
           ``,
           `Sandbox: ${sandboxLine}`,
         ];
@@ -133,8 +133,10 @@ export function registerEnvironmentTools(server: McpServer): void {
     },
     async ({ projectSlug }) => {
       try {
-        const backendUrl = process.env.BACKEND_URL ?? '(NOT SET — configure BACKEND_URL)';
-        const adminUiUrl = process.env.ADMIN_UI_URL ?? '(NOT SET — configure ADMIN_UI_URL)';
+        const backendUrl =
+          process.env.BACKEND_URL ?? '(NOT SET — configure BACKEND_URL)';
+        const adminUiUrl =
+          process.env.ADMIN_UI_URL ?? '(NOT SET — configure ADMIN_UI_URL)';
 
         // Fetch projects, optional project details, and agent guide in parallel.
         // The project list already includes sandboxHasChanges + sandboxInitializedAt — no extra status calls needed.
@@ -207,7 +209,7 @@ export function registerEnvironmentTools(server: McpServer): void {
               `Locales (${localeCount}): ${localeCount > 0 ? projectDetails.locales.map((l) => l.code).join(', ') : 'none yet'}`,
             );
             lines.push(
-              `Namespaces (${nsCount}): ${nsCount > 0 ? projectDetails.namespaces.join(', ') : 'none yet'}`,
+              `Namespaces (${nsCount}): ${nsCount > 0 ? projectDetails.namespaces.map((n) => n.slug).join(', ') : 'none yet'}`,
             );
             lines.push(`Sandbox: ${sandboxState}`);
             lines.push(`Is empty: ${isEmpty}`);
