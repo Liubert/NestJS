@@ -422,30 +422,47 @@ export function registerSandboxWriteTools(server: McpServer): void {
   // ─── delete_translation ─────────────────────────────────────────────────────
   server.tool(
     'delete_translation',
-    'Delete a translation key from the sandbox (soft delete). The key remains in production until you promote the sandbox.',
+    [
+      'Delete one or multiple translation keys from the sandbox (soft delete).',
+      'Pass a single key string or an array of keys — bulk deletes use one request.',
+      'Keys remain in production until you promote the sandbox.',
+    ].join(' '),
     {
       projectSlug: z.string().describe('Project slug'),
       namespace: z.string().describe('Namespace slug'),
-      key: z.string().describe('Translation key to delete'),
+      key: z
+        .union([z.string(), z.array(z.string()).min(1).max(500)])
+        .describe('Single key or array of keys to delete (max 500)'),
     },
     async ({ projectSlug, namespace, key }) => {
+      const basePath = `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}`;
+      const keys = Array.isArray(key) ? key : [key];
+
       try {
-        await apiDelete(
-          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/${encodeURIComponent(key)}`,
-        );
+        if (keys.length === 1) {
+          await apiDelete(`${basePath}/entries/${encodeURIComponent(keys[0])}`);
+          logWrite('delete_translation', { projectSlug, namespace, key: keys[0] }, { deleted: 1 });
+          return textResult(
+            [
+              `Deleted sandbox key: ${projectSlug}/${namespace}/${keys[0]}`,
+              ``,
+              `Marked for deletion in sandbox. Removed from production only after promote via Admin UI.`,
+              `Use get_translation_diff to review the pending deletion.`,
+            ].join('\n'),
+          );
+        }
 
-        logWrite(
-          'delete_translation',
-          { projectSlug, namespace, key },
-          { deleted: true },
+        const result = await apiPost<{ deleted: number }>(
+          `${basePath}/entries/batch-delete`,
+          { keys },
         );
-
+        logWrite('delete_translation', { projectSlug, namespace, keys }, result);
         return textResult(
           [
-            `Deleted sandbox key: ${projectSlug}/${namespace}/${key}`,
+            `Deleted ${result.deleted} sandbox keys in ${projectSlug}/${namespace}`,
             ``,
             `Marked for deletion in sandbox. Removed from production only after promote via Admin UI.`,
-            `Use get_translation_diff to review the pending deletion.`,
+            `Use get_translation_diff to review pending deletions.`,
           ].join('\n'),
         );
       } catch (error) {
