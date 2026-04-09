@@ -20,12 +20,13 @@ interface DiffResponse {
   changed: number;
   deleted: number;
   entries: DiffEntry[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
 }
 
 export function registerDiffTools(server: McpServer): void {
   server.tool(
     "get_translation_diff",
-    "Get the full diff between sandbox and production for a project. Shows all added, changed, and deleted entries.",
+    "Get the diff between sandbox and production for a project. Returns paginated results (default: 50 per page). Shows added, changed, and deleted entries.",
     {
       projectSlug: z.string().describe("Project slug"),
       namespace: z.string().optional().describe("Filter diff to a specific namespace (optional)"),
@@ -34,19 +35,30 @@ export function registerDiffTools(server: McpServer): void {
         .enum(["added", "changed", "deleted", "all"])
         .default("all")
         .describe("Filter by change type (default: all)"),
+      page: z.number().int().min(1).default(1).describe("Page number (default: 1)"),
+      limit: z.number().int().min(1).max(200).default(50).describe("Items per page (default: 50, max: 200)"),
     },
-    async ({ projectSlug, namespace, locale, statusFilter }) => {
+    async ({ projectSlug, namespace, locale, statusFilter, page, limit }) => {
       try {
+        const params: Record<string, unknown> = { page, limit };
+        if (namespace) params.namespace = namespace;
+        if (locale) params.locale = locale;
+        if (statusFilter !== "all") params.status = statusFilter;
+
         const diff = await apiGet<DiffResponse>(
           `/translations/projects/${projectSlug}/sandbox/diff`,
+          params,
         );
 
-        let entries = diff.entries;
-        if (namespace) entries = entries.filter((e) => e.namespace === namespace);
-        if (locale) entries = entries.filter((e) => e.locale === locale);
-        if (statusFilter !== "all") entries = entries.filter((e) => e.status === statusFilter);
+        const entries = diff.entries;
 
-        const summary = `Diff for ${projectSlug}: ${diff.total} total changes — ${diff.added} added, ${diff.changed} changed, ${diff.deleted} deleted`;
+        const { page: currentPage, totalPages, total: totalFiltered, limit: pageLimit } = diff.meta;
+        const start = (currentPage - 1) * pageLimit + 1;
+        const end = Math.min(currentPage * pageLimit, totalFiltered);
+        const paginationInfo =
+          totalPages > 1 ? `\nShowing ${start}-${end} of ${totalFiltered} (page ${currentPage} of ${totalPages})` : "";
+
+        const summary = `Diff for ${projectSlug}: ${diff.total} total changes — ${diff.added} added, ${diff.changed} changed, ${diff.deleted} deleted${paginationInfo}`;
 
         if (entries.length === 0) {
           return textResult(`${summary}\n\nNo entries match the current filters.`);
@@ -63,7 +75,10 @@ export function registerDiffTools(server: McpServer): void {
             ? `\nFilters: ${[namespace && `namespace=${namespace}`, locale && `locale=${locale}`, statusFilter !== "all" && `status=${statusFilter}`].filter(Boolean).join(", ")}`
             : "";
 
-        return textResult(`${summary}${filterNote}\n\n${sections.join("\n\n")}`);
+        const nextHint =
+          currentPage < totalPages ? `\n\nNext page: call with page=${currentPage + 1}` : "";
+
+        return textResult(`${summary}${filterNote}\n\n${sections.join("\n\n")}${nextHint}`);
       } catch (error) {
         return errorResult(error);
       }
@@ -81,10 +96,10 @@ export function registerDiffTools(server: McpServer): void {
       try {
         const diff = await apiGet<DiffResponse>(
           `/translations/projects/${projectSlug}/sandbox/diff`,
+          { limit: 5000, ...(namespace ? { namespace } : {}) },
         );
 
-        let entries = diff.entries;
-        if (namespace) entries = entries.filter((e) => e.namespace === namespace);
+        const entries = diff.entries;
 
         // Only check entries that will exist in production after push (not deleted)
         const activeEntries = entries.filter((e) => e.status !== "deleted");
