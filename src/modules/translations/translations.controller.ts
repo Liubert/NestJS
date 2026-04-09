@@ -743,30 +743,8 @@ export class TranslationsController {
   // @UseGuards(JwtAuthGuard, BlockMcpGuard)
   // async updateEntry(...) { ... }
 
-  @Get('projects/:slug/namespaces/:ns/attention')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get translations needing quality attention' })
-  async getAttentionItems(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Query('limit') limit?: string,
-    @Query('qualityLevels') qualityLevels?: string,
-    @Query('includeUnchecked') includeUnchecked?: string,
-    @CurrentUser() user?: CurrentUserType,
-  ) {
-    return this.translationsService.getAttentionItems(
-      slug,
-      ns,
-      {
-        limit: limit ? parseInt(limit, 10) : 50,
-        qualityLevels: qualityLevels?.split(',') ?? ['yellow', 'red'],
-        includeUnchecked: includeUnchecked === 'true',
-      },
-      user!.userId,
-      user!.role,
-    );
-  }
+  // DISABLED: production attention items are read-only — use sandbox flow instead
+  // @Get('projects/:slug/namespaces/:ns/attention') — removed; sandbox endpoint is correct consumer
 
   // DISABLED: production quality checks go through sandbox flow
   // @Post('projects/:slug/namespaces/:ns/entries/:key/check-quality')
