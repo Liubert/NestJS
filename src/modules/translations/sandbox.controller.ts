@@ -29,6 +29,7 @@ import { BatchTranslateDto } from './dto/batch-translate.dto.js';
 import { BatchRevertDto } from './dto/batch-revert.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
+import { AnalyzeEntriesDto } from './dto/analyze-entries.dto.js';
 
 class RevertDto {
   @IsUUID()
@@ -137,6 +138,28 @@ export class SandboxController {
       query,
       user.userId,
       user.role,
+    );
+  }
+
+  @Post('namespaces/:ns/entries/analyze')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Analyze a batch of planned entries for conflicts and duplicates before creation (preflight)',
+  })
+  analyzeEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: AnalyzeEntriesDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.analyzeEntries(
+      slug,
+      ns,
+      dto.entries,
+      user.userId,
+      user.role,
+      dto.sourceLocale,
     );
   }
 

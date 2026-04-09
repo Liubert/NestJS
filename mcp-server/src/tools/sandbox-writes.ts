@@ -595,6 +595,113 @@ export function registerSandboxWriteTools(server: McpServer): void {
       }
     },
   );
+
+  // ─── validate_keys ──────────────────────────────────────────────────────────
+  interface AnalyzeResponse {
+    sourceLocale: string;
+    results: Array<{
+      key: string;
+      text: string;
+      status: string;
+      recommendation: string;
+      conflict?: {
+        reason: string;
+        existingKeys?: string[];
+        existingValue?: string;
+        batchConflictWith?: string;
+      };
+    }>;
+    summary: {
+      total: number;
+      safeToCreate: number;
+      alreadyExistSameValue: number;
+      keyConflicts: number;
+      sourceTextDuplicates: number;
+      batchConflicts: number;
+      needsReview: number;
+    };
+  }
+
+  server.tool(
+    'validate_keys',
+    [
+      'Analyze a batch of planned translation keys for conflicts and duplicates BEFORE creating them.',
+      'Returns per-item analysis: whether each key is safe to create, already exists, or duplicates existing source text.',
+      'Call this BEFORE bulk_translate_and_save or set_translation when adding many new keys.',
+      'Helps avoid duplicate keys and redundant source text across the namespace.',
+      'Does NOT create or modify anything — read-only preflight check.',
+    ].join(' '),
+    {
+      projectSlug: z.string().describe('Project slug'),
+      namespace: z.string().describe('Namespace slug'),
+      entries: z
+        .array(
+          z.object({
+            key: z.string().regex(/^[a-zA-Z0-9._-]+$/),
+            text: z.string().min(1).describe('English source text for this key'),
+            context: z.string().max(1000).optional(),
+          }),
+        )
+        .min(1)
+        .max(500)
+        .describe('Array of { key, text, context? } entries to analyze'),
+      sourceLocale: z
+        .string()
+        .optional()
+        .describe('Source locale code. Defaults to project default locale.'),
+    },
+    async ({ projectSlug, namespace, entries, sourceLocale }) => {
+      try {
+        const body: Record<string, unknown> = { entries };
+        if (sourceLocale) body.sourceLocale = sourceLocale;
+
+        const result = await apiPost<AnalyzeResponse>(
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/analyze`,
+          body,
+        );
+
+        const s = result.summary;
+        const lines: string[] = [
+          `Analyzed ${s.total} entries in ${projectSlug}/${namespace} (source locale: ${result.sourceLocale}):`,
+          '',
+        ];
+
+        if (s.safeToCreate > 0) lines.push(`  safe to create:     ${s.safeToCreate}`);
+        if (s.alreadyExistSameValue > 0)
+          lines.push(`  already exist (same value): ${s.alreadyExistSameValue}  (safe to skip)`);
+        if (s.keyConflicts > 0)
+          lines.push(`  key conflicts:      ${s.keyConflicts}  (key exists with different value)`);
+        if (s.sourceTextDuplicates > 0)
+          lines.push(`  reuse candidates:   ${s.sourceTextDuplicates}  (text exists under another key)`);
+        if (s.batchConflicts > 0)
+          lines.push(`  batch conflicts:    ${s.batchConflicts}  (duplicate within submitted batch)`);
+        if (s.needsReview > 0)
+          lines.push(`  needs review:       ${s.needsReview}  (text matches multiple existing keys)`);
+
+        lines.push('', '--- Details ---');
+
+        for (const item of result.results) {
+          let detail = `[${item.status}] ${item.key} — "${item.text.length > 60 ? item.text.slice(0, 57) + '...' : item.text}"`;
+          if (item.conflict) {
+            if (item.conflict.existingValue !== undefined) {
+              detail += `  (existing: "${item.conflict.existingValue}")`;
+            }
+            if (item.conflict.existingKeys?.length) {
+              detail += `  -> reuse key: ${item.conflict.existingKeys.join(', ')}`;
+            }
+            if (item.conflict.batchConflictWith) {
+              detail += `  -> conflicts with: ${item.conflict.batchConflictWith}`;
+            }
+          }
+          lines.push(detail);
+        }
+
+        return textResult(lines.join('\n'));
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
 }
 
 function successContent(
