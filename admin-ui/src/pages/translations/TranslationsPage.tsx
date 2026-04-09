@@ -318,19 +318,6 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       message.error(e.response?.data?.message ?? 'Error resetting quality scores'),
   });
 
-  const resetLocaleTranslationsMutation = useMutation({
-    mutationFn: (locale: string) =>
-      apiClient.post(
-        `/translations/projects/${projectSlug}/namespaces/${namespace}/locales/${locale}/reset-translations`,
-      ),
-    onSuccess: (_data, locale) => {
-      message.success(`Translations for "${locale}" deleted — auto-translate will re-translate`);
-      invalidate();
-    },
-    onError: (e: any) =>
-      message.error(e.response?.data?.message ?? 'Error resetting locale translations'),
-  });
-
   const resetKeyLocaleMutation = useMutation({
     mutationFn: ({ key, locale }: { key: string; locale: string }) =>
       apiClient.delete(
@@ -401,7 +388,6 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         renderKeyExtra,
         deleteConfirmTitle,
         deleteConfirmDescription,
-        isSandbox ? (locale) => resetLocaleTranslationsMutation.mutate(locale) : undefined,
         defaultLocale,
         isSandbox ? (key, locale) => resetKeyLocaleMutation.mutate({ key, locale }) : undefined,
       ),
