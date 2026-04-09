@@ -7,7 +7,7 @@ import {
   IsString,
 } from 'class-validator';
 
-export class BatchTranslateDto {
+export class BulkTranslateDto {
   @ApiProperty({
     example: ['accessControl', 'welcomeMessage'],
     description: 'List of translation keys to AI-translate',

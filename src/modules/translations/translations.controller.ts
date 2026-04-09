@@ -251,7 +251,7 @@ export class TranslationsController {
       }));
 
     // Save to sandbox
-    const saved = await this.sandboxService.batchUpsert(
+    const saved = await this.sandboxService.bulkUpsert(
       project,
       namespace,
       sandboxEntries,

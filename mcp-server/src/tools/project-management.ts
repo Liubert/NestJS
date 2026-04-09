@@ -442,7 +442,7 @@ export function registerProjectManagementTools(server: McpServer): void {
         .boolean()
         .default(true)
         .describe(
-          'If true (default), use the batch endpoint for faster imports. Falls back to individual requests if batch returns 404.',
+          'If true (default), use the bulk endpoint for faster imports. Falls back to individual requests if bulk returns 404.',
         ),
       dryRun: z
         .boolean()
@@ -586,7 +586,7 @@ export function registerProjectManagementTools(server: McpServer): void {
             const batchResult = await apiPost<{
               created: number;
               updated: number;
-            }>(`${basePath}/batch`, batchPayload);
+            }>(`${basePath}/bulk`, batchPayload);
             upserted = batchResult.created + batchResult.updated;
             usedBatch = true;
           } catch (batchErr) {

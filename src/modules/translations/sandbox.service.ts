@@ -1944,7 +1944,7 @@ export class SandboxService {
    * Batch upsert: creates or updates multiple keys+values in sandbox.
    * Uses efficient patterns: bulk fetch existing keys, then split into creates/updates.
    */
-  async batchUpsert(
+  async bulkUpsert(
     project: ProjectEntity,
     namespace: NamespaceEntity,
     entries: {
@@ -2014,7 +2014,7 @@ export class SandboxService {
 
   // ─── Batch delete ─────────────────────────────────────────────────────────
 
-  async batchDelete(
+  async bulkDelete(
     projectSlug: string,
     nsSlug: string,
     keys: string[],
@@ -2052,7 +2052,7 @@ export class SandboxService {
 
   // ─── Batch translate ─────────────────────────────────────────────────────
 
-  async batchTranslate(
+  async bulkTranslate(
     projectSlug: string,
     nsSlug: string,
     keys: string[],
@@ -2137,7 +2137,7 @@ export class SandboxService {
 
   // ─── Batch revert ───────────────────────────────────────────────────────
 
-  async batchRevert(
+  async bulkRevert(
     projectSlug: string,
     nsSlug: string,
     keys: string[],

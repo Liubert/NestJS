@@ -1,7 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { ArrayMaxSize, ArrayMinSize, IsArray, IsString } from 'class-validator';
 
-export class BatchRevertDto {
+export class BulkRevertDto {
   @ApiProperty({
     example: ['accessControl', 'welcomeMessage'],
     description: 'List of translation keys to revert to production values',

@@ -338,7 +338,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
       let usedBatch = false;
       try {
         const batchResult = await apiPost<{ created: number; updated: number }>(
-          `${basePath}/batch`,
+          `${basePath}/bulk`,
           batchPayload,
         );
         created = batchResult.created;
@@ -434,7 +434,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
     async ({ projectSlug, namespace, keys }) => {
       try {
         const result = await apiPost<{ deleted: number }>(
-          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/batch-delete`,
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/bulk-delete`,
           { keys },
         );
         logWrite('delete_translation', { projectSlug, namespace, keys }, result);
