@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: "Completed quick task 260409-pby: clean up dead/misrouted production quality endpoints"
-last_updated: "2026-04-09T15:28:00Z"
-last_activity: "2026-04-09 - Completed quick task 260409-pby: remove dead production quality endpoints, migrate bulk-quality-check to sandbox"
+stopped_at: "Completed quick task 260409-qyy: add per-locale sandbox reset feature"
+last_updated: "2026-04-09T16:31:00Z"
+last_activity: "2026-04-09 - Completed quick task 260409-qyy: add per-locale sandbox translation reset endpoint + UI button"
 progress:
   total_phases: 1
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 Phase: 05
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-09 - Completed quick task 260409-p0k: Remove production attention endpoint, route MCP to sandbox
+Last activity: 2026-04-09 - Completed quick task 260409-qyy: add per-locale sandbox translation reset
 
 Progress: [░░░░░░░░░░] 0%
 
