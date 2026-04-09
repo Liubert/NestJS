@@ -166,19 +166,22 @@ export class AutoTranslateWorkerService
         }[]
       >(
         `SELECT tk.id AS key_id, tk.key AS key_name,
-                sv.value AS source_text,
+                COALESCE(sv.value, tv.value) AS source_text,
                 (SELECT sv2.context FROM sandbox_values sv2
                  WHERE sv2.key_id = tk.id AND sv2.project_id = $2
                    AND sv2.is_deleted = false AND sv2.context IS NOT NULL LIMIT 1
                 ) AS key_context
          FROM translation_keys tk
-         JOIN sandbox_values sv
+         LEFT JOIN sandbox_values sv
            ON sv.key_id = tk.id
            AND sv.locale_id = $1
            AND sv.project_id = $2
            AND sv.is_deleted = false
+         LEFT JOIN translation_values tv
+           ON tv.key_id = tk.id
+           AND tv.locale_id = $1
          WHERE tk.id = $3
-           AND sv.value IS NOT NULL
+           AND COALESCE(sv.value, tv.value) IS NOT NULL
          LIMIT 1`,
         [defaultLocale.id, projectId, keyId],
       );
