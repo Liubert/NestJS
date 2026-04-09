@@ -28,7 +28,7 @@ const DEFAULT_SETUP_CONTENT = [
   "- `get_translation_diff <slug>` — see what changed in sandbox vs production",
   "",
   "### 3. Write to sandbox",
-  "- `set_translation` — upsert one key (pass only the locales you want to update)",
+  "- `set_translation` — upsert one key (source/default locale value MUST always be included in values)",
   "- `bulk_set_locale` — fill many keys for a single locale at once",
   "- `bulk_import` — import multiple locales from a JSON map",
   "- `delete_translation` — soft-delete a key in sandbox",
@@ -41,6 +41,7 @@ const DEFAULT_SETUP_CONTENT = [
   "### Rules",
   "- All writes go to **sandbox only** — production is never touched directly",
   "- Locale codes must match exactly what `get_project_details` returns — never guess",
+  "- Source locale value is required on every set_translation call (create or update) — always include the default locale",
   "- Prefer existing namespaces — only create a new one with a clear justification",
 ].join("\n");
 

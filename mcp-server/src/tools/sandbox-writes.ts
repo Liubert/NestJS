@@ -82,9 +82,9 @@ export function registerSandboxWriteTools(server: McpServer): void {
     [
       'Before writing to a project for the first time in a session, call assess_integration_state to understand client URL patterns and integration state.',
       'Create or update a translation key in the sandbox (upsert).',
-      'PARTIAL LOCALE UPDATE: Pass only the locale(s) you want to update — other locales are untouched.',
-      "Example: values={ 'nb-NO': 'Lagre' } updates only Norwegian, leaving en/sv/da-DK unchanged.",
-      'This is the correct flow for adding a single locale to an existing key.',
+      'SOURCE LOCALE REQUIRED: The project default (source) locale value MUST be included in values on both create and update — omitting it returns 400.',
+      "For other locales: partial update is fine — only the locales you pass are changed, others are untouched.",
+      "Example: values={ 'en': 'Save', 'nb-NO': 'Lagre' } — en is required, nb-NO is the new value.",
       "Locale codes must exactly match the project's locale codes — call get_project_details first.",
       'Invalid codes are rejected, not auto-corrected. Always writes to sandbox only.',
       'For updating many keys at once, use bulk_set_locale (single locale) or bulk_import (multiple locales).',
@@ -106,8 +106,10 @@ export function registerSandboxWriteTools(server: McpServer): void {
       values: z
         .record(z.string(), z.string())
         .describe(
-          'Locale-to-value map. Pass only the locales you want to set — other locales are preserved. ' +
-            'Locale codes must match the project exactly (e.g. { "nb-NO": "Lagre" } or { "nb-NO": "Lagre", "en": "Save" }).',
+          'Locale-to-value map. The source/default locale MUST always be included — other locales are optional (partial update). ' +
+            'Locale codes must match the project exactly. ' +
+            'Example: { "en": "Save" } or { "en": "Save", "nb-NO": "Lagre" }. ' +
+            'Call get_project_details to find the default locale code and all available codes.',
         ),
       context: z
         .string()
@@ -237,8 +239,9 @@ export function registerSandboxWriteTools(server: McpServer): void {
     [
       'Before writing to a project for the first time in a session, call assess_integration_state to understand client URL patterns and integration state.',
       'Bulk upsert multiple keys for a SINGLE locale in the sandbox.',
-      'Designed for the new-locale fill workflow: after adding a locale, use this to fill many keys at once.',
+      'Designed for the new-locale fill workflow: after adding a locale, use this to fill many keys at once for keys that already exist.',
       'Only the specified locale is written — all other locales on each key remain untouched.',
+      'NOTE: Use this tool for keys that already exist in the namespace. For brand-new keys use set_translation (which requires source locale on create).',
       'Use list_translations with missingLocale to get the list of keys to fill.',
       'For multi-locale bulk import use bulk_import instead.',
     ].join(' '),
