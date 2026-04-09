@@ -23,7 +23,6 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
-import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
@@ -43,10 +42,8 @@ import { UpdateLocaleDto } from './dto/update-locale.dto.js';
 import { UpdateNamespaceDto } from './dto/update-namespace.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { AddMemberDto } from './dto/add-member.dto.js';
-import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { BulkQualityCheckAiDto } from './dto/bulk-quality-check-ai.dto.js';
 import { PreviewPromptDto } from './dto/preview-prompt.dto.js';
-import { BulkMarkExpectedDto } from './dto/bulk-mark-expected.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
 
 @ApiTags('translations')
@@ -699,45 +696,6 @@ export class TranslationsController {
   // @UseGuards(JwtAuthGuard, BlockMcpGuard)
   // async createEntry(...) { ... }
 
-  @Post('projects/:slug/namespaces/:ns/entries/bulk-quality-check')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Run AI quality check on multiple keys' })
-  async bulkQualityCheck(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: BulkQualityCheckDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.translationsService.bulkQualityCheck(
-      slug,
-      ns,
-      dto.keys,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Post('projects/:slug/namespaces/:ns/entries/bulk-mark-expected')
-  @UseGuards(JwtAuthGuard, BlockMcpGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Mark multiple keys as expected' })
-  async bulkMarkExpected(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: BulkMarkExpectedDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.translationsService.bulkMarkExpected(
-      slug,
-      ns,
-      dto.keys,
-      dto.locale,
-      user.userId,
-      user.role,
-    );
-  }
-
   // DISABLED: production entries are read-only — use sandbox flow instead
   // @Patch('projects/:slug/namespaces/:ns/entries/:key')
   // @UseGuards(JwtAuthGuard, BlockMcpGuard)
@@ -750,56 +708,7 @@ export class TranslationsController {
   // @Post('projects/:slug/namespaces/:ns/entries/:key/check-quality')
   // async checkEntryQuality(...) { ... }
 
-  @Post(
-    'projects/:slug/namespaces/:ns/entries/:key/locales/:locale/mark-expected',
-  )
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Mark a translation as manually accepted (expected)',
-  })
-  async markExpected(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('key') key: string,
-    @Param('locale') locale: string,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.translationsService.markAsExpected(
-      slug,
-      ns,
-      key,
-      locale,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Delete(
-    'projects/:slug/namespaces/:ns/entries/:key/locales/:locale/mark-expected',
-  )
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Remove manual acceptance (unmark expected)',
-  })
-  async unmarkExpected(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('key') key: string,
-    @Param('locale') locale: string,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.translationsService.unmarkExpected(
-      slug,
-      ns,
-      key,
-      locale,
-      user.userId,
-      user.role,
-    );
-  }
+  // Production mark-expected and bulk-quality-check removed — use sandbox endpoints
 
   // DISABLED: production entries are read-only — use sandbox flow instead
   // @Delete('projects/:slug/namespaces/:ns/entries/:key')
