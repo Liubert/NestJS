@@ -34,6 +34,10 @@ import type { QualityInfo } from './translations.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AutoTranslateWorkerService } from './auto-translate-worker.service.js';
 import { scoreToLevel } from './quality-constants.js';
+import type {
+  AnalyzeEntriesResponse,
+  AnalysisItemResult,
+} from './dto/analyze-entries.dto.js';
 
 const MAX_SNAPSHOTS = 5;
 
@@ -2358,5 +2362,235 @@ export class SandboxService {
           .execute();
       }
     }
+  }
+
+  // ─── Analyze entries (preflight) ──────────────────────────────────────────────
+
+  /**
+   * Read-only preflight analysis: check a batch of planned keys for duplicates,
+   * conflicts with existing keys, and source text reuse candidates.
+   * No DB writes — purely a diagnostic query.
+   */
+  async analyzeEntries(
+    projectSlug: string,
+    nsSlug: string,
+    entries: { key: string; text: string; context?: string }[],
+    _userId: string,
+    _role: UserRole,
+    sourceLocaleOverride?: string,
+  ): Promise<AnalyzeEntriesResponse> {
+    // 1. Resolve project and check sandbox is initialized
+    const project = await this.requireProject(projectSlug);
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException(
+        'Sandbox is not initialized for this project',
+      );
+    }
+
+    // 2. Resolve namespace
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    // 3. Resolve source locale
+    let sourceLocale: LocaleEntity;
+    if (sourceLocaleOverride) {
+      const found = await this.localeRepo.findOne({
+        where: { projectId: project.id, code: sourceLocaleOverride },
+      });
+      if (!found) {
+        throw new NotFoundException(
+          `Locale "${sourceLocaleOverride}" not found in project`,
+        );
+      }
+      sourceLocale = found;
+    } else {
+      const found = await this.localeRepo.findOne({
+        where: { projectId: project.id, isDefault: true },
+      });
+      if (!found) {
+        throw new NotFoundException(
+          'No default locale configured for this project',
+        );
+      }
+      sourceLocale = found;
+    }
+
+    // 4. Query 1: all existing keys in namespace
+    const existingKeys = await this.keyRepo.find({
+      where: { namespaceId: ns.id },
+    });
+    const existingKeyMap = new Map<string, TranslationKeyEntity>();
+    for (const k of existingKeys) {
+      existingKeyMap.set(k.key, k);
+    }
+
+    // 5. Query 2: existing sandbox source values for this namespace + locale
+    const rawValues = await this.sandboxRepo
+      .createQueryBuilder('sv')
+      .innerJoin('sv.translationKey', 'tk')
+      .innerJoin('sv.locale', 'loc')
+      .where('tk.namespaceId = :nsId', { nsId: ns.id })
+      .andWhere('loc.code = :locale', { locale: sourceLocale.code })
+      .andWhere('sv.isDeleted = false')
+      .andWhere("sv.value IS NOT NULL AND sv.value != ''")
+      .select(['tk.key AS key', 'sv.value AS value'])
+      .getRawMany<{ key: string; value: string }>();
+
+    // Build lookup maps
+    const valueToKeys = new Map<string, string[]>();
+    const keyToSourceValue = new Map<string, string>();
+    for (const row of rawValues) {
+      keyToSourceValue.set(row.key, row.value);
+      const existing = valueToKeys.get(row.value) ?? [];
+      existing.push(row.key);
+      valueToKeys.set(row.value, existing);
+    }
+
+    // 6. Classify each entry
+    const results: AnalysisItemResult[] = [];
+
+    // Track keys already seen within the batch for duplicate detection
+    const batchKeysSeen = new Map<string, number>(); // key -> index in results
+
+    for (const entry of entries) {
+      // Step A: batch duplicate by key
+      if (batchKeysSeen.has(entry.key)) {
+        const firstIdx = batchKeysSeen.get(entry.key)!;
+        // Retroactively mark the first occurrence as duplicate
+        if (results[firstIdx].status !== 'duplicate_in_batch') {
+          results[firstIdx] = {
+            ...results[firstIdx],
+            status: 'duplicate_in_batch',
+            recommendation: 'rename',
+            conflict: {
+              reason: 'Key appears more than once in the submitted batch',
+              batchConflictWith: entry.key,
+            },
+          };
+        }
+        results.push({
+          key: entry.key,
+          text: entry.text,
+          status: 'duplicate_in_batch',
+          recommendation: 'rename',
+          conflict: {
+            reason: 'Key appears more than once in the submitted batch',
+            batchConflictWith: entry.key,
+          },
+        });
+        continue;
+      }
+
+      batchKeysSeen.set(entry.key, results.length);
+
+      // Step B: check if key already exists in the namespace
+      if (existingKeyMap.has(entry.key)) {
+        const existingValue = keyToSourceValue.get(entry.key);
+        if (existingValue !== undefined && existingValue === entry.text) {
+          results.push({
+            key: entry.key,
+            text: entry.text,
+            status: 'key_exists_same_value',
+            recommendation: 'skip',
+            conflict: {
+              reason:
+                'Key already exists in this namespace with the same source text',
+              existingValue,
+            },
+          });
+        } else {
+          results.push({
+            key: entry.key,
+            text: entry.text,
+            status: 'key_exists_different_value',
+            recommendation: 'update',
+            conflict: {
+              reason:
+                'Key already exists in this namespace with a different source text',
+              existingValue: existingValue ?? undefined,
+            },
+          });
+        }
+        continue;
+      }
+
+      // Step C: check if source text already exists under another key
+      const keysWithSameText = valueToKeys.get(entry.text);
+      if (keysWithSameText && keysWithSameText.length > 0) {
+        if (keysWithSameText.length === 1) {
+          results.push({
+            key: entry.key,
+            text: entry.text,
+            status: 'value_exists_under_other_key',
+            recommendation: 'reuse',
+            conflict: {
+              reason:
+                'Source text already exists under a different key — consider reusing it',
+              existingKeys: keysWithSameText,
+            },
+          });
+        } else {
+          // Multiple keys share the same text — ambiguous, needs review
+          results.push({
+            key: entry.key,
+            text: entry.text,
+            status: 'needs_manual_review',
+            recommendation: 'review',
+            conflict: {
+              reason:
+                'Source text already exists under multiple keys — review to choose the right one',
+              existingKeys: keysWithSameText,
+            },
+          });
+        }
+        continue;
+      }
+
+      // Step D: safe to create
+      results.push({
+        key: entry.key,
+        text: entry.text,
+        status: 'safe_to_create',
+        recommendation: 'create',
+      });
+    }
+
+    // 7. Compute summary
+    const summary = {
+      total: results.length,
+      safeToCreate: 0,
+      alreadyExistSameValue: 0,
+      keyConflicts: 0,
+      sourceTextDuplicates: 0,
+      batchConflicts: 0,
+      needsReview: 0,
+    };
+
+    for (const r of results) {
+      switch (r.status) {
+        case 'safe_to_create':
+          summary.safeToCreate++;
+          break;
+        case 'key_exists_same_value':
+          summary.alreadyExistSameValue++;
+          break;
+        case 'key_exists_different_value':
+          summary.keyConflicts++;
+          break;
+        case 'value_exists_under_other_key':
+          summary.sourceTextDuplicates++;
+          break;
+        case 'duplicate_in_batch':
+          summary.batchConflicts++;
+          break;
+        case 'needs_manual_review':
+          summary.needsReview++;
+          break;
+      }
+    }
+
+    return { sourceLocale: sourceLocale.code, results, summary };
   }
 }
