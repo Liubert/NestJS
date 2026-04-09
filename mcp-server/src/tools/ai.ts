@@ -245,7 +245,10 @@ export function registerAiTools(server: McpServer): void {
               translations: Record<string, Record<string, string>>;
               quality: Record<
                 string,
-                Record<string, { score: number; level: string; comment: string }>
+                Record<
+                  string,
+                  { score: number; level: string; comment: string }
+                >
               >;
               saved: { created: number; updated: number };
             }
@@ -293,7 +296,10 @@ export function registerAiTools(server: McpServer): void {
           lines.push(
             '  - red (<60): Must fix — use set_translation to correct, then check_entry_quality to re-check',
           );
-        } else if ('qualityStatus' in result && result.qualityStatus === 'queued') {
+        } else if (
+          'qualityStatus' in result &&
+          result.qualityStatus === 'queued'
+        ) {
           lines.push('');
           lines.push(
             'Quality check: queued (background worker will process within ~30s)',
@@ -350,7 +356,11 @@ export function registerAiTools(server: McpServer): void {
         });
         logWrite(
           'ai_quality_check',
-          { projectSlug, source, localeCount: Object.keys(translations).length },
+          {
+            projectSlug,
+            source,
+            localeCount: Object.keys(translations).length,
+          },
           result,
         );
 
@@ -358,8 +368,9 @@ export function registerAiTools(server: McpServer): void {
           `Quality check results:`,
           `Source: "${source}"`,
           ``,
-          ...Object.entries(result).map(([locale, r]) =>
-            `  [${locale}] ${r.score}/100 (${r.level})${r.comment ? ` — ${r.comment}` : ''}`,
+          ...Object.entries(result).map(
+            ([locale, r]) =>
+              `  [${locale}] ${r.score}/100 (${r.level})${r.comment ? ` — ${r.comment}` : ''}`,
           ),
         ];
         return textResult(lines.join('\n'));
@@ -441,18 +452,28 @@ export function registerAiTools(server: McpServer): void {
         const body: Record<string, unknown> = {};
         if (keys && keys.length > 0) body.keys = keys;
 
-        const result = await apiPost<{ checked: number; skipped: number }>(
-          `/translations/projects/${projectSlug}/namespaces/${namespace}/entries/bulk-quality-check`,
+        const result = await apiPost<{
+          results: Array<
+            | { key: string; status: 'ok'; results: Record<string, unknown> }
+            | { key: string; status: 'error'; error: string }
+          >;
+        }>(
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/bulk-quality-check`,
           body,
         );
 
+        const checked = result.results.filter((r) => r.status === 'ok').length;
+        const failed = result.results.filter(
+          (r) => r.status === 'error',
+        ).length;
+
         return textResult(
           [
-            `Bulk quality check: ${projectSlug}/${namespace}`,
-            `  Checked: ${result.checked}`,
-            `  Skipped: ${result.skipped}`,
+            `Bulk quality check (sandbox): ${projectSlug}/${namespace}`,
+            `  Checked: ${checked}`,
+            `  Failed: ${failed}`,
             ``,
-            `Results saved to database. Use get_translations_needing_attention or list_translations with qualityLevel filter to review issues.`,
+            `Results saved to sandbox. Use get_translations_needing_attention or list_translations with qualityLevel filter to review issues.`,
           ].join('\n'),
         );
       } catch (error) {

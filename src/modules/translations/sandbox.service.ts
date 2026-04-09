@@ -1709,6 +1709,72 @@ export class SandboxService {
     return results;
   }
 
+  async bulkSandboxQualityCheck(
+    projectSlug: string,
+    nsSlug: string,
+    keys: string[] | undefined,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<{
+    results: Array<
+      | {
+          key: string;
+          status: 'ok';
+          results: Record<string, QualityInfo | null>;
+        }
+      | { key: string; status: 'error'; error: string }
+    >;
+  }> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!project.sandboxInitializedAt) {
+      throw new BadRequestException('Sandbox is not initialized');
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    let targetKeys: string[];
+    if (!keys || keys.length === 0) {
+      const allKeyEntities = await this.keyRepo.find({
+        where: { namespaceId: ns.id },
+        select: ['key'],
+      });
+      targetKeys = allKeyEntities.map((k) => k.key);
+    } else {
+      targetKeys = keys;
+    }
+
+    const results: Array<
+      | {
+          key: string;
+          status: 'ok';
+          results: Record<string, QualityInfo | null>;
+        }
+      | { key: string; status: 'error'; error: string }
+    > = [];
+
+    for (const key of targetKeys) {
+      try {
+        const checkResult = await this.runSandboxQualityCheck(
+          projectSlug,
+          nsSlug,
+          key,
+          userId,
+          userRole,
+        );
+        results.push({ key, status: 'ok', results: checkResult });
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        results.push({ key, status: 'error', error: message });
+      }
+    }
+
+    return { results };
+  }
+
   // ─── Sandbox attention items ────────────────────────────────────────────────
 
   /**

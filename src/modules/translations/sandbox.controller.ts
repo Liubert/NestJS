@@ -27,6 +27,7 @@ import { BulkImportDto } from './dto/bulk-import.dto.js';
 import { BulkDeleteDto } from './dto/bulk-delete.dto.js';
 
 import { BulkRevertDto } from './dto/bulk-revert.dto.js';
+import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
 import { AnalyzeEntriesDto } from './dto/analyze-entries.dto.js';
@@ -217,6 +218,23 @@ export class SandboxController {
       slug,
       ns,
       decodeURIComponent(key),
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Post('namespaces/:ns/entries/bulk-quality-check')
+  @ApiOperation({ summary: 'Run AI quality check on multiple keys in sandbox' })
+  bulkQualityCheck(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkQualityCheckDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.bulkSandboxQualityCheck(
+      slug,
+      ns,
+      dto.keys,
       user.userId,
       user.role,
     );
