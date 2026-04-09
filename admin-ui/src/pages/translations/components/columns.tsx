@@ -10,6 +10,7 @@ import {
   CloseCircleOutlined,
   MinusCircleOutlined,
   SyncOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import QualityBadge, { QUALITY_COLOR } from './QualityBadge';
 import type { Entry } from './types';
@@ -67,6 +68,7 @@ export function buildColumns(
   deleteConfirmDescription?: string,
   onResetLocale?: (locale: string) => void,
   defaultLocale?: string,
+  onResetKeyLocale?: (key: string, locale: string) => void,
 ): ColumnsType<Entry> {
   const readOnly = !onEdit && !onDelete;
   return [
@@ -169,6 +171,23 @@ export function buildColumns(
               </Text>
             ) : (
               <span style={{ color: '#d9d9d9', fontSize: 11 }}>—</span>
+            )}
+            {isSandbox && onResetKeyLocale && locale !== defaultLocale && val && (
+              <Popconfirm
+                title="Reset this translation?"
+                description="This sandbox translation will be deleted and re-translated automatically."
+                onConfirm={() => onResetKeyLocale(record.key, locale)}
+                okText="Reset"
+                okButtonProps={{ danger: true }}
+              >
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<ReloadOutlined />}
+                  danger
+                  style={{ padding: '0 2px', height: 18, width: 18, minWidth: 18, fontSize: 11 }}
+                />
+              </Popconfirm>
             )}
           </Space>
         );

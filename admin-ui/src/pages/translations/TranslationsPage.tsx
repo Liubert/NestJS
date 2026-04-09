@@ -342,6 +342,19 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       message.error(e.response?.data?.message ?? 'Error resetting locale translations'),
   });
 
+  const resetKeyLocaleMutation = useMutation({
+    mutationFn: ({ key, locale }: { key: string; locale: string }) =>
+      apiClient.delete(
+        `/translations/projects/${projectSlug}/namespaces/${namespace}/entries/${encodeURIComponent(key)}/locales/${locale}/sandbox-value`,
+      ),
+    onSuccess: (_data: any, { key, locale }: { key: string; locale: string }) => {
+      message.success(`Translation for "${key}" (${locale}) reset — re-translating`);
+      invalidate();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error resetting translation'),
+  });
+
   const handleSearch = useCallback(() => {
     setSearch(searchInput);
     setPage(1);
@@ -401,6 +414,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         deleteConfirmDescription,
         isSandbox ? (locale) => resetLocaleTranslationsMutation.mutate(locale) : undefined,
         defaultLocale,
+        isSandbox ? (key, locale) => resetKeyLocaleMutation.mutate({ key, locale }) : undefined,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription, defaultLocale],
