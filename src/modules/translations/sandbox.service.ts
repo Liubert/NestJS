@@ -967,6 +967,63 @@ export class SandboxService {
     return { deleted: deletedCount };
   }
 
+  async deleteKeySandboxValue(
+    projectSlug: string,
+    nsSlug: string,
+    keyName: string,
+    localeCode: string,
+    userId: string,
+    role: UserRole,
+  ): Promise<{ deleted: number }> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!this.isAdmin(role) && project.ownerId !== userId) {
+      throw new ForbiddenException(
+        'Only the project owner or admin can reset key translations',
+      );
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const key = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key: keyName },
+    });
+    if (!key) throw new NotFoundException(`Key "${keyName}" not found`);
+
+    const locale = await this.localeRepo.findOne({
+      where: { projectId: project.id, code: localeCode },
+    });
+    if (!locale)
+      throw new NotFoundException(`Locale "${localeCode}" not found`);
+
+    if (locale.isDefault) {
+      throw new BadRequestException('Cannot reset the default (source) locale');
+    }
+
+    const [deletedRows] = await this.dataSource.query<
+      [{ id: string }[], number]
+    >(
+      `DELETE FROM sandbox_values
+       WHERE project_id = $1
+         AND key_id = $2
+         AND locale_id = $3
+       RETURNING id`,
+      [project.id, key.id, locale.id],
+    );
+
+    if (deletedRows.length > 0) {
+      await this.projectRepo.update(project.id, { sandboxHasChanges: true });
+    }
+
+    // Fire-and-forget: re-translate this single key for all non-default locales
+    this.autoTranslateWorkerService.triggerForKey(project.id, key.id);
+
+    return { deleted: deletedRows.length };
+  }
+
   async resetNamespaceQuality(
     projectSlug: string,
     nsSlug: string,

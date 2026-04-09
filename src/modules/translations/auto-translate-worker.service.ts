@@ -63,6 +63,15 @@ export class AutoTranslateWorkerService
     void this.translateNamespace(projectId, namespaceId);
   }
 
+  /**
+   * Immediately re-translate a single key across all non-default locales.
+   * Intended for use after a single key+locale sandbox value is deleted.
+   * Fire-and-forget safe.
+   */
+  triggerForKey(projectId: string, keyId: string): void {
+    void this.translateSingleKey(projectId, keyId);
+  }
+
   private async translateNamespace(
     projectId: string,
     namespaceId: string,
@@ -134,6 +143,67 @@ export class AutoTranslateWorkerService
     } catch (e: unknown) {
       this.logger.error(
         `triggerForNamespace error: ${e instanceof Error ? e.message : String(e)}`,
+      );
+    }
+  }
+
+  private async translateSingleKey(
+    projectId: string,
+    keyId: string,
+  ): Promise<void> {
+    try {
+      const locales = await this.localeRepo.findBy({ projectId });
+      const defaultLocale = locales.find((l) => l.isDefault);
+      const nonDefaultLocales = locales.filter((l) => !l.isDefault);
+      if (!defaultLocale || !nonDefaultLocales.length) return;
+
+      const rows = await this.dataSource.query<
+        {
+          key_id: string;
+          key_name: string;
+          source_text: string;
+          key_context: string | null;
+        }[]
+      >(
+        `SELECT tk.id AS key_id, tk.key AS key_name,
+                sv.value AS source_text,
+                (SELECT sv2.context FROM sandbox_values sv2
+                 WHERE sv2.key_id = tk.id AND sv2.project_id = $2
+                   AND sv2.is_deleted = false AND sv2.context IS NOT NULL LIMIT 1
+                ) AS key_context
+         FROM translation_keys tk
+         JOIN sandbox_values sv
+           ON sv.key_id = tk.id
+           AND sv.locale_id = $1
+           AND sv.project_id = $2
+           AND sv.is_deleted = false
+         WHERE tk.id = $3
+           AND sv.value IS NOT NULL
+         LIMIT 1`,
+        [defaultLocale.id, projectId, keyId],
+      );
+
+      if (!rows.length) {
+        this.logger.debug(
+          `triggerForKey: no source text found for key ${keyId}`,
+        );
+        return;
+      }
+
+      const row = rows[0];
+      await this.translateKey(
+        projectId,
+        row.key_id,
+        row.key_name,
+        row.source_text,
+        nonDefaultLocales,
+        row.key_context,
+      );
+
+      this.logger.log(`triggerForKey: translated key "${row.key_name}"`);
+    } catch (e: unknown) {
+      this.logger.error(
+        `triggerForKey error: ${e instanceof Error ? e.message : String(e)}`,
       );
     }
   }

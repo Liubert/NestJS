@@ -670,6 +670,32 @@ export class TranslationsController {
     );
   }
 
+  @Delete(
+    'projects/:slug/namespaces/:ns/entries/:key/locales/:locale/sandbox-value',
+  )
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Delete a single key+locale sandbox value and trigger re-translation',
+  })
+  async resetKeySandboxValue(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @Param('locale') locale: string,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<{ deleted: number }> {
+    return this.sandboxService.deleteKeySandboxValue(
+      slug,
+      ns,
+      key,
+      locale,
+      user.userId,
+      user.role,
+    );
+  }
+
   @Post('projects/:slug/namespaces/:ns/reset-quality')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
