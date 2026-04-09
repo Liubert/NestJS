@@ -170,9 +170,8 @@ export function buildColumns(
                     }] : []),
                     ...(onResetKeyLocale ? [{
                       key: 'retranslate',
-                      label: val ? 'Re-translate' : 'Translate',
-                      icon: <ReloadOutlined />,
-                      danger: !!val,
+                      label: val ? <span style={{ color: '#fa8c16' }}>Re-translate</span> : 'Translate',
+                      icon: <ReloadOutlined style={val ? { color: '#fa8c16' } : undefined} />,
                       onClick: () => Modal.confirm({
                         title: val ? 'Re-translate this value?' : 'Auto-translate this value?',
                         content: val
