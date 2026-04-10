@@ -440,7 +440,7 @@ describe('AutoTranslateWorkerService — translateKeysBulk', () => {
     ]);
 
     // localeRepo.findBy: called once for pollAndProcess per-project locale fetch
-    const localeRepoMock = service['localeRepo'] as {
+    const localeRepoMock = service['localeRepo'] as unknown as {
       findBy: jest.Mock;
     };
     localeRepoMock.findBy.mockResolvedValueOnce([makeLocaleWithSkill('uk')]);

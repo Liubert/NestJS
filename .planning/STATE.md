@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 Phase: 05
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-10 - Completed quick task 260410-fmt: pass previousComment to bulkTranslate in all DB-aware callers
+Last activity: 2026-04-10 - Completed quick task 260410-otz: DB-backed pending_auto_translate spinner
 
 Progress: [░░░░░░░░░░] 0%
 
