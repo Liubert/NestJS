@@ -38,6 +38,7 @@ import type {
   AnalyzeEntriesResponse,
   AnalysisItemResult,
 } from './dto/analyze-entries.dto.js';
+import type { RetranslateDto } from './dto/retranslate.dto.js';
 
 const MAX_SNAPSHOTS = 5;
 
@@ -57,7 +58,7 @@ export interface SandboxEntryRow {
   context: string | null;
   contextNeed: 'required' | 'useful' | 'none' | null;
   contextReason: string | null;
-  values: Record<string, string>;
+  values: Record<string, string | null>;
   quality: Record<string, QualityInfo | null>;
 }
 
@@ -1083,8 +1084,82 @@ export class SandboxService {
       await this.projectRepo.update(project.id, { sandboxHasChanges: true });
     }
 
-    // Fire-and-forget: re-translate this single key for all non-default locales
-    this.autoTranslateWorkerService.triggerForKey(project.id, key.id);
+    // Fire-and-forget: re-translate this single key for all non-default locales.
+    // Pass ns.id so triggerForKey uses the same sandbox-source-text query as replace-per-locale.
+    this.autoTranslateWorkerService.triggerForKey(project.id, ns.id, key.id);
+
+    return { deleted: deletedRows.length };
+  }
+
+  async retranslate(
+    projectSlug: string,
+    nsSlug: string,
+    dto: RetranslateDto,
+    userId: string,
+    role: UserRole,
+  ): Promise<{ deleted: number }> {
+    if (dto.key && dto.locale) {
+      return this.deleteKeySandboxValue(projectSlug, nsSlug, dto.key, dto.locale, userId, role);
+    }
+    if (dto.key) {
+      return this.retranslateKeyNonExpected(projectSlug, nsSlug, dto.key, userId, role);
+    }
+    if (dto.locale) {
+      return this.deleteLocaleSandboxTranslations(projectSlug, nsSlug, dto.locale, userId, role);
+    }
+    return this.deleteNamespaceSandboxTranslations(projectSlug, nsSlug, userId, role);
+  }
+
+  /**
+   * Deletes all non-expected sandbox translations for a key across all non-default locales,
+   * then triggers auto-translation to fill them back in.
+   * Used when the source locale value is edited — all translations need to be regenerated.
+   */
+  async retranslateKeyNonExpected(
+    projectSlug: string,
+    nsSlug: string,
+    keyName: string,
+    userId: string,
+    role: UserRole,
+  ): Promise<{ deleted: number }> {
+    const project = await this.requireProject(projectSlug);
+
+    if (!this.isAdmin(role) && project.ownerId !== userId) {
+      throw new ForbiddenException(
+        'Only the project owner or admin can reset key translations',
+      );
+    }
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    const key = await this.keyRepo.findOne({
+      where: { namespaceId: ns.id, key: keyName },
+    });
+    if (!key) throw new NotFoundException(`Key "${keyName}" not found`);
+
+    const defaultLocale = await this.localeRepo.findOne({
+      where: { projectId: project.id, isDefault: true },
+    });
+    if (!defaultLocale) throw new NotFoundException('No default locale found');
+
+    const [deletedRows] = await this.dataSource.query<[{ id: string }[], number]>(
+      `DELETE FROM sandbox_values
+       WHERE project_id = $1
+         AND key_id = $2
+         AND locale_id != $3
+         AND (quality_review_state IS NULL OR quality_review_state != 'expected')
+       RETURNING id`,
+      [project.id, key.id, defaultLocale.id],
+    );
+
+    if (deletedRows.length > 0) {
+      await this.projectRepo.update(project.id, { sandboxHasChanges: true });
+    }
+
+    this.autoTranslateWorkerService.triggerForKey(project.id, ns.id, key.id);
 
     return { deleted: deletedRows.length };
   }
@@ -1413,17 +1488,22 @@ export class SandboxService {
     const values = await this.dataSource.query<
       { key_id: string; locale: string; value: string | null }[]
     >(
-      `SELECT sv.key_id, l.code AS locale, sv.value
-       FROM sandbox_values sv
-       JOIN translation_locales l ON l.id = sv.locale_id
-       WHERE sv.key_id = ANY($2) AND sv.project_id = $1 AND sv.is_deleted = false`,
+      `SELECT tk.id AS key_id, l.code AS locale, sv.value
+       FROM translation_keys tk
+       CROSS JOIN translation_locales l
+       LEFT JOIN sandbox_values sv
+         ON sv.key_id = tk.id
+         AND sv.locale_id = l.id
+         AND sv.project_id = $1
+         AND sv.is_deleted = false
+       WHERE tk.id = ANY($2) AND l.project_id = $1`,
       [project.id, keyIds],
     );
 
-    const valuesByKey = new Map<string, Record<string, string>>();
+    const valuesByKey = new Map<string, Record<string, string | null>>();
     for (const v of values) {
       if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
-      if (v.value != null) valuesByKey.get(v.key_id)![v.locale] = v.value;
+      valuesByKey.get(v.key_id)![v.locale] = v.value;
     }
 
     // Quality is stored on sandbox_values
@@ -1645,7 +1725,7 @@ export class SandboxService {
 
     if (defaultLocale) {
       const sourceVal = dto.values[defaultLocale.code];
-      if (!sourceVal || sourceVal.trim() === '') {
+      if (sourceVal !== undefined && (!sourceVal || sourceVal.trim() === '')) {
         throw new BadRequestException(
           `Source locale "${defaultLocale.code}" value is required`,
         );

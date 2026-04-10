@@ -187,6 +187,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const [resetLocalesModalOpen, setResetLocalesModalOpen] = useState(false);
   const [selectedLocalesForReset, setSelectedLocalesForReset] = useState<string[]>([]);
   const [retranslatingCells, setRetranslatingCells] = useState<Set<string>>(new Set());
+  const [editingCell, setEditingCell] = useState<{ key: string; locale: string } | null>(null);
 
   const { data: supportedLocales = [] } = useSupportedLocales();
   const getFlagForCode = useCallback(
@@ -321,25 +322,43 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
 
   const resetKeyLocaleMutation = useMutation({
     mutationFn: ({ key, locale }: { key: string; locale: string }) =>
-      apiClient.delete(
-        `/translations/projects/${projectSlug}/namespaces/${namespace}/entries/${encodeURIComponent(key)}/locales/${locale}/sandbox-value`,
+      apiClient.post(
+        `/translations/projects/${projectSlug}/namespaces/${namespace}/retranslate`,
+        { key, locale },
       ),
     onSuccess: (_data: any, { key, locale }: { key: string; locale: string }) => {
       message.success(`Translation for "${key}" (${locale}) reset — re-translating...`);
-      const cellKey = `${key}::${locale}`;
-      setRetranslatingCells((prev) => new Set(prev).add(cellKey));
-      setTimeout(() => {
-        void invalidate();
-        setRetranslatingCells((prev) => {
-          const next = new Set(prev);
-          next.delete(cellKey);
-          return next;
-        });
-      }, 4000);
+      setRetranslatingCells((prev) => new Set(prev).add(`${key}::${locale}`));
+      void invalidate();
     },
     onError: (e: any) =>
       message.error(e.response?.data?.message ?? 'Error resetting translation'),
   });
+
+  const handleSaveInlineEdit = useCallback(async (key: string, locale: string, value: string) => {
+    if (!value.trim()) {
+      setEditingCell(null);
+      return;
+    }
+    try {
+      await apiClient.patch(
+        `/translations/projects/${projectSlug}/namespaces/${namespace}/entries/${encodeURIComponent(key)}`,
+        { values: { [locale]: value } },
+      );
+      // If source locale was edited in sandbox, retranslate all non-expected locales
+      if (isSandbox && locale === defaultLocale) {
+        await apiClient.post(
+          `/translations/projects/${projectSlug}/namespaces/${namespace}/retranslate`,
+          { key },
+        );
+      }
+      setEditingCell(null);
+      void invalidate();
+    } catch (e: any) {
+      message.error(e.response?.data?.message ?? 'Error saving translation');
+      setEditingCell(null);
+    }
+  }, [projectSlug, namespace, isSandbox, defaultLocale, invalidate]);
 
   const handleSearch = useCallback(() => {
     setSearch(searchInput);
@@ -401,9 +420,16 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         defaultLocale,
         isSandbox ? (key, locale) => resetKeyLocaleMutation.mutate({ key, locale }) : undefined,
         retranslatingCells,
+        projectDetails?.autoTranslateEnabled,
+        isSandbox ? {
+          editingCell,
+          onStartEdit: (key: string, locale: string) => setEditingCell({ key, locale }),
+          onSaveEdit: handleSaveInlineEdit,
+          onCancelEdit: () => setEditingCell(null),
+        } : undefined,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription, defaultLocale, retranslatingCells],
+    [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription, defaultLocale, retranslatingCells, projectDetails?.autoTranslateEnabled, editingCell, handleSaveInlineEdit],
   );
 
   const settingsItems = useMemo(() => {
@@ -553,7 +579,8 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           await Promise.all(
             selectedLocalesForReset.map((locale) =>
               apiClient.post(
-                `/translations/projects/${projectSlug}/namespaces/${namespace}/locales/${locale}/reset-translations`,
+                `/translations/projects/${projectSlug}/namespaces/${namespace}/retranslate`,
+                { locale },
               ),
             ),
           );

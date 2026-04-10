@@ -1,6 +1,6 @@
 import React from 'react';
 import type { ColumnsType } from 'antd/es/table';
-import { Space, Tooltip, Tag, Button, Popconfirm, Typography, Dropdown, Modal } from 'antd';
+import { Space, Tooltip, Tag, Button, Popconfirm, Typography, Dropdown } from 'antd';
 import {
   EditOutlined,
   DeleteOutlined,
@@ -14,6 +14,7 @@ import {
   LoadingOutlined,
 } from '@ant-design/icons';
 import QualityBadge, { QUALITY_COLOR } from './QualityBadge';
+import InlineEditCell from './InlineEditCell';
 import type { Entry } from './types';
 
 // ─── Filter label helpers ─────────────────────────────────────────────────────
@@ -53,6 +54,15 @@ const QUALITY_FILTERS = [
 
 const { Text } = Typography;
 
+// ─── Inline Edit ──────────────────────────────────────────────────────────────
+
+export interface InlineEditState {
+  editingCell: { key: string; locale: string } | null;
+  onStartEdit: (key: string, locale: string) => void;
+  onSaveEdit: (key: string, locale: string, value: string) => void;
+  onCancelEdit: () => void;
+}
+
 // ─── Column Factory ───────────────────────────────────────────────────────────
 
 export function buildColumns(
@@ -70,6 +80,8 @@ export function buildColumns(
   defaultLocale?: string,
   onResetKeyLocale?: (key: string, locale: string) => void,
   retranslatingCells?: Set<string>,
+  autoTranslateEnabled?: boolean,
+  inlineEdit?: InlineEditState,
 ): ColumnsType<Entry> {
   const readOnly = !onEdit && !onDelete;
   return [
@@ -134,6 +146,10 @@ export function buildColumns(
       render: (_: unknown, record: Entry) => {
         const val = record.values[locale];
         const isRetranslating = retranslatingCells?.has(`${record.key}::${locale}`) ?? false;
+        const isPending =
+          !val &&
+          ((isSandbox && autoTranslateEnabled && !!record.values[defaultLocale!]) ||
+            isRetranslating);
         return (
           <Space size={4} align="start">
             <QualityBadge
@@ -145,29 +161,37 @@ export function buildColumns(
               isSandbox={isSandbox}
               onUpdate={onQualityUpdate}
             />
-            {isRetranslating ? (
+            {inlineEdit?.editingCell?.key === record.key && inlineEdit?.editingCell?.locale === locale ? (
+              <InlineEditCell
+                value={val}
+                onSave={(newValue) => inlineEdit.onSaveEdit(record.key, locale, newValue)}
+                onCancel={inlineEdit.onCancelEdit}
+              />
+            ) : isPending ? (
               <span style={{ color: '#1677ff', fontSize: 11 }}><LoadingOutlined spin /> translating...</span>
             ) : val ? (
               <Text
-                style={{ maxWidth: 110, display: 'block', fontSize: 12 }}
+                style={{ maxWidth: 110, display: 'block', fontSize: 12, cursor: 'pointer' }}
                 ellipsis={{ tooltip: val }}
+                onClick={() => inlineEdit?.onStartEdit(record.key, locale)}
               >
                 {val}
               </Text>
+            ) : !isPending && inlineEdit ? (
+              <span
+                style={{ color: '#bbb', fontSize: 11, cursor: 'pointer' }}
+                onClick={() => inlineEdit.onStartEdit(record.key, locale)}
+              >
+                —
+              </span>
             ) : (
               <span style={{ color: '#d9d9d9', fontSize: 11 }}>—</span>
             )}
-            {isSandbox && locale !== defaultLocale && (onEdit || onResetKeyLocale) && (
+            {isSandbox && locale !== defaultLocale && onResetKeyLocale && (
               <Dropdown
                 trigger={['click']}
                 menu={{
                   items: [
-                    ...(onEdit ? [{
-                      key: 'edit',
-                      label: 'Edit',
-                      icon: <EditOutlined />,
-                      onClick: () => onEdit(record),
-                    }] : []),
                     ...(onResetKeyLocale ? [{
                       key: 'retranslate',
                       label: val ? <span style={{ color: '#fa8c16' }}>Re-translate</span> : 'Translate',
