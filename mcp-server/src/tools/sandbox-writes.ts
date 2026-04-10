@@ -710,29 +710,51 @@ export function registerSandboxWriteTools(server: McpServer): void {
   server.tool(
     'reset_namespace_translations',
     [
-      'Delete all non-default-locale translations for a namespace in sandbox.',
-      'The auto-translate worker will re-populate them asynchronously.',
-      'Use when you need to regenerate all translations (e.g. after updating AI config or locale skill).',
+      'Delete sandbox translations and trigger re-translation.',
+      'Scope: namespace (no body), single locale ({ locale }), or single key+locale ({ key, locale }).',
+      'The auto-translate worker will re-populate deleted values asynchronously.',
+      'Use when you need to regenerate translations (e.g. after updating AI config or locale skill).',
       'Only non-default locales are affected — source/default locale values are preserved.',
     ].join(' '),
     {
       projectSlug: z.string().describe('Project slug'),
       namespace: z.string().describe('Namespace slug'),
+      locale: z
+        .string()
+        .optional()
+        .describe(
+          'Locale code — omit to retranslate all non-default locales in the namespace',
+        ),
+      key: z
+        .string()
+        .optional()
+        .describe(
+          'Key name — requires locale; omit to retranslate the whole namespace/locale scope',
+        ),
     },
-    async ({ projectSlug, namespace }) => {
+    async ({ projectSlug, namespace, locale, key }) => {
       try {
+        const body: Record<string, string> = {};
+        if (locale) body.locale = locale;
+        if (key) body.key = key;
         const result = await apiPost<{ deleted: number }>(
-          `/translations/projects/${projectSlug}/namespaces/${namespace}/reset-translations`,
+          `/translations/projects/${projectSlug}/namespaces/${namespace}/retranslate`,
+          Object.keys(body).length > 0 ? body : undefined,
         );
         logWrite(
           'reset_namespace_translations',
-          { projectSlug, namespace },
+          { projectSlug, namespace, locale, key },
           result,
         );
+        const scope = key && locale
+          ? `key "${key}" / locale "${locale}"`
+          : locale
+            ? `locale "${locale}"`
+            : 'all non-default locales';
         return textResult(
           [
-            `Reset translations: ${projectSlug}/${namespace}`,
-            `  Deleted: ${result.deleted} non-default locale values`,
+            `Reset translations: ${projectSlug}/${namespace} (scope: ${scope})`,
+            `  Deleted: ${result.deleted} sandbox value(s)`,
             ``,
             `Auto-translate worker will re-populate translations asynchronously.`,
             `Use get_namespace_coverage to monitor fill progress.`,
