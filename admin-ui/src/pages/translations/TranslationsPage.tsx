@@ -186,7 +186,6 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const [addLocaleOpen, setAddLocaleOpen] = useState(false);
   const [resetLocalesModalOpen, setResetLocalesModalOpen] = useState(false);
   const [selectedLocalesForReset, setSelectedLocalesForReset] = useState<string[]>([]);
-  const [retranslatingCells, setRetranslatingCells] = useState<Set<string>>(new Set());
   const [editingCell, setEditingCell] = useState<{ key: string; locale: string } | null>(null);
 
   const { data: supportedLocales = [] } = useSupportedLocales();
@@ -328,7 +327,6 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       ),
     onSuccess: (_data: any, { key, locale }: { key: string; locale: string }) => {
       message.success(`Translation for "${key}" (${locale}) reset — re-translating...`);
-      setRetranslatingCells((prev) => new Set(prev).add(`${key}::${locale}`));
       void invalidate();
     },
     onError: (e: any) =>
@@ -419,8 +417,6 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         deleteConfirmDescription,
         defaultLocale,
         isSandbox ? (key, locale) => resetKeyLocaleMutation.mutate({ key, locale }) : undefined,
-        retranslatingCells,
-        projectDetails?.autoTranslateEnabled,
         isSandbox ? {
           editingCell,
           onStartEdit: (key: string, locale: string) => setEditingCell({ key, locale }),
@@ -429,7 +425,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         } : undefined,
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription, defaultLocale, retranslatingCells, projectDetails?.autoTranslateEnabled, editingCell, handleSaveInlineEdit],
+    [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription, defaultLocale, editingCell, handleSaveInlineEdit],
   );
 
   const settingsItems = useMemo(() => {

@@ -47,6 +47,7 @@ export interface Entry {
   contextReason: string | null;
   values: Record<string, string | null>;
   quality: Record<string, QualityInfo | null>;
+  pendingAutoTranslate?: Record<string, boolean>;
 }
 
 export interface PaginatedEntries {
