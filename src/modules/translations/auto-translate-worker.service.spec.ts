@@ -1,3 +1,4 @@
+import { HttpException, HttpStatus } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { AutoTranslateWorkerService } from './auto-translate-worker.service.js';
@@ -175,5 +176,294 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
       unknown[][],
     ];
     expect(params[3]).toEqual(expect.arrayContaining(['Привіт', 'Hej', 'Hej']));
+  });
+});
+
+// ─── translateKeysBulk tests ────────────────────────────────────────────────
+
+describe('AutoTranslateWorkerService — translateKeysBulk', () => {
+  let service: AutoTranslateWorkerService;
+  let bulkTranslateMock: jest.Mock;
+  let dataSourceQueryMock: jest.Mock;
+  let sandboxFindMock: jest.Mock;
+  let projectUpdateMock: jest.Mock;
+
+  const projectId = 'project-1';
+
+  function makeLocaleWithSkill(
+    code: string,
+    skill: string | null = null,
+  ): LocaleEntity {
+    const l = new LocaleEntity();
+    l.id = `locale-${code}`;
+    l.code = code;
+    l.isDefault = false;
+    l.localeSkill = skill;
+    return l;
+  }
+
+  beforeEach(async () => {
+    bulkTranslateMock = jest.fn();
+    dataSourceQueryMock = jest.fn().mockResolvedValue([]);
+    sandboxFindMock = jest.fn().mockResolvedValue([]);
+    projectUpdateMock = jest.fn().mockResolvedValue(undefined);
+
+    const module = await Test.createTestingModule({
+      providers: [
+        AutoTranslateWorkerService,
+        {
+          provide: AiTranslateService,
+          useValue: {
+            translateForLocales: jest.fn(),
+            bulkTranslate: bulkTranslateMock,
+          },
+        },
+        {
+          provide: getRepositoryToken(ProjectEntity),
+          useValue: {
+            find: jest.fn().mockResolvedValue([]),
+            findBy: jest.fn().mockResolvedValue([]),
+            findOneBy: jest.fn().mockResolvedValue(null),
+            update: projectUpdateMock,
+            save: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(SandboxValueEntity),
+          useValue: {
+            find: sandboxFindMock,
+            findBy: jest.fn().mockResolvedValue([]),
+            findOneBy: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue(undefined),
+            save: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(LocaleEntity),
+          useValue: {
+            find: jest.fn().mockResolvedValue([]),
+            findBy: jest.fn().mockResolvedValue([]),
+            findOneBy: jest.fn().mockResolvedValue(null),
+            update: jest.fn().mockResolvedValue(undefined),
+            save: jest.fn(),
+          },
+        },
+        {
+          provide: getDataSourceToken(),
+          useValue: { query: dataSourceQueryMock },
+        },
+      ],
+    }).compile();
+
+    service = module.get(AutoTranslateWorkerService);
+  });
+
+  it('calls bulkTranslate once with all keys (not translateForLocales N times)', async () => {
+    const locales = [makeLocaleWithSkill('uk'), makeLocaleWithSkill('sv')];
+    sandboxFindMock.mockResolvedValue([]);
+
+    bulkTranslateMock.mockResolvedValue({
+      results: {
+        hello: { uk: 'Привіт', sv: 'Hej' },
+        world: { uk: 'Світ', sv: 'Värld' },
+      },
+      contextInfo: {},
+    });
+
+    const keys = [
+      { keyId: 'key-1', keyName: 'hello', sourceText: 'Hello', context: null },
+      { keyId: 'key-2', keyName: 'world', sourceText: 'World', context: null },
+    ];
+
+    await service['translateKeysBulk'](projectId, keys, locales);
+
+    expect(bulkTranslateMock).toHaveBeenCalledTimes(1);
+    const [entries] = bulkTranslateMock.mock.calls[0] as [
+      Array<{ key: string; text: string; targetLocales: string[] }>,
+    ];
+    expect(entries).toHaveLength(2);
+    expect(entries[0].key).toBe('hello');
+    expect(entries[1].key).toBe('world');
+  });
+
+  it('filters out keys where all locales already have sandbox values', async () => {
+    const locales = [makeLocaleWithSkill('uk'), makeLocaleWithSkill('sv')];
+
+    // key-1 has both locales already in sandbox
+    sandboxFindMock.mockResolvedValue([
+      { keyId: 'key-1', localeId: 'locale-uk' },
+      { keyId: 'key-1', localeId: 'locale-sv' },
+    ]);
+
+    bulkTranslateMock.mockResolvedValue({ results: {}, contextInfo: {} });
+
+    const keys = [
+      {
+        keyId: 'key-1',
+        keyName: 'hello',
+        sourceText: 'Hello',
+        context: null,
+      },
+    ];
+
+    await service['translateKeysBulk'](projectId, keys, locales);
+
+    // bulkTranslate should not be called because all locales are present
+    expect(bulkTranslateMock).not.toHaveBeenCalled();
+  });
+
+  it('handles locale code normalisation (nb-NO -> nb fallback in results)', async () => {
+    const nbNoLocale = makeLocaleWithSkill('nb-NO');
+    sandboxFindMock.mockResolvedValue([]);
+
+    // Gemini normalises nb-NO → nb
+    bulkTranslateMock.mockResolvedValue({
+      results: { hello: { nb: 'Hei verden' } },
+      contextInfo: {},
+    });
+
+    await service['translateKeysBulk'](
+      projectId,
+      [
+        {
+          keyId: 'key-1',
+          keyName: 'hello',
+          sourceText: 'Hello world',
+          context: null,
+        },
+      ],
+      [nbNoLocale],
+    );
+
+    // UPSERT should be called with the translated value
+    expect(dataSourceQueryMock).toHaveBeenCalledTimes(1);
+    const [, params] = dataSourceQueryMock.mock.calls[0] as [
+      string,
+      unknown[][],
+    ];
+    expect(params[3]).toEqual(['Hei verden']);
+  });
+
+  it('issues a single UPSERT for all translations', async () => {
+    const locales = [makeLocaleWithSkill('uk'), makeLocaleWithSkill('sv')];
+    sandboxFindMock.mockResolvedValue([]);
+
+    bulkTranslateMock.mockResolvedValue({
+      results: {
+        hello: { uk: 'Привіт', sv: 'Hej' },
+        world: { uk: 'Світ', sv: 'Värld' },
+      },
+      contextInfo: {},
+    });
+
+    await service['translateKeysBulk'](
+      projectId,
+      [
+        {
+          keyId: 'key-1',
+          keyName: 'hello',
+          sourceText: 'Hello',
+          context: null,
+        },
+        {
+          keyId: 'key-2',
+          keyName: 'world',
+          sourceText: 'World',
+          context: null,
+        },
+      ],
+      locales,
+    );
+
+    // Only 1 UPSERT call (not 4 separate inserts)
+    const upsertCalls = (
+      dataSourceQueryMock.mock.calls as [string, unknown[]][]
+    ).filter(
+      ([sql]) =>
+        typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
+    );
+    expect(upsertCalls).toHaveLength(1);
+    const [, params] = upsertCalls[0] as [string, unknown[][]];
+    // 4 values for 2 keys × 2 locales
+    expect((params[3] as string[]).length).toBe(4);
+  });
+
+  it('persists contextNeed per key after bulk translation', async () => {
+    const locales = [makeLocaleWithSkill('uk')];
+    sandboxFindMock.mockResolvedValue([]);
+
+    bulkTranslateMock.mockResolvedValue({
+      results: { book: { uk: 'Книга' } },
+      contextInfo: {
+        book: { need: 'required', reason: 'Ambiguous word' },
+      },
+    });
+
+    await service['translateKeysBulk'](
+      projectId,
+      [{ keyId: 'key-1', keyName: 'book', sourceText: 'book', context: null }],
+      locales,
+    );
+
+    const updateCalls = (
+      dataSourceQueryMock.mock.calls as [string, unknown[]][]
+    ).filter(
+      ([sql]) =>
+        typeof sql === 'string' && sql.includes('UPDATE sandbox_values'),
+    );
+    expect(updateCalls).toHaveLength(1);
+    const [, params] = updateCalls[0];
+    expect(params[0]).toBe('required');
+    expect(params[1]).toBe('Ambiguous word');
+  });
+
+  it('pollAndProcess handles 429 rate-limit by skipping remaining keys for that project', async () => {
+    // processInitTranslateLocales calls localeRepo.findBy({initTranslate:true}) first —
+    // when that returns [], it exits immediately without any dataSource.query calls.
+    // So the first dataSource.query call is the pollAndProcess main query.
+    dataSourceQueryMock.mockResolvedValueOnce([
+      // pollAndProcess main query: 2 keys for same project
+      {
+        project_id: projectId,
+        key_id: 'key-1',
+        key_name: 'hello',
+        source_text: 'Hello',
+        key_context: null,
+        default_locale_id: 'locale-en',
+      },
+      {
+        project_id: projectId,
+        key_id: 'key-2',
+        key_name: 'world',
+        source_text: 'World',
+        key_context: null,
+        default_locale_id: 'locale-en',
+      },
+    ]);
+
+    // localeRepo.findBy: first call for processInitTranslateLocales (returns empty → skips),
+    // second call for pollAndProcess per-project locale fetch
+    const localeRepoMock = service['localeRepo'] as {
+      findBy: jest.Mock;
+    };
+    localeRepoMock.findBy
+      .mockResolvedValueOnce([]) // processInitTranslateLocales: no initLocales
+      .mockResolvedValueOnce([makeLocaleWithSkill('uk')]); // pollAndProcess: project locales
+
+    // sandboxRepo.find returns empty (no existing values)
+    sandboxFindMock.mockResolvedValue([]);
+
+    // bulkTranslate throws 429
+    const rateLimitError = new HttpException(
+      'Too Many Requests',
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
+    bulkTranslateMock.mockRejectedValue(rateLimitError);
+
+    // Should not throw — 429 is handled gracefully
+    await expect(service['pollAndProcess']()).resolves.toBeUndefined();
+
+    // translateKeysBulk (via bulkTranslate) should have been called once (then stopped on 429)
+    expect(bulkTranslateMock).toHaveBeenCalledTimes(1);
   });
 });

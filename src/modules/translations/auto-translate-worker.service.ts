@@ -6,7 +6,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, In, Repository } from 'typeorm';
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
@@ -64,12 +64,12 @@ export class AutoTranslateWorkerService
   }
 
   /**
-   * Immediately re-translate a single key across all non-default locales.
-   * Intended for use after a single key+locale sandbox value is deleted.
-   * Fire-and-forget safe.
+   * Immediately re-translate a single key in a namespace across all non-default locales.
+   * Uses the same sandbox-source-text query as triggerForNamespace but filtered to one key.
+   * Intended for use after a single key+locale sandbox value is deleted. Fire-and-forget safe.
    */
-  triggerForKey(projectId: string, keyId: string): void {
-    void this.translateSingleKey(projectId, keyId);
+  triggerForKey(projectId: string, namespaceId: string, keyId: string): void {
+    void this.translateSingleKey(projectId, namespaceId, keyId);
   }
 
   private async translateNamespace(
@@ -116,28 +116,21 @@ export class AutoTranslateWorkerService
         return;
       }
 
-      let translated = 0;
-      for (const row of rows) {
-        try {
-          await this.translateKey(
-            projectId,
-            row.key_id,
-            row.key_name,
-            row.source_text,
-            nonDefaultLocales,
-            row.key_context,
-          );
-          translated++;
-        } catch (e: unknown) {
-          this.logger.warn(
-            `triggerForNamespace failed for key "${row.key_name}": ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
-      }
+      const keys = rows.map((row) => ({
+        keyId: row.key_id,
+        keyName: row.key_name,
+        sourceText: row.source_text,
+        context: row.key_context,
+      }));
 
-      if (translated > 0) {
+      try {
+        await this.translateKeysBulk(projectId, keys, nonDefaultLocales);
         this.logger.log(
-          `triggerForNamespace: translated ${translated} keys in namespace ${namespaceId}`,
+          `triggerForNamespace: translated ${keys.length} keys in namespace ${namespaceId}`,
+        );
+      } catch (e: unknown) {
+        this.logger.warn(
+          `triggerForNamespace batch failed: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
     } catch (e: unknown) {
@@ -149,6 +142,7 @@ export class AutoTranslateWorkerService
 
   private async translateSingleKey(
     projectId: string,
+    namespaceId: string,
     keyId: string,
   ): Promise<void> {
     try {
@@ -156,10 +150,13 @@ export class AutoTranslateWorkerService
       const defaultLocale = locales.find((l) => l.isDefault);
       const nonDefaultLocales = locales.filter((l) => !l.isDefault);
       this.logger.log(
-        `triggerForKey: start key=${keyId} defaultLocale=${defaultLocale?.code ?? 'none'} nonDefault=${nonDefaultLocales.map((l) => l.code).join(',')}`,
+        `triggerForKey: start key=${keyId} ns=${namespaceId} defaultLocale=${defaultLocale?.code ?? 'none'} nonDefault=${nonDefaultLocales.map((l) => l.code).join(',')}`,
       );
       if (!defaultLocale || !nonDefaultLocales.length) return;
 
+      // Use the same sandbox-source-text query as translateNamespace but filtered to one key.
+      // This ensures consistency with replace-per-locale: source text comes from the sandbox
+      // default locale value (not production fallback), matching the authoritative sandbox state.
       const rows = await this.dataSource.query<
         {
           key_id: string;
@@ -168,30 +165,29 @@ export class AutoTranslateWorkerService
           key_context: string | null;
         }[]
       >(
-        `SELECT tk.id AS key_id, tk.key AS key_name,
-                COALESCE(sv.value, tv.value) AS source_text,
-                (SELECT sv2.context FROM sandbox_values sv2
-                 WHERE sv2.key_id = tk.id AND sv2.project_id = $2
-                   AND sv2.is_deleted = false AND sv2.context IS NOT NULL LIMIT 1
-                ) AS key_context
+        `SELECT tk.id AS key_id,
+                tk.key AS key_name,
+                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
+                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $2
+                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1
+                ) AS key_context,
+                sv_def.value AS source_text
          FROM translation_keys tk
-         LEFT JOIN sandbox_values sv
-           ON sv.key_id = tk.id
-           AND sv.locale_id = $1
-           AND sv.project_id = $2
-           AND sv.is_deleted = false
-         LEFT JOIN translation_values tv
-           ON tv.key_id = tk.id
-           AND tv.locale_id = $1
-         WHERE tk.id = $3
-           AND COALESCE(sv.value, tv.value) IS NOT NULL
+         JOIN sandbox_values sv_def
+           ON sv_def.key_id = tk.id
+           AND sv_def.locale_id = $1
+           AND sv_def.project_id = $2
+           AND sv_def.is_deleted = false
+         WHERE tk.namespace_id = $3
+           AND tk.id = $4
+           AND sv_def.value IS NOT NULL
          LIMIT 1`,
-        [defaultLocale.id, projectId, keyId],
+        [defaultLocale.id, projectId, namespaceId, keyId],
       );
 
       if (!rows.length) {
         this.logger.warn(
-          `triggerForKey: no source text found for key ${keyId} (defaultLocaleId=${defaultLocale.id})`,
+          `triggerForKey: no source text found for key ${keyId} in namespace ${namespaceId} (defaultLocaleId=${defaultLocale.id})`,
         );
         return;
       }
@@ -274,22 +270,19 @@ export class AutoTranslateWorkerService
         continue;
       }
 
-      // Translate missing keys using the existing translateKey method
-      for (const row of missingRows) {
-        try {
-          await this.translateKey(
-            locale.projectId,
-            row.key_id,
-            row.key_name,
-            row.source_text,
-            [locale],
-            row.key_context,
-          );
-        } catch (e: unknown) {
-          this.logger.warn(
-            `Init-translate failed for key "${row.key_name}" locale "${locale.code}": ${e instanceof Error ? e.message : String(e)}`,
-          );
-        }
+      const keys = missingRows.map((row) => ({
+        keyId: row.key_id,
+        keyName: row.key_name,
+        sourceText: row.source_text,
+        context: row.key_context,
+      }));
+
+      try {
+        await this.translateKeysBulk(locale.projectId, keys, [locale]);
+      } catch (e: unknown) {
+        this.logger.warn(
+          `Init-translate batch failed for locale "${locale.code}": ${e instanceof Error ? e.message : String(e)}`,
+        );
       }
 
       this.logger.log(
@@ -372,30 +365,18 @@ export class AutoTranslateWorkerService
         const nonDefaultLocales = locales.filter((l) => !l.isDefault);
         if (!nonDefaultLocales.length) continue;
 
-        let projectLimitReached = false;
-        for (const { keyId, keyName, sourceText, context } of keys) {
-          if (projectLimitReached) break;
-          try {
-            await this.translateKey(
-              projectId,
-              keyId,
-              keyName,
-              sourceText,
-              nonDefaultLocales,
-              context,
+        try {
+          await this.translateKeysBulk(projectId, keys, nonDefaultLocales);
+          totalTranslated += keys.length;
+        } catch (e: unknown) {
+          if (e instanceof HttpException && e.getStatus() === 429) {
+            this.logger.warn(
+              `Daily token limit reached for project ${projectId}, skipping remaining keys`,
             );
-            totalTranslated++;
-          } catch (e: unknown) {
-            if (e instanceof HttpException && e.getStatus() === 429) {
-              this.logger.warn(
-                `Daily token limit reached for project ${projectId}, skipping remaining keys`,
-              );
-              projectLimitReached = true;
-            } else {
-              this.logger.warn(
-                `Failed to auto-translate key "${keyName}": ${e instanceof Error ? e.message : String(e)}`,
-              );
-            }
+          } else {
+            this.logger.warn(
+              `Failed to auto-translate batch for project ${projectId}: ${e instanceof Error ? e.message : String(e)}`,
+            );
           }
         }
       }
@@ -429,7 +410,9 @@ export class AutoTranslateWorkerService
     );
 
     if (!missingLocales.length) {
-      this.logger.log(`translateKey: all locales present for key ${keyId}, skipping`);
+      this.logger.debug(
+        `translateKey: all locales present for key ${keyId}, skipping`,
+      );
       return;
     }
 
@@ -503,6 +486,133 @@ export class AutoTranslateWorkerService
            SET context_need = $1, context_reason = $2
            WHERE project_id = $3 AND key_id = $4`,
           [contextNeed, contextReason, projectId, keyId],
+        );
+      }
+    }
+  }
+
+  /**
+   * Translate a batch of keys in a single bulkTranslate call instead of N per-key calls.
+   * Handles batch sandbox lookup to skip locales already present, builds a single UPSERT,
+   * and persists contextNeed per key.
+   */
+  private async translateKeysBulk(
+    projectId: string,
+    keys: Array<{
+      keyId: string;
+      keyName: string;
+      sourceText: string;
+      context: string | null;
+    }>,
+    nonDefaultLocales: LocaleEntity[],
+  ): Promise<void> {
+    // Batch lookup existing sandbox values for all keys at once
+    const allKeyIds = keys.map((k) => k.keyId);
+    const existingSandbox = await this.sandboxRepo.find({
+      where: { projectId, keyId: In(allKeyIds), isDeleted: false },
+      select: ['keyId', 'localeId'],
+    });
+
+    // Group by keyId for fast lookup
+    const existingByKey = new Map<string, Set<string>>();
+    for (const sv of existingSandbox) {
+      if (!existingByKey.has(sv.keyId)) existingByKey.set(sv.keyId, new Set());
+      existingByKey.get(sv.keyId)!.add(sv.localeId);
+    }
+
+    // Build entries array for bulkTranslate, filtering out keys where all locales already exist
+    const entries: Array<{
+      key: string;
+      text: string;
+      context?: string;
+      targetLocales: string[];
+    }> = [];
+    const keyIdByName = new Map<string, string>(); // key name -> keyId for result mapping
+
+    for (const k of keys) {
+      const existingLocaleIds = existingByKey.get(k.keyId) ?? new Set();
+      const missingLocales = nonDefaultLocales.filter(
+        (l) => !existingLocaleIds.has(l.id),
+      );
+      if (!missingLocales.length) continue;
+      entries.push({
+        key: k.keyName,
+        text: k.sourceText,
+        context: k.context ?? undefined,
+        targetLocales: missingLocales.map((l) => l.code),
+      });
+      keyIdByName.set(k.keyName, k.keyId);
+    }
+
+    if (!entries.length) return;
+
+    // Build locale guidance from all nonDefaultLocales (shared across batch)
+    const localeGuidance = nonDefaultLocales.reduce<Record<string, string>>(
+      (acc, l) => {
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
+        return acc;
+      },
+      {},
+    );
+
+    // Single bulkTranslate call for the whole batch
+    const { results, contextInfo } =
+      await this.aiTranslateService.bulkTranslate(
+        entries,
+        projectId,
+        Object.keys(localeGuidance).length ? localeGuidance : undefined,
+      );
+
+    // Build UPSERT values from results, mapping key names back to keyIds
+    const values: Partial<SandboxValueEntity>[] = [];
+    for (const entry of entries) {
+      const keyId = keyIdByName.get(entry.key)!;
+      const keyResults = results[entry.key];
+      if (!keyResults) continue;
+      const missingLocales = nonDefaultLocales.filter((l) =>
+        entry.targetLocales.includes(l.code),
+      );
+      for (const locale of missingLocales) {
+        // Gemini may normalise e.g. "nb-NO" → "nb"; fall back to primary subtag
+        const translated =
+          keyResults[locale.code] ?? keyResults[locale.code.split('-')[0]];
+        if (!translated) continue;
+        values.push({
+          projectId,
+          keyId,
+          localeId: locale.id,
+          value: translated,
+          isDeleted: false,
+        });
+      }
+    }
+
+    if (values.length) {
+      await this.dataSource.query(
+        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
+         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[])
+         ON CONFLICT (project_id, key_id, locale_id)
+           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at`,
+        [
+          values.map((v) => v.projectId),
+          values.map((v) => v.keyId),
+          values.map((v) => v.localeId),
+          values.map((v) => v.value),
+          values.map(() => false),
+          values.map(() => new Date()),
+        ],
+      );
+      await this.projectRepo.update(projectId, { sandboxHasChanges: true });
+    }
+
+    // Persist contextNeed per key (batch UPDATE for all keys that have contextInfo)
+    for (const entry of entries) {
+      const ctx = contextInfo[entry.key];
+      if (ctx?.need) {
+        const keyId = keyIdByName.get(entry.key)!;
+        await this.dataSource.query(
+          `UPDATE sandbox_values SET context_need = $1, context_reason = $2 WHERE project_id = $3 AND key_id = $4`,
+          [ctx.need, ctx.reason, projectId, keyId],
         );
       }
     }
