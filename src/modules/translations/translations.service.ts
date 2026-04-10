@@ -509,16 +509,45 @@ export class TranslationsService {
       );
     }
 
-    return this.localeRepo.save(
+    const locale = await this.localeRepo.save(
       this.localeRepo.create({
         projectId: project.id,
         code,
         isDefault,
         aliases,
         localeSkill: localeSkill ?? getLocaleSkill(code) ?? null,
-        initTranslate,
       }),
     );
+
+    // If initTranslate is requested and this is a non-default locale, create
+    // pending sandbox_value placeholders for all keys that have a default-locale
+    // sandbox value. The auto-translate worker picks up rows with
+    // pending_auto_translate=true regardless of the project's auto_translate_enabled flag.
+    if (initTranslate && !isDefault && project.sandboxInitializedAt) {
+      const defaultLocale = await this.localeRepo.findOneBy({
+        projectId: project.id,
+        isDefault: true,
+      });
+      if (defaultLocale) {
+        await this.dataSource.query(
+          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, pending_auto_translate, is_deleted, updated_at)
+           SELECT ns.project_id, tk.id, $1, NULL, true, false, NOW()
+           FROM translation_namespaces ns
+           JOIN translation_keys tk ON tk.namespace_id = ns.id
+           JOIN sandbox_values sv_def
+             ON sv_def.key_id = tk.id
+             AND sv_def.locale_id = $2
+             AND sv_def.project_id = ns.project_id
+             AND sv_def.is_deleted = false
+             AND sv_def.value IS NOT NULL
+           WHERE ns.project_id = $3
+           ON CONFLICT (project_id, key_id, locale_id) DO NOTHING`,
+          [locale.id, defaultLocale.id, project.id],
+        );
+      }
+    }
+
+    return locale;
   }
 
   async updateLocale(

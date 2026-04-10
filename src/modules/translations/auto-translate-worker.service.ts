@@ -123,12 +123,24 @@ export class AutoTranslateWorkerService
         context: row.key_context,
       }));
 
+      // Mark pending before translating so the frontend can show spinners immediately
+      await this.setPendingFlags(projectId, keys, nonDefaultLocales);
+
       try {
         await this.translateKeysBulk(projectId, keys, nonDefaultLocales);
         this.logger.log(
           `triggerForNamespace: translated ${keys.length} keys in namespace ${namespaceId}`,
         );
       } catch (e: unknown) {
+        // Clear pending flags so spinners don't get stuck
+        const keyIds = keys.map((k) => k.keyId);
+        await this.dataSource
+          .query(
+            `UPDATE sandbox_values SET pending_auto_translate = false
+             WHERE project_id = $1 AND key_id = ANY($2) AND pending_auto_translate = true`,
+            [projectId, keyIds],
+          )
+          .catch(() => {});
         this.logger.warn(
           `triggerForNamespace batch failed: ${e instanceof Error ? e.message : String(e)}`,
         );
@@ -193,16 +205,42 @@ export class AutoTranslateWorkerService
       }
 
       const row = rows[0];
-      await this.translateKey(
+
+      // Mark pending before translating so the frontend can show spinners immediately
+      await this.setPendingFlags(
         projectId,
-        row.key_id,
-        row.key_name,
-        row.source_text,
+        [
+          {
+            keyId: row.key_id,
+            keyName: row.key_name,
+            sourceText: row.source_text,
+            context: row.key_context,
+          },
+        ],
         nonDefaultLocales,
-        row.key_context,
       );
 
-      this.logger.log(`triggerForKey: translated key "${row.key_name}"`);
+      try {
+        await this.translateKey(
+          projectId,
+          row.key_id,
+          row.key_name,
+          row.source_text,
+          nonDefaultLocales,
+          row.key_context,
+        );
+        this.logger.log(`triggerForKey: translated key "${row.key_name}"`);
+      } catch (e: unknown) {
+        // Clear pending flags so spinners don't get stuck
+        await this.dataSource
+          .query(
+            `UPDATE sandbox_values SET pending_auto_translate = false
+             WHERE project_id = $1 AND key_id = $2 AND pending_auto_translate = true`,
+            [projectId, row.key_id],
+          )
+          .catch(() => {});
+        throw e;
+      }
     } catch (e: unknown) {
       this.logger.error(
         `triggerForKey error: ${e instanceof Error ? e.message : String(e)}`,
@@ -210,93 +248,55 @@ export class AutoTranslateWorkerService
     }
   }
 
-  private async processInitTranslateLocales(): Promise<void> {
-    const initLocales = await this.localeRepo.findBy({ initTranslate: true });
-    if (!initLocales.length) return;
-
-    for (const locale of initLocales) {
-      const project = await this.projectRepo.findOneBy({
-        id: locale.projectId,
-      });
-      if (!project?.sandboxInitializedAt) continue;
-
-      const defaultLocale = await this.localeRepo.findOneBy({
-        projectId: locale.projectId,
-        isDefault: true,
-      });
-      if (!defaultLocale) continue;
-
-      // Find all keys missing sandbox values for this locale
-      const missingRows = await this.dataSource.query<
-        {
-          key_id: string;
-          key_name: string;
-          source_text: string;
-          key_context: string | null;
-        }[]
-      >(
-        `SELECT tk.id AS key_id,
-                tk.key AS key_name,
-                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $2
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1
-                ) AS key_context,
-                sv_def.value AS source_text
-         FROM translation_namespaces ns
-         JOIN translation_keys tk ON tk.namespace_id = ns.id
-         JOIN sandbox_values sv_def
-           ON sv_def.key_id = tk.id
-           AND sv_def.locale_id = $1
-           AND sv_def.project_id = $2
-           AND sv_def.is_deleted = false
-         LEFT JOIN sandbox_values sv_tgt
-           ON sv_tgt.key_id = tk.id
-           AND sv_tgt.locale_id = $3
-           AND sv_tgt.project_id = $2
-           AND sv_tgt.is_deleted = false
-         WHERE ns.project_id = $2
-           AND sv_def.value IS NOT NULL
-           AND sv_tgt.id IS NULL
-         LIMIT $4`,
-        [defaultLocale.id, locale.projectId, locale.id, MAX_KEYS_PER_CYCLE],
-      );
-
-      if (!missingRows.length) {
-        // All keys translated — reset the flag
-        await this.localeRepo.update(locale.id, { initTranslate: false });
-        this.logger.log(
-          `Init-translate complete for locale "${locale.code}" in project ${locale.projectId}`,
-        );
-        continue;
+  /**
+   * Sets pending_auto_translate=true for all key+locale combos that will be translated.
+   * Uses INSERT ON CONFLICT DO UPDATE so existing rows get the flag set too.
+   */
+  private async setPendingFlags(
+    projectId: string,
+    keys: Array<{
+      keyId: string;
+      keyName: string;
+      sourceText: string;
+      context: string | null;
+    }>,
+    locales: LocaleEntity[],
+  ): Promise<void> {
+    if (!keys.length || !locales.length) return;
+    const projectIds: string[] = [];
+    const keyIds: string[] = [];
+    const localeIds: string[] = [];
+    for (const k of keys) {
+      for (const l of locales) {
+        projectIds.push(projectId);
+        keyIds.push(k.keyId);
+        localeIds.push(l.id);
       }
-
-      const keys = missingRows.map((row) => ({
-        keyId: row.key_id,
-        keyName: row.key_name,
-        sourceText: row.source_text,
-        context: row.key_context,
-      }));
-
-      try {
-        await this.translateKeysBulk(locale.projectId, keys, [locale]);
-      } catch (e: unknown) {
-        this.logger.warn(
-          `Init-translate batch failed for locale "${locale.code}": ${e instanceof Error ? e.message : String(e)}`,
-        );
-      }
-
-      this.logger.log(
-        `Init-translate: translated ${missingRows.length} keys for locale "${locale.code}"`,
-      );
     }
+    await this.dataSource
+      .query(
+        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, pending_auto_translate, is_deleted, updated_at)
+         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::boolean[], $7::timestamptz[])
+         ON CONFLICT (project_id, key_id, locale_id)
+           DO UPDATE SET pending_auto_translate = true, updated_at = EXCLUDED.updated_at`,
+        [
+          projectIds,
+          keyIds,
+          localeIds,
+          projectIds.map(() => null),
+          projectIds.map(() => true),
+          projectIds.map(() => false),
+          projectIds.map(() => new Date()),
+        ],
+      )
+      .catch(() => {}); // best-effort; don't block translation on flag failure
   }
 
   private async pollAndProcess(): Promise<void> {
     try {
-      await this.processInitTranslateLocales();
-
-      // Find keys where the default locale has a sandbox value
-      // but at least one non-default locale is missing a sandbox value entirely
+      // Find keys where the default locale has a sandbox value and either:
+      //   (a) auto_translate_enabled=true and a non-default locale is entirely missing, OR
+      //   (b) a sandbox_value row exists with pending_auto_translate=true (explicitly requested)
       const rows = await this.dataSource.query<MissingRow[]>(
         `SELECT DISTINCT ON (tk.id)
            ns.project_id,
@@ -317,7 +317,6 @@ export class AutoTranslateWorkerService
            AND sv_def.locale_id = dl.id
            AND sv_def.project_id = p.id
            AND sv_def.is_deleted = false
-         -- find at least one missing target locale
          JOIN translation_locales tl
            ON tl.project_id = p.id AND tl.is_default = false
          LEFT JOIN sandbox_values sv_tgt
@@ -326,9 +325,11 @@ export class AutoTranslateWorkerService
            AND sv_tgt.project_id = p.id
            AND sv_tgt.is_deleted = false
          WHERE p.sandbox_initialized_at IS NOT NULL
-           AND p.auto_translate_enabled = true
            AND sv_def.value IS NOT NULL
-           AND sv_tgt.id IS NULL
+           AND (
+             (p.auto_translate_enabled = true AND sv_tgt.id IS NULL)
+             OR (sv_tgt.pending_auto_translate = true AND (sv_tgt.value IS NULL OR sv_tgt.value = ''))
+           )
          LIMIT $1`,
         [MAX_KEYS_PER_CYCLE],
       );
@@ -400,12 +401,17 @@ export class AutoTranslateWorkerService
     context?: string | null,
   ): Promise<void> {
     // Check which locales are actually missing sandbox values for this key
-    // Also load qualityComment to pass as previousComment to Gemini
+    // Also load qualityComment and pendingAutoTranslate to pass as previousComment to Gemini
     const existingSandbox = await this.sandboxRepo.find({
       where: { projectId, keyId, isDeleted: false },
-      select: ['localeId', 'qualityComment'],
+      select: ['localeId', 'qualityComment', 'pendingAutoTranslate'],
     });
     const existingLocaleIds = new Set(existingSandbox.map((s) => s.localeId));
+    const pendingLocaleIds = new Set(
+      existingSandbox
+        .filter((s) => s.pendingAutoTranslate)
+        .map((s) => s.localeId),
+    );
 
     // Collect non-null quality comments across all locales for this key
     const qualityComments = existingSandbox
@@ -414,8 +420,9 @@ export class AutoTranslateWorkerService
     const previousComment = qualityComments.length
       ? qualityComments[0]
       : undefined;
+    // A locale needs translation if: it has no row, OR its row has pending_auto_translate=true
     const missingLocales = nonDefaultLocales.filter(
-      (l) => !existingLocaleIds.has(l.id),
+      (l) => !existingLocaleIds.has(l.id) || pendingLocaleIds.has(l.id),
     );
 
     if (!missingLocales.length) {
@@ -472,10 +479,10 @@ export class AutoTranslateWorkerService
 
     if (values.length) {
       await this.dataSource.query(
-        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[])
+        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, pending_auto_translate)
+         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[], $7::boolean[])
          ON CONFLICT (project_id, key_id, locale_id)
-           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at`,
+           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at, pending_auto_translate = false`,
         [
           values.map((v) => v.projectId),
           values.map((v) => v.keyId),
@@ -483,6 +490,7 @@ export class AutoTranslateWorkerService
           values.map((v) => v.value),
           values.map(() => false),
           values.map(() => new Date()),
+          values.map(() => false),
         ],
       );
 
@@ -517,25 +525,31 @@ export class AutoTranslateWorkerService
     nonDefaultLocales: LocaleEntity[],
   ): Promise<void> {
     // Batch lookup existing sandbox values for all keys at once
-    // Also load qualityComment to pass as previousComment per key to Gemini
+    // Also load qualityComment and pendingAutoTranslate to pass as previousComment per key
     const allKeyIds = keys.map((k) => k.keyId);
     const existingSandbox = await this.sandboxRepo.find({
       where: { projectId, keyId: In(allKeyIds), isDeleted: false },
-      select: ['keyId', 'localeId', 'qualityComment'],
+      select: ['keyId', 'localeId', 'qualityComment', 'pendingAutoTranslate'],
     });
 
     // Group by keyId for fast lookup (existing locales + first non-null quality comment)
+    // pendingByKeyLocale tracks key+locale combos that need (re-)translation even if row exists
     const existingByKey = new Map<string, Set<string>>();
     const qualityCommentByKey = new Map<string, string>();
+    const pendingByKeyLocale = new Set<string>();
     for (const sv of existingSandbox) {
       if (!existingByKey.has(sv.keyId)) existingByKey.set(sv.keyId, new Set());
       existingByKey.get(sv.keyId)!.add(sv.localeId);
       if (sv.qualityComment && !qualityCommentByKey.has(sv.keyId)) {
         qualityCommentByKey.set(sv.keyId, sv.qualityComment);
       }
+      if (sv.pendingAutoTranslate) {
+        pendingByKeyLocale.add(`${sv.keyId}::${sv.localeId}`);
+      }
     }
 
     // Build entries array for bulkTranslate, filtering out keys where all locales already exist
+    // A locale "needs translation" if: it has no row, OR its row has pending_auto_translate=true
     const entries: Array<{
       key: string;
       text: string;
@@ -548,7 +562,9 @@ export class AutoTranslateWorkerService
     for (const k of keys) {
       const existingLocaleIds = existingByKey.get(k.keyId) ?? new Set();
       const missingLocales = nonDefaultLocales.filter(
-        (l) => !existingLocaleIds.has(l.id),
+        (l) =>
+          !existingLocaleIds.has(l.id) ||
+          pendingByKeyLocale.has(`${k.keyId}::${l.id}`),
       );
       if (!missingLocales.length) continue;
       const previousComment = qualityCommentByKey.get(k.keyId);
@@ -607,10 +623,10 @@ export class AutoTranslateWorkerService
 
     if (values.length) {
       await this.dataSource.query(
-        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[])
+        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, pending_auto_translate)
+         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[], $7::boolean[])
          ON CONFLICT (project_id, key_id, locale_id)
-           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at`,
+           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at, pending_auto_translate = false`,
         [
           values.map((v) => v.projectId),
           values.map((v) => v.keyId),
@@ -618,6 +634,7 @@ export class AutoTranslateWorkerService
           values.map((v) => v.value),
           values.map(() => false),
           values.map(() => new Date()),
+          values.map(() => false),
         ],
       );
       await this.projectRepo.update(projectId, { sandboxHasChanges: true });

@@ -60,6 +60,7 @@ export interface SandboxEntryRow {
   contextReason: string | null;
   values: Record<string, string | null>;
   quality: Record<string, QualityInfo | null>;
+  pendingAutoTranslate: Record<string, boolean>;
 }
 
 export type DiffStatus = 'added' | 'changed' | 'deleted' | 'unchanged';
@@ -1493,9 +1494,15 @@ export class SandboxService {
     const keyIds = keys.map((k) => k.id);
 
     const values = await this.dataSource.query<
-      { key_id: string; locale: string; value: string | null }[]
+      {
+        key_id: string;
+        locale: string;
+        value: string | null;
+        pending_auto_translate: boolean;
+      }[]
     >(
-      `SELECT tk.id AS key_id, l.code AS locale, sv.value
+      `SELECT tk.id AS key_id, l.code AS locale, sv.value,
+              COALESCE(sv.pending_auto_translate, false) AS pending_auto_translate
        FROM translation_keys tk
        CROSS JOIN translation_locales l
        LEFT JOIN sandbox_values sv
@@ -1508,9 +1515,14 @@ export class SandboxService {
     );
 
     const valuesByKey = new Map<string, Record<string, string | null>>();
+    const pendingByKey = new Map<string, Record<string, boolean>>();
     for (const v of values) {
       if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
       valuesByKey.get(v.key_id)![v.locale] = v.value;
+      if (v.pending_auto_translate) {
+        if (!pendingByKey.has(v.key_id)) pendingByKey.set(v.key_id, {});
+        pendingByKey.get(v.key_id)![v.locale] = true;
+      }
     }
 
     // Quality is stored on sandbox_values
@@ -1563,6 +1575,7 @@ export class SandboxService {
         contextReason: k.context_reason ?? null,
         values: vals,
         quality: qual,
+        pendingAutoTranslate: pendingByKey.get(k.id) ?? {},
       };
     });
 
@@ -1646,6 +1659,7 @@ export class SandboxService {
       contextReason: null,
       values: resultValues,
       quality: {},
+      pendingAutoTranslate: {},
     };
   }
 
@@ -1762,6 +1776,7 @@ export class SandboxService {
       contextReason: sandboxRow?.contextReason ?? null,
       values: resultValues,
       quality: {},
+      pendingAutoTranslate: {},
     };
   }
 
@@ -2178,9 +2193,15 @@ export class SandboxService {
 
     // Load sandbox values
     const values = await this.dataSource.query<
-      { key_id: string; locale: string; value: string | null }[]
+      {
+        key_id: string;
+        locale: string;
+        value: string | null;
+        pending_auto_translate: boolean;
+      }[]
     >(
-      `SELECT sv.key_id, l.code AS locale, sv.value
+      `SELECT sv.key_id, l.code AS locale, sv.value,
+              COALESCE(sv.pending_auto_translate, false) AS pending_auto_translate
        FROM sandbox_values sv
        JOIN translation_locales l ON l.id = sv.locale_id
        WHERE sv.key_id = ANY($1) AND sv.project_id = $2 AND sv.is_deleted = false`,
@@ -2208,9 +2229,14 @@ export class SandboxService {
     );
 
     const valuesByKey = new Map<string, Record<string, string>>();
+    const pendingByKey2 = new Map<string, Record<string, boolean>>();
     for (const v of values) {
       if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
       if (v.value != null) valuesByKey.get(v.key_id)![v.locale] = v.value;
+      if (v.pending_auto_translate) {
+        if (!pendingByKey2.has(v.key_id)) pendingByKey2.set(v.key_id, {});
+        pendingByKey2.get(v.key_id)![v.locale] = true;
+      }
     }
 
     const qualityByKey = new Map<string, Record<string, QualityInfo | null>>();
@@ -2237,6 +2263,7 @@ export class SandboxService {
         contextReason: k.context_reason ?? null,
         values: vals,
         quality: qual,
+        pendingAutoTranslate: pendingByKey2.get(k.id) ?? {},
       };
     });
 

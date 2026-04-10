@@ -79,8 +79,6 @@ export function buildColumns(
   deleteConfirmDescription?: string,
   defaultLocale?: string,
   onResetKeyLocale?: (key: string, locale: string) => void,
-  retranslatingCells?: Set<string>,
-  autoTranslateEnabled?: boolean,
   inlineEdit?: InlineEditState,
 ): ColumnsType<Entry> {
   const readOnly = !onEdit && !onDelete;
@@ -145,9 +143,7 @@ export function buildColumns(
       width: 150,
       render: (_: unknown, record: Entry) => {
         const val = record.values[locale];
-        const isRetranslating = retranslatingCells?.has(`${record.key}::${locale}`) ?? false;
-        const isPending =
-          !val && !!(isSandbox && record.values[defaultLocale!]);
+        const isPending = record.pendingAutoTranslate?.[locale] === true;
         return (
           <Space size={4} align="start">
             <QualityBadge
