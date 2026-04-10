@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed quick-260410-eow-PLAN.md
-last_updated: "2026-04-10T07:44:31.254Z"
-last_activity: "2026-04-09 - Completed quick task 260409-suq: fix [object Object] MCP bugs + add list_namespaces"
+stopped_at: Completed quick-260410-fmt-PLAN.md
+last_updated: "2026-04-10T08:22:00.000Z"
+last_activity: "2026-04-10 - Completed quick task 260410-fmt: pass previousComment to bulkTranslate in all DB-aware callers"
 progress:
   total_phases: 1
   completed_phases: 0
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 Phase: 05
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-10 - Completed quick task 260410-eow: batch auto-translate worker (bulkTranslate)
+Last activity: 2026-04-10 - Completed quick task 260410-fmt: pass previousComment to bulkTranslate in all DB-aware callers
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -99,6 +99,7 @@ Recent decisions affecting current work:
 - [Phase 05-ui-polish]: Typography.Text ellipsis replaces manual wordBreak/whiteSpace styles for table locale columns — built-in tooltip included
 - [Phase 05-ui-polish]: level:/state: prefix convention for combined quality filter — single Select dropdown maps to qualityLevel (level:) or reviewState (state:) params, parsed in onChange handler
 - [Phase quick]: 260410-eow: translateKeysBulk uses single sandboxRepo.find(In) batch lookup and single bulkTranslate call — N keys = ceil(N/10) Gemini calls instead of N
+- [Phase quick]: 260410-fmt: previousQualityNote rendered in chunkData JSON object adjacent to key text; getQualityCommentsForKeys added to SandboxService to keep repositories out of controller
 
 ### Pending Todos
 
@@ -149,9 +150,10 @@ None yet.
 | 260409-s78 | Add pagination to get_translation_diff — SQL LIMIT/OFFSET with CTE aggregate counts + MCP tool pagination params | 2026-04-09 | e8a1c75 | [260409-s78-add-pagination-to-get-translation-diff-b](./quick/260409-s78-add-pagination-to-get-translation-diff-b/) |
 | 260409-suq | Fix [object Object] bugs in MCP get_project_details, assess_integration_state, ai_translate + add list_namespaces tool | 2026-04-09 | 5ca469f | [260409-suq-fix-3-mcp-bugs-from-production-feedback-](./quick/260409-suq-fix-3-mcp-bugs-from-production-feedback-/) |
 | 260410-eow | Batch auto-translate worker: replace per-key Gemini calls with bulkTranslate() so N keys = ceil(N/10) Gemini calls instead of N | 2026-04-10 | 011d343 | [260410-eow-batch-auto-translate-worker-replace-per-](./quick/260410-eow-batch-auto-translate-worker-replace-per-/) |
+| 260410-fmt | Pass previousComment to bulkTranslate in all DB-aware callers so Gemini addresses prior quality feedback on retranslation | 2026-04-10 | 1a75061 | [260410-fmt-pass-previouscomment-to-bulktranslate-in](./quick/260410-fmt-pass-previouscomment-to-bulktranslate-in/) |
 
 ## Session Continuity
 
-Last session: 2026-04-10T07:44:23.902Z
-Stopped at: Completed quick-260410-eow-PLAN.md
+Last session: 2026-04-10T08:22:00.000Z
+Stopped at: Completed quick-260410-fmt-PLAN.md
 Resume file: None
