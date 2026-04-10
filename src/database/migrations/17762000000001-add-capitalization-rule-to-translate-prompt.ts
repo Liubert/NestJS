@@ -2,11 +2,9 @@ import { MigrationInterface, QueryRunner } from 'typeorm';
 
 const OLD_RULE = `- Preserve any placeholders, variables, or formatting tokens exactly (e.g. {{name}}, %s, {count})`;
 const NEW_RULE = `- Preserve any placeholders, variables, or formatting tokens exactly (e.g. {{name}}, %s, {count})
-- Preserve the capitalization of the source text (e.g. ALL CAPS, Title Case, sentence case) unless the target language's grammar requires different casing`;
+- Preserve the capitalization of the source text exactly: lowercase source → translation must start lowercase (e.g. "book" → "réserver", never "Réserver"); ALL CAPS → ALL CAPS`;
 
-export class AddCapitalizationRuleToTranslatePrompt17762000000001
-  implements MigrationInterface
-{
+export class AddCapitalizationRuleToTranslatePrompt17762000000001 implements MigrationInterface {
   async up(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query(
       `UPDATE ai_config
