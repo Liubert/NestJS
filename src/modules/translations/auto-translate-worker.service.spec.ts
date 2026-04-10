@@ -150,6 +150,7 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
       projectId,
       undefined,
       'reservation',
+      undefined, // previousComment: no existing sandbox values
     );
   });
 
@@ -418,11 +419,8 @@ describe('AutoTranslateWorkerService — translateKeysBulk', () => {
   });
 
   it('pollAndProcess handles 429 rate-limit by skipping remaining keys for that project', async () => {
-    // processInitTranslateLocales calls localeRepo.findBy({initTranslate:true}) first —
-    // when that returns [], it exits immediately without any dataSource.query calls.
-    // So the first dataSource.query call is the pollAndProcess main query.
+    // pollAndProcess main query returns 2 keys for same project
     dataSourceQueryMock.mockResolvedValueOnce([
-      // pollAndProcess main query: 2 keys for same project
       {
         project_id: projectId,
         key_id: 'key-1',
@@ -441,14 +439,11 @@ describe('AutoTranslateWorkerService — translateKeysBulk', () => {
       },
     ]);
 
-    // localeRepo.findBy: first call for processInitTranslateLocales (returns empty → skips),
-    // second call for pollAndProcess per-project locale fetch
+    // localeRepo.findBy: called once for pollAndProcess per-project locale fetch
     const localeRepoMock = service['localeRepo'] as {
       findBy: jest.Mock;
     };
-    localeRepoMock.findBy
-      .mockResolvedValueOnce([]) // processInitTranslateLocales: no initLocales
-      .mockResolvedValueOnce([makeLocaleWithSkill('uk')]); // pollAndProcess: project locales
+    localeRepoMock.findBy.mockResolvedValueOnce([makeLocaleWithSkill('uk')]);
 
     // sandboxRepo.find returns empty (no existing values)
     sandboxFindMock.mockResolvedValue([]);
