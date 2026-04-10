@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: verifying
-stopped_at: Completed quick-260410-fmt-PLAN.md
-last_updated: "2026-04-10T08:22:00.000Z"
-last_activity: "2026-04-10 - Completed quick task 260410-fmt: pass previousComment to bulkTranslate in all DB-aware callers"
+stopped_at: Completed quick-260410-otz-PLAN.md
+last_updated: "2026-04-10T15:30:00.000Z"
+last_activity: "2026-04-10 - Completed quick task 260410-otz: add pending_auto_translate to sandbox_values, remove initTranslate from locale, DB-backed spinner"
 progress:
   total_phases: 1
   completed_phases: 0
@@ -151,6 +151,7 @@ None yet.
 | 260409-suq | Fix [object Object] bugs in MCP get_project_details, assess_integration_state, ai_translate + add list_namespaces tool | 2026-04-09 | 5ca469f | [260409-suq-fix-3-mcp-bugs-from-production-feedback-](./quick/260409-suq-fix-3-mcp-bugs-from-production-feedback-/) |
 | 260410-eow | Batch auto-translate worker: replace per-key Gemini calls with bulkTranslate() so N keys = ceil(N/10) Gemini calls instead of N | 2026-04-10 | 011d343 | [260410-eow-batch-auto-translate-worker-replace-per-](./quick/260410-eow-batch-auto-translate-worker-replace-per-/) |
 | 260410-fmt | Pass previousComment to bulkTranslate in all DB-aware callers so Gemini addresses prior quality feedback on retranslation | 2026-04-10 | 1a75061 | [260410-fmt-pass-previouscomment-to-bulktranslate-in](./quick/260410-fmt-pass-previouscomment-to-bulktranslate-in/) |
+| 260410-otz | DB-backed pending_auto_translate spinner: add column to sandbox_values, remove initTranslate from locale, wire worker and frontend | 2026-04-10 | 43014e2 | [260410-otz-add-pending-auto-translate-boolean-to-sa](./quick/260410-otz-add-pending-auto-translate-boolean-to-sa/) |
 
 ## Session Continuity
 
