@@ -163,12 +163,13 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const qc = useQueryClient();
   const prevProjectSlugRef = useRef(projectSlug);
   const [namespace, setNamespaceRaw] = useState(
-    () => localStorage.getItem('translations_namespace') || '',
+    () => localStorage.getItem('translations_namespace') ?? '',
   );
-  const setNamespace = (ns: string) => {
-    setNamespaceRaw(ns);
-    localStorage.setItem('translations_namespace', ns);
-    onNamespaceChange?.(ns);
+  const setNamespace = (ns: unknown) => {
+    const slug = typeof ns === 'string' ? ns : '';
+    setNamespaceRaw(slug);
+    localStorage.setItem('translations_namespace', slug);
+    onNamespaceChange?.(slug);
   };
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
