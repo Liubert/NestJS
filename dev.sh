@@ -94,8 +94,8 @@ fi
 DB_HOST="${DB_HOST:-localhost}"
 DB_PORT="${DB_PORT:-5432}"
 DB_NAME="${DB_NAME:-ecom}"
-APP_PORT="${APP_PORT:-3000}"
-ADMIN_UI_PORT=3010
+APP_PORT="${APP_PORT:-7000}"
+ADMIN_UI_PORT=7010
 
 # ─── Warn if DB_HOST looks like Docker service name ──────────────
 if [[ "$DB_HOST" != "localhost" && "$DB_HOST" != "127.0.0.1" ]]; then
@@ -292,7 +292,7 @@ API_PID=$!
 if [[ "$API_ONLY" == "false" ]]; then
   info "Starting Admin UI on port ${ADMIN_UI_PORT}..."
   UI_PREFIX="$(printf "${MAGENTA}[ui]${NC}  ")"
-  (cd admin-ui && npm run dev -- --port "${ADMIN_UI_PORT}") 2>&1 | sed -u "s|^|${UI_PREFIX}|" &
+  (cd admin-ui && API_TARGET="http://localhost:${APP_PORT}" npm run dev -- --port "${ADMIN_UI_PORT}") 2>&1 | sed -u "s|^|${UI_PREFIX}|" &
   UI_PID=$!
 fi
 
