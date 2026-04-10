@@ -111,4 +111,7 @@ export class SandboxValueEntity {
     nullable: true,
   })
   qualityContentHash!: string | null;
+
+  @Column({ name: 'pending_auto_translate', type: 'boolean', default: false })
+  pendingAutoTranslate!: boolean;
 }
