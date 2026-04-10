@@ -70,6 +70,7 @@ export class AiTranslateService {
       text: string;
       context?: string;
       targetLocales?: string[];
+      previousComment?: string | null;
     }>,
     projectId?: string,
     localeGuidance?: Record<string, string>,
@@ -133,7 +134,10 @@ export class AiTranslateService {
       const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
 
       const prompt = buildBulkTranslatePrompt(
-        chunk,
+        chunk.map((e) => ({
+          ...e,
+          previousQualityNote: e.previousComment ?? undefined,
+        })),
         translateRules,
         aiCfg.contextDetectionPrompt,
         localeGuidanceSection,
@@ -230,6 +234,7 @@ export class AiTranslateService {
     projectId?: string,
     localeGuidance?: Record<string, string>,
     context?: string | null,
+    previousComment?: string | null,
   ): Promise<{
     translations: Record<string, string>;
     contextNeed: 'required' | 'useful' | 'none' | null;
@@ -247,6 +252,7 @@ export class AiTranslateService {
           text,
           context: context ?? undefined,
           targetLocales: codes,
+          previousComment: previousComment ?? undefined,
         },
       ],
       projectId,
@@ -531,7 +537,7 @@ export class AiTranslateService {
     source: string,
     translation: string,
     locale: string,
-    mode: 'translation_quality' | 'language_quality' = 'translation_quality',
+    _mode: 'translation_quality' | 'language_quality' = 'translation_quality',
     projectId?: string,
     context?: string,
     localeGuidance?: string,

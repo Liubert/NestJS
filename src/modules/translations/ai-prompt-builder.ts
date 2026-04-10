@@ -125,7 +125,10 @@ CRITICAL — Placeholder integrity (evaluate this BEFORE everything else):
 
 Identical source/translation rule: if a translation value is IDENTICAL to the source text, treat it as potentially untranslated. Words that are legitimately the same across languages (e.g. "taxi", "hotel", "internet", abbreviations) should be scored normally. Otherwise score very low (1–5) and note it appears untranslated.
 
-If "previousReviewerNote" is present, treat it as prior feedback on an earlier version. Do not penalize for issues already resolved.
+CRITICAL — Convergence rule (when "previousReviewerNote" is present):
+- If the translation appears to have addressed the concern in "previousReviewerNote", score MUST be ≥90. Do NOT introduce new minor criticisms to justify a lower score.
+- Only keep a score below 90 if there is a NEW, clear objective error (wrong grammar, wrong spelling, wrong placeholder, clearly wrong meaning) — not a stylistic preference.
+- A translation that is grammatically correct and conveys the right meaning scores ≥90 even if a slightly different phrasing could exist.
 
 ${sharedCriteria}
 
@@ -261,6 +264,7 @@ export function buildBulkTranslatePrompt(
     text: string;
     context?: string;
     targetLocales?: string[];
+    previousQualityNote?: string | null;
   }>,
   translateRules: string,
   contextDetectionPrompt: string | null | undefined,
@@ -268,7 +272,12 @@ export function buildBulkTranslatePrompt(
 ): string {
   const chunkData: Record<
     string,
-    { text: string; targetLanguages: string; context?: string }
+    {
+      text: string;
+      targetLanguages: string;
+      context?: string;
+      previousQualityNote?: string;
+    }
   > = {};
   for (const e of chunk) {
     const codes = e.targetLocales ?? [];
@@ -278,18 +287,35 @@ export function buildBulkTranslatePrompt(
         .map((code) => `${getLocaleName(code)} (${code})`)
         .join(', '),
       ...(e.context ? { context: e.context } : {}),
+      ...(e.previousQualityNote
+        ? {
+            previousQualityNote: `Previous quality feedback: ${e.previousQualityNote} — address this issue in the new translation.`,
+          }
+        : {}),
     };
   }
 
   return (
     `You are a software localization assistant. Translate each entry below.\n\n` +
     `${translateRules}\n\n` +
+    `CRITICAL — Capitalization rule (no exceptions):\n` +
+    `- The translation MUST mirror the capitalization of the source text:\n` +
+    `  • source is all-lowercase → translation MUST start with a lowercase letter.\n` +
+    `    Example: "book" → "réserver" ✓   "Réserver" ✗   "boka" ✓   "Boka" ✗\n` +
+    `  • source is ALL CAPS → translation MUST be ALL CAPS.\n` +
+    `    Example: "SAVE" → "SPARA" ✓   "Spara" ✗\n` +
+    `  • source starts with uppercase → translation starts with uppercase.\n` +
+    `- Do NOT apply target-language UI conventions that differ from the source case.\n\n` +
     `CRITICAL — Context rule:\n` +
     `- If an entry has a "context" field: it defines the EXACT intended meaning. You MUST translate using only that one meaning. NEVER provide multiple alternatives or combined translations like "word1 / word2 (if X) / word3 (if Y)". Pick one correct translation that matches the context.\n` +
     `- If no context: translate using the most common UI interpretation.\n` +
     `- When context is provided, set "contextNeed" to "none" in your response — context already resolves any ambiguity.\n\n` +
     `${contextDetectionPrompt ?? 'For each key set "contextNeed": "required" if text is genuinely ambiguous, "useful" if context would improve confidence, "none" if meaning is clear. Add "contextReason" (1 sentence, max 30 words) if required or useful.'}\n\n` +
     (localeGuidanceSection ? `${localeGuidanceSection}\n\n` : '') +
+    `CRITICAL — Previous quality feedback:\n` +
+    `- If an entry has a "previousQualityNote" field, a previous quality review found issues with the translation.\n` +
+    `- You MUST address the specific concern raised. Do NOT reproduce the same translation that was flagged.\n` +
+    `- If the concern was about grammar, fix the grammar. If about meaning, fix the meaning. Etc.\n\n` +
     `Return ONLY valid JSON (no markdown, no explanations):\n` +
     `{\n` +
     `  "<key>": {\n` +
