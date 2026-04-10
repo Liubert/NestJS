@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-04-02)
 Phase: 05
 Plan: Not started
 Status: Phase complete — ready for verification
-Last activity: 2026-04-09 - Completed quick task 260409-suq: fix [object Object] MCP bugs + add list_namespaces
+Last activity: 2026-04-10 - Completed quick task 260410-eow: batch auto-translate worker (bulkTranslate)
 
 Progress: [░░░░░░░░░░] 0%
 
@@ -148,6 +148,7 @@ None yet.
 | 260409-rsv | Replace reset-namespace-translations confirm with multi-locale select modal | 2026-04-09 | 448f5b4 | [260409-rsv-replace-reset-namespace-translations-wit](./quick/260409-rsv-replace-reset-namespace-translations-wit/) |
 | 260409-s78 | Add pagination to get_translation_diff — SQL LIMIT/OFFSET with CTE aggregate counts + MCP tool pagination params | 2026-04-09 | e8a1c75 | [260409-s78-add-pagination-to-get-translation-diff-b](./quick/260409-s78-add-pagination-to-get-translation-diff-b/) |
 | 260409-suq | Fix [object Object] bugs in MCP get_project_details, assess_integration_state, ai_translate + add list_namespaces tool | 2026-04-09 | 5ca469f | [260409-suq-fix-3-mcp-bugs-from-production-feedback-](./quick/260409-suq-fix-3-mcp-bugs-from-production-feedback-/) |
+| 260410-eow | Batch auto-translate worker: replace per-key Gemini calls with bulkTranslate() so N keys = ceil(N/10) Gemini calls instead of N | 2026-04-10 | 011d343 | [260410-eow-batch-auto-translate-worker-replace-per-](./quick/260410-eow-batch-auto-translate-worker-replace-per-/) |
 
 ## Session Continuity
 
