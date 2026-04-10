@@ -62,7 +62,7 @@ export interface EntryRow {
   context: string | null;
   contextNeed: 'required' | 'useful' | 'none' | null;
   contextReason: string | null;
-  values: Record<string, string>;
+  values: Record<string, string | null>;
   quality: Record<string, QualityInfo | null>;
 }
 
@@ -775,14 +775,14 @@ export class TranslationsService {
         quality_review_state: string | null;
       }>();
 
-    const valuesByKey = new Map<string, Record<string, string>>();
+    const valuesByKey = new Map<string, Record<string, string | null>>();
     const qualityByKey = new Map<string, Record<string, QualityInfo | null>>();
     for (const v of values) {
       if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
       if (!qualityByKey.has(v.key_id)) qualityByKey.set(v.key_id, {});
       const locale = localeMap.get(v.locale_id);
       if (locale) {
-        valuesByKey.get(v.key_id)![locale] = v.value ?? '';
+        valuesByKey.get(v.key_id)![locale] = v.value ?? null;
         qualityByKey.get(v.key_id)![locale] = {
           reviewState: (v.quality_review_state ??
             'not_checked') as QualityInfo['reviewState'],
@@ -796,6 +796,17 @@ export class TranslationsService {
           comment: v.quality_comment,
           checkedAt: v.quality_checked_at,
         };
+      }
+    }
+
+    // Fill null for locales that have no translation_values row
+    const localeCodes = locales.map((l) => l.code);
+    for (const keyId of keyIds) {
+      if (!valuesByKey.has(keyId)) valuesByKey.set(keyId, {});
+      for (const code of localeCodes) {
+        if (!(code in valuesByKey.get(keyId)!)) {
+          valuesByKey.get(keyId)![code] = null;
+        }
       }
     }
 

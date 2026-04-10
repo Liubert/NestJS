@@ -436,7 +436,7 @@ const ProjectSettingsPage: React.FC = () => {
   const resetNsTranslationsMutation = useMutation({
     mutationFn: (ns: string) =>
       apiClient.post(
-        `/translations/projects/${slug}/namespaces/${ns}/reset-translations`,
+        `/translations/projects/${slug}/namespaces/${ns}/retranslate`,
       ),
     onSuccess: (_data, ns) => {
       message.success(

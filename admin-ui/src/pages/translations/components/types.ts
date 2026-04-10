@@ -19,6 +19,7 @@ export interface NamespaceInfo {
 export interface ProjectDetails {
   slug: string;
   name: string;
+  autoTranslateEnabled: boolean;
   locales: LocaleInfo[];
   namespaces: NamespaceInfo[];
 }
@@ -44,7 +45,7 @@ export interface Entry {
   context: string | null;
   contextNeed: 'required' | 'useful' | 'none' | null;
   contextReason: string | null;
-  values: Record<string, string>;
+  values: Record<string, string | null>;
   quality: Record<string, QualityInfo | null>;
 }
 
@@ -131,7 +132,7 @@ export interface EditModalProps {
   onClose: () => void;
   onSave: (
     key: string,
-    values: Record<string, string>,
+    values: Record<string, string | null>,
     context?: string,
   ) => void;
   saving: boolean;
@@ -177,13 +178,13 @@ export interface EntriesTableProps {
   createFn?: (
     slug: string,
     ns: string,
-    payload: { key: string; values: Record<string, string>; context?: string },
+    payload: { key: string; values: Record<string, string | null>; context?: string },
   ) => Promise<unknown>;
   updateFn?: (
     slug: string,
     ns: string,
     key: string,
-    values: Record<string, string>,
+    values: Record<string, string | null>,
     context?: string,
   ) => Promise<unknown>;
   deleteFn?: (slug: string, ns: string, key: string) => Promise<void>;

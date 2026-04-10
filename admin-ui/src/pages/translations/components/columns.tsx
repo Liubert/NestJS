@@ -147,9 +147,7 @@ export function buildColumns(
         const val = record.values[locale];
         const isRetranslating = retranslatingCells?.has(`${record.key}::${locale}`) ?? false;
         const isPending =
-          !val &&
-          ((isSandbox && autoTranslateEnabled && !!record.values[defaultLocale!]) ||
-            isRetranslating);
+          !val && !!(isSandbox && record.values[defaultLocale!]);
         return (
           <Space size={4} align="start">
             <QualityBadge
@@ -171,28 +169,26 @@ export function buildColumns(
               <span style={{ color: '#1677ff', fontSize: 11 }}><LoadingOutlined spin /> translating...</span>
             ) : val ? (
               <Text
-                style={{ maxWidth: 110, display: 'block', fontSize: 12, cursor: 'pointer' }}
+                style={{ maxWidth: 110, display: 'block', fontSize: 12 }}
                 ellipsis={{ tooltip: val }}
-                onClick={() => inlineEdit?.onStartEdit(record.key, locale)}
               >
                 {val}
               </Text>
-            ) : !isPending && inlineEdit ? (
-              <span
-                style={{ color: '#bbb', fontSize: 11, cursor: 'pointer' }}
-                onClick={() => inlineEdit.onStartEdit(record.key, locale)}
-              >
-                —
-              </span>
             ) : (
               <span style={{ color: '#d9d9d9', fontSize: 11 }}>—</span>
             )}
-            {isSandbox && locale !== defaultLocale && onResetKeyLocale && (
+            {isSandbox && (inlineEdit || onResetKeyLocale) && (
               <Dropdown
                 trigger={['click']}
                 menu={{
                   items: [
-                    ...(onResetKeyLocale ? [{
+                    ...(inlineEdit ? [{
+                      key: 'edit',
+                      label: 'Edit',
+                      icon: <EditOutlined />,
+                      onClick: () => inlineEdit.onStartEdit(record.key, locale),
+                    }] : []),
+                    ...(onResetKeyLocale && locale !== defaultLocale ? [{
                       key: 'retranslate',
                       label: val ? <span style={{ color: '#fa8c16' }}>Re-translate</span> : 'Translate',
                       icon: <ReloadOutlined style={val ? { color: '#fa8c16' } : undefined} />,
