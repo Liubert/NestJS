@@ -1099,15 +1099,39 @@ export class SandboxService {
     role: UserRole,
   ): Promise<{ deleted: number }> {
     if (dto.key && dto.locale) {
-      return this.deleteKeySandboxValue(projectSlug, nsSlug, dto.key, dto.locale, userId, role);
+      return this.deleteKeySandboxValue(
+        projectSlug,
+        nsSlug,
+        dto.key,
+        dto.locale,
+        userId,
+        role,
+      );
     }
     if (dto.key) {
-      return this.retranslateKeyNonExpected(projectSlug, nsSlug, dto.key, userId, role);
+      return this.retranslateKeyNonExpected(
+        projectSlug,
+        nsSlug,
+        dto.key,
+        userId,
+        role,
+      );
     }
     if (dto.locale) {
-      return this.deleteLocaleSandboxTranslations(projectSlug, nsSlug, dto.locale, userId, role);
+      return this.deleteLocaleSandboxTranslations(
+        projectSlug,
+        nsSlug,
+        dto.locale,
+        userId,
+        role,
+      );
     }
-    return this.deleteNamespaceSandboxTranslations(projectSlug, nsSlug, userId, role);
+    return this.deleteNamespaceSandboxTranslations(
+      projectSlug,
+      nsSlug,
+      userId,
+      role,
+    );
   }
 
   /**
@@ -1145,7 +1169,9 @@ export class SandboxService {
     });
     if (!defaultLocale) throw new NotFoundException('No default locale found');
 
-    const [deletedRows] = await this.dataSource.query<[{ id: string }[], number]>(
+    const [deletedRows] = await this.dataSource.query<
+      [{ id: string }[], number]
+    >(
       `DELETE FROM sandbox_values
        WHERE project_id = $1
          AND key_id = $2
@@ -1211,8 +1237,11 @@ export class SandboxService {
    * Intended for the public HTTP endpoint with ?env=sandbox, allowing developer
    * apps to test against sandbox without promoting to production.
    *
+   * Returns only sandbox values — no production fallback.
+   * If a key is missing from sandbox (e.g. during auto-translate after reset),
+   * it is omitted rather than falling back to stale production data.
+   *
    * Locale alias resolution mirrors TranslationsService.LOCALE_ALIASES.
-   * Returns production values for keys not overridden in sandbox.
    */
   async getSandboxNamespace(
     projectSlug: string,
@@ -1231,7 +1260,6 @@ export class SandboxService {
     const project = await this.requireProject(projectSlug);
 
     if (!project.sandboxInitializedAt) {
-      // Defensive guard — sandbox is auto-initialized on project creation
       return {};
     }
 
@@ -1242,23 +1270,6 @@ export class SandboxService {
       }[]
     >(
       `
-      SELECT tk.key, COALESCE(sv.value, tv.value) AS value
-      FROM translation_values tv
-      JOIN translation_keys tk ON tk.id = tv.key_id
-      JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-      JOIN translation_locales l ON l.id = tv.locale_id
-      LEFT JOIN sandbox_values sv
-        ON sv.key_id = tv.key_id
-        AND sv.locale_id = tv.locale_id
-        AND sv.project_id = $1
-        AND sv.is_deleted = false
-      WHERE ns.project_id = $1
-        AND ns.slug = $2
-        AND l.code = $3
-
-      UNION ALL
-
-      -- Sandbox-only keys (not yet in production)
       SELECT tk.key, sv.value
       FROM sandbox_values sv
       JOIN translation_keys tk ON tk.id = sv.key_id
@@ -1268,10 +1279,6 @@ export class SandboxService {
         AND ns.slug = $2
         AND l.code = $3
         AND sv.is_deleted = false
-        AND NOT EXISTS (
-          SELECT 1 FROM translation_values tv2
-          WHERE tv2.key_id = sv.key_id AND tv2.locale_id = sv.locale_id
-        )
     `,
       [project.id, namespace, resolvedLocale],
     );
@@ -2889,5 +2896,44 @@ export class SandboxService {
     }
 
     return { sourceLocale: sourceLocale.code, results, summary };
+  }
+
+  // ─── Quality comment lookup ───────────────────────────────────────────────
+
+  /**
+   * Returns a map of key name → first non-null quality comment for the given keys.
+   * Used by bulkTranslateAndSave to pass previous feedback to Gemini on retranslation.
+   */
+  async getQualityCommentsForKeys(
+    projectId: string,
+    namespaceId: string,
+    keyNames: string[],
+  ): Promise<Map<string, string>> {
+    if (!keyNames.length) return new Map();
+
+    const rows = await this.dataSource.query<
+      { key_name: string; quality_comment: string }[]
+    >(
+      `SELECT tk.key AS key_name, sv.quality_comment
+       FROM translation_keys tk
+       JOIN sandbox_values sv
+         ON sv.key_id = tk.id
+         AND sv.project_id = $1
+         AND sv.is_deleted = false
+         AND sv.quality_comment IS NOT NULL
+       WHERE tk.namespace_id = $2
+         AND tk.key = ANY($3)
+       ORDER BY tk.key`,
+      [projectId, namespaceId, keyNames],
+    );
+
+    const map = new Map<string, string>();
+    for (const row of rows) {
+      // Take first comment per key (ORDER BY ensures deterministic pick)
+      if (!map.has(row.key_name)) {
+        map.set(row.key_name, row.quality_comment);
+      }
+    }
+    return map;
   }
 }

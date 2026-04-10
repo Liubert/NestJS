@@ -45,6 +45,7 @@ import { AddMemberDto } from './dto/add-member.dto.js';
 import { BulkQualityCheckAiDto } from './dto/bulk-quality-check-ai.dto.js';
 import { PreviewPromptDto } from './dto/preview-prompt.dto.js';
 import { PaginationDto } from '../../common/dto/pagination.dto.js';
+import { RetranslateDto } from './dto/retranslate.dto.js';
 
 @ApiTags('translations')
 @Controller('translations')
@@ -226,10 +227,18 @@ export class TranslationsController {
       targetLocales = locales.filter((l) => !l.isDefault).map((l) => l.code);
     }
 
-    // Translate all entries
+    // Load existing quality comments for keys being retranslated
+    const commentMap = await this.sandboxService.getQualityCommentsForKeys(
+      project.id,
+      namespace.id,
+      dto.entries.map((e) => e.key),
+    );
+
+    // Translate all entries, passing any prior quality feedback to Gemini
     const entriesWithLocales = dto.entries.map((e) => ({
       ...e,
       targetLocales,
+      previousComment: commentMap.get(e.key) ?? undefined,
     }));
     const { results: translations } =
       await this.aiTranslateService.bulkTranslate(
@@ -628,69 +637,23 @@ export class TranslationsController {
 
   // ─── Namespace bulk operations ────────────────────────────────────────────
 
-  @Post('projects/:slug/namespaces/:ns/reset-translations')
+  @Post('projects/:slug/namespaces/:ns/retranslate')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
     summary:
-      'Delete all non-default sandbox translations for a namespace — auto-translate worker will re-translate',
+      'Delete sandbox translations and trigger re-translation. Scope: namespace (no body), locale ({ locale }), or key+locale ({ key, locale })',
   })
-  async resetNamespaceTranslations(
+  async retranslate(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
+    @Body() dto: RetranslateDto,
     @CurrentUser() user: CurrentUserType,
   ): Promise<{ deleted: number }> {
-    return this.sandboxService.deleteNamespaceSandboxTranslations(
+    return this.sandboxService.retranslate(
       slug,
       ns,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Post('projects/:slug/namespaces/:ns/locales/:locale/reset-translations')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary:
-      'Delete sandbox translations for a specific locale in a namespace — auto-translate worker will re-translate',
-  })
-  async resetLocaleTranslations(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('locale') locale: string,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<{ deleted: number }> {
-    return this.sandboxService.deleteLocaleSandboxTranslations(
-      slug,
-      ns,
-      locale,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Delete(
-    'projects/:slug/namespaces/:ns/entries/:key/locales/:locale/sandbox-value',
-  )
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary:
-      'Delete a single key+locale sandbox value and trigger re-translation',
-  })
-  async resetKeySandboxValue(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('key') key: string,
-    @Param('locale') locale: string,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<{ deleted: number }> {
-    return this.sandboxService.deleteKeySandboxValue(
-      slug,
-      ns,
-      key,
-      locale,
+      dto,
       user.userId,
       user.role,
     );

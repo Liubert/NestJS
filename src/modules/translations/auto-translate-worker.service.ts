@@ -400,11 +400,20 @@ export class AutoTranslateWorkerService
     context?: string | null,
   ): Promise<void> {
     // Check which locales are actually missing sandbox values for this key
+    // Also load qualityComment to pass as previousComment to Gemini
     const existingSandbox = await this.sandboxRepo.find({
       where: { projectId, keyId, isDeleted: false },
-      select: ['localeId'],
+      select: ['localeId', 'qualityComment'],
     });
     const existingLocaleIds = new Set(existingSandbox.map((s) => s.localeId));
+
+    // Collect non-null quality comments across all locales for this key
+    const qualityComments = existingSandbox
+      .map((s) => s.qualityComment)
+      .filter((c): c is string => !!c);
+    const previousComment = qualityComments.length
+      ? qualityComments[0]
+      : undefined;
     const missingLocales = nonDefaultLocales.filter(
       (l) => !existingLocaleIds.has(l.id),
     );
@@ -442,6 +451,7 @@ export class AutoTranslateWorkerService
         projectId,
         Object.keys(localeGuidance).length ? localeGuidance : undefined,
         context,
+        previousComment,
       );
 
     // Write results to sandbox_values
@@ -507,17 +517,22 @@ export class AutoTranslateWorkerService
     nonDefaultLocales: LocaleEntity[],
   ): Promise<void> {
     // Batch lookup existing sandbox values for all keys at once
+    // Also load qualityComment to pass as previousComment per key to Gemini
     const allKeyIds = keys.map((k) => k.keyId);
     const existingSandbox = await this.sandboxRepo.find({
       where: { projectId, keyId: In(allKeyIds), isDeleted: false },
-      select: ['keyId', 'localeId'],
+      select: ['keyId', 'localeId', 'qualityComment'],
     });
 
-    // Group by keyId for fast lookup
+    // Group by keyId for fast lookup (existing locales + first non-null quality comment)
     const existingByKey = new Map<string, Set<string>>();
+    const qualityCommentByKey = new Map<string, string>();
     for (const sv of existingSandbox) {
       if (!existingByKey.has(sv.keyId)) existingByKey.set(sv.keyId, new Set());
       existingByKey.get(sv.keyId)!.add(sv.localeId);
+      if (sv.qualityComment && !qualityCommentByKey.has(sv.keyId)) {
+        qualityCommentByKey.set(sv.keyId, sv.qualityComment);
+      }
     }
 
     // Build entries array for bulkTranslate, filtering out keys where all locales already exist
@@ -526,6 +541,7 @@ export class AutoTranslateWorkerService
       text: string;
       context?: string;
       targetLocales: string[];
+      previousComment?: string;
     }> = [];
     const keyIdByName = new Map<string, string>(); // key name -> keyId for result mapping
 
@@ -535,11 +551,13 @@ export class AutoTranslateWorkerService
         (l) => !existingLocaleIds.has(l.id),
       );
       if (!missingLocales.length) continue;
+      const previousComment = qualityCommentByKey.get(k.keyId);
       entries.push({
         key: k.keyName,
         text: k.sourceText,
         context: k.context ?? undefined,
         targetLocales: missingLocales.map((l) => l.code),
+        ...(previousComment ? { previousComment } : {}),
       });
       keyIdByName.set(k.keyName, k.keyId);
     }
