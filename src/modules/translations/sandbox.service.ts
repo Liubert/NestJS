@@ -1265,8 +1265,8 @@ export class SandboxService {
     userId: string,
     userRole: UserRole,
   ): Promise<QualityInfo> {
-    const project = await this.requireInitializedProject(slug);
-    this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireInitializedProject(slug);
+    await this.access.assertAccess(project, userId, userRole);
 
     const sv = await this.findSandboxValue(project.id, ns, key, locale);
     if (!sv) throw new NotFoundException('Sandbox value not found');
@@ -1295,8 +1295,8 @@ export class SandboxService {
     userId: string,
     userRole: UserRole,
   ): Promise<void> {
-    const project = await this.requireInitializedProject(slug);
-    this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireInitializedProject(slug);
+    await this.access.assertAccess(project, userId, userRole);
 
     const sv = await this.findSandboxValue(project.id, ns, key, locale);
     if (!sv) throw new NotFoundException('Sandbox value not found');
