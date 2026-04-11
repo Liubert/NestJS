@@ -286,7 +286,7 @@ export class TranslationsController {
     const qualityResult = await this.aiTranslateService.bulkCheckQuality(
       qualityItems,
       5,
-      90_000,
+      15_000,
       project.id,
       guidanceParam,
     );

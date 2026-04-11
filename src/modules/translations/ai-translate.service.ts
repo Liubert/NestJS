@@ -283,7 +283,7 @@ export class AiTranslateService {
       previousComment?: string | null;
     }>,
     chunkSize = 5,
-    chunkTimeoutMs = 90_000,
+    chunkTimeoutMs = 15_000,
     projectId?: string,
     localeGuidance?: Record<string, string>,
   ): Promise<{
@@ -573,7 +573,7 @@ export class AiTranslateService {
     const { results, contextInfo, skippedKeys } = await this.bulkCheckQuality(
       items,
       1,
-      30_000,
+      15_000,
       projectId,
       guidanceMap,
     );
