@@ -65,7 +65,7 @@ export class SandboxController {
     @Query() query: DiffQueryDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.sandboxService.getDiff(
+    return this.promotionService.getDiff(
       slug,
       user.userId,
       user.role,
@@ -458,6 +458,6 @@ export class SandboxController {
     @Body()
     body: { autoTranslateEnabled?: boolean; aiTokenDailyLimit?: number | null },
   ) {
-    return this.sandboxService.updateProjectSettings(slug, body);
+    return this.lifecycleService.updateProjectSettings(slug, body);
   }
 }

@@ -29,7 +29,6 @@ function buildSandboxService(
     update: jest.fn(),
   };
 
-  const defaultSnapshotRepo = {};
   const defaultValueRepo = {};
 
   const defaultAiTranslateService = {
@@ -38,16 +37,26 @@ function buildSandboxService(
 
   const defaultAutoTranslateWorkerService = {};
   const defaultDataSource = {};
+  const defaultAccess = {
+    requireProject: jest.fn(),
+    assertSandboxInitialized: jest.fn(),
+    assertOwnerOrAdmin: jest.fn(),
+    isAdmin: jest.fn(),
+  };
+  const defaultPromotionService = {
+    getDiff: jest.fn(),
+  };
 
   return new SandboxService(
     (overrides.projectRepo ?? defaultProjectRepo) as any,
     (overrides.sandboxRepo ?? defaultSandboxRepo) as any,
-    (overrides.snapshotRepo ?? defaultSnapshotRepo) as any,
     (overrides.valueRepo ?? defaultValueRepo) as any,
     (overrides.keyRepo ?? defaultKeyRepo) as any,
     (overrides.namespaceRepo ?? defaultNamespaceRepo) as any,
     (overrides.localeRepo ?? defaultLocaleRepo) as any,
     (overrides.dataSource ?? defaultDataSource) as any,
+    (overrides.access ?? defaultAccess) as any,
+    (overrides.promotionService ?? defaultPromotionService) as any,
     (overrides.aiTranslateService ?? defaultAiTranslateService) as any,
     (overrides.autoTranslateWorkerService ??
       defaultAutoTranslateWorkerService) as any,

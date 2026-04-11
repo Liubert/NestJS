@@ -55,24 +55,38 @@ export class SandboxPromotionService {
     private readonly access: ProjectAccessHelper,
   ) {}
 
-  // ─── Diff ─────────────────────────────────────────────────────────────────
+  // ─── Diff (paginated) ────────────────────────────────────────────────────
 
   async getDiff(
     projectSlug: string,
     _userId: string,
     _role: UserRole,
+    page = 1,
+    limit = 50,
+    filters?: { namespace?: string; locale?: string; status?: string },
   ): Promise<{
     total: number;
     added: number;
     changed: number;
     deleted: number;
     entries: DiffEntry[];
+    meta: { page: number; limit: number; total: number; totalPages: number };
   }> {
     const project = await this.access.requireProject(projectSlug);
 
     this.access.assertSandboxInitialized(project);
 
-    // Raw SQL: FULL OUTER JOIN production vs sandbox for this project
+    const offset = (page - 1) * limit;
+    const params: unknown[] = [
+      project.id,
+      filters?.namespace ?? null,
+      filters?.locale ?? null,
+      filters?.status ?? null,
+      limit,
+      offset,
+    ];
+
+    // Raw SQL: FULL OUTER JOIN production vs sandbox, with window-function counts and pagination
     const rows = await this.dataSource.query<
       {
         ns_slug: string;
@@ -84,6 +98,10 @@ export class SandboxPromotionService {
         quality_score: number | null;
         quality_level: string | null;
         quality_comment: string | null;
+        total: string;
+        added: string;
+        changed: string;
+        deleted: string;
       }[]
     >(
       `
@@ -114,31 +132,72 @@ export class SandboxPromotionService {
         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
         JOIN translation_locales l ON l.id = sv.locale_id
         WHERE sv.project_id = $1
+      ),
+      diff AS (
+        SELECT
+          COALESCE(p.ns_slug, s.ns_slug)  AS ns_slug,
+          COALESCE(p.key,     s.key)      AS key,
+          COALESCE(p.locale,  s.locale)   AS locale,
+          p.value                         AS production_value,
+          s.value                         AS sandbox_value,
+          s.is_deleted                    AS is_deleted,
+          s.quality_score                 AS quality_score,
+          s.quality_level                 AS quality_level,
+          s.quality_comment               AS quality_comment,
+          CASE
+            WHEN p.key IS NULL THEN 'added'
+            WHEN s.is_deleted = true THEN 'deleted'
+            ELSE 'changed'
+          END AS status
+        FROM production p
+        FULL OUTER JOIN sandbox s
+          ON p.ns_slug = s.ns_slug
+         AND p.key = s.key
+         AND p.locale = s.locale
+        WHERE
+          p.key IS NULL
+          OR s.is_deleted = true
+          OR (p.value IS DISTINCT FROM s.value AND s.is_deleted IS NOT TRUE)
+      ),
+      filtered AS (
+        SELECT * FROM diff
+        WHERE ($2::text IS NULL OR ns_slug = $2)
+          AND ($3::text IS NULL OR locale = $3)
+          AND ($4::text IS NULL OR status = $4)
+      ),
+      counts AS (
+        SELECT
+          COUNT(*)                                    AS total,
+          COUNT(*) FILTER (WHERE status = 'added')   AS added,
+          COUNT(*) FILTER (WHERE status = 'changed') AS changed,
+          COUNT(*) FILTER (WHERE status = 'deleted') AS deleted
+        FROM filtered
       )
       SELECT
-        COALESCE(p.ns_slug, s.ns_slug)  AS ns_slug,
-        COALESCE(p.key,     s.key)      AS key,
-        COALESCE(p.locale,  s.locale)   AS locale,
-        p.value                         AS production_value,
-        s.value                         AS sandbox_value,
-        s.is_deleted                    AS is_deleted,
-        s.quality_score                 AS quality_score,
-        s.quality_level                 AS quality_level,
-        s.quality_comment               AS quality_comment
-      FROM production p
-      FULL OUTER JOIN sandbox s
-        ON p.ns_slug = s.ns_slug
-       AND p.key = s.key
-       AND p.locale = s.locale
-      WHERE
-        -- Only rows that differ between production and sandbox
-        p.key IS NULL                                          -- added in sandbox
-        OR s.is_deleted = true                                 -- deleted in sandbox
-        OR (p.value IS DISTINCT FROM s.value AND s.is_deleted IS NOT TRUE)  -- changed
-      ORDER BY ns_slug, key, locale
+        f.ns_slug,
+        f.key,
+        f.locale,
+        f.production_value,
+        f.sandbox_value,
+        f.is_deleted,
+        f.quality_score,
+        f.quality_level,
+        f.quality_comment,
+        c.total,
+        c.added,
+        c.changed,
+        c.deleted
+      FROM filtered f, counts c
+      ORDER BY f.ns_slug, f.key, f.locale
+      LIMIT $5 OFFSET $6
     `,
-      [project.id],
+      params,
     );
+
+    const total = rows.length > 0 ? parseInt(rows[0].total, 10) : 0;
+    const added = rows.length > 0 ? parseInt(rows[0].added, 10) : 0;
+    const changed = rows.length > 0 ? parseInt(rows[0].changed, 10) : 0;
+    const deleted = rows.length > 0 ? parseInt(rows[0].deleted, 10) : 0;
 
     const entries: DiffEntry[] = rows.map((r) => ({
       namespace: r.ns_slug,
@@ -162,11 +221,17 @@ export class SandboxPromotionService {
     }));
 
     return {
-      total: entries.length,
-      added: entries.filter((e) => e.status === 'added').length,
-      changed: entries.filter((e) => e.status === 'changed').length,
-      deleted: entries.filter((e) => e.status === 'deleted').length,
+      total,
+      added,
+      changed,
+      deleted,
       entries,
+      meta: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
     };
   }
 
@@ -175,9 +240,10 @@ export class SandboxPromotionService {
   /**
    * Promotes sandbox to production atomically:
    * 1. Snapshot production state for revert
-   * 2. Replace production values with sandbox values
-   * 3. Clean up sandbox-only deleted keys
-   * 4. Re-init sandbox from new production state
+   * 2. Replace production values with sandbox values (including quality data)
+   * 3. Copy sandbox context to translation_keys
+   * 4. Clean up sandbox-only deleted keys
+   * 5. Re-init sandbox from new production state
    */
   async promote(
     projectSlug: string,
@@ -251,11 +317,15 @@ export class SandboxPromotionService {
         [project.id],
       );
 
-      // 3. Insert sandbox values (non-deleted) as new production values
+      // 3. Insert sandbox values (non-deleted) as new production values (including quality data)
       const insertResult = await manager.query<{ id: string }[]>(
         `
-        INSERT INTO translation_values (id, key_id, locale_id, value, updated_at)
-        SELECT gen_random_uuid(), sv.key_id, sv.locale_id, sv.value, now()
+        INSERT INTO translation_values (id, key_id, locale_id, value,
+          quality_score, quality_level, quality_comment,
+          quality_checked_at, quality_review_state, quality_content_hash, updated_at)
+        SELECT gen_random_uuid(), sv.key_id, sv.locale_id, sv.value,
+          sv.quality_score, sv.quality_level, sv.quality_comment,
+          sv.quality_checked_at, sv.quality_review_state, sv.quality_content_hash, now()
         FROM sandbox_values sv
         WHERE sv.project_id = $1 AND sv.is_deleted = false
         RETURNING id
@@ -265,8 +335,30 @@ export class SandboxPromotionService {
 
       const promotedCount = insertResult.length;
 
+      // 3b. Copy sandbox context to translation_keys
+      await manager.query(
+        `
+        UPDATE translation_keys tk
+        SET
+          context        = sv_ctx.context,
+          context_need   = sv_ctx.context_need,
+          context_reason = sv_ctx.context_reason
+        FROM (
+          SELECT DISTINCT ON (sv.key_id)
+            sv.key_id,
+            sv.context,
+            sv.context_need,
+            sv.context_reason
+          FROM sandbox_values sv
+          WHERE sv.project_id = $1 AND sv.is_deleted = false
+            AND sv.context IS NOT NULL
+        ) sv_ctx
+        WHERE tk.id = sv_ctx.key_id
+      `,
+        [project.id],
+      );
+
       // 4. Delete sandbox-only keys that were deleted in sandbox
-      // (keys with no production values after the insert and no non-deleted sandbox values)
       await manager.query(
         `
         DELETE FROM translation_keys
@@ -283,15 +375,19 @@ export class SandboxPromotionService {
         [project.id],
       );
 
-      // 5. Reset sandbox: delete all sandbox rows, re-copy from new production
+      // 5. Reset sandbox: delete all sandbox rows, re-copy from new production (with quality data)
       await manager.query(`DELETE FROM sandbox_values WHERE project_id = $1`, [
         project.id,
       ]);
 
       await manager.query(
         `
-        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-        SELECT ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now()
+        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+          context, context_need, context_reason,
+          quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
+        SELECT ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(),
+          tk.context, tk.context_need, tk.context_reason,
+          tv.quality_score, tv.quality_level, tv.quality_comment, tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
         FROM translation_values tv
         JOIN translation_keys tk ON tk.id = tv.key_id
         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
@@ -308,6 +404,8 @@ export class SandboxPromotionService {
       return { snapshotId: savedSnapshot.id, promoted: promotedCount };
     });
   }
+
+  // ─── Promote selective ────────────────────────────────────────────────────
 
   async promoteSelective(
     projectSlug: string,
@@ -362,11 +460,24 @@ export class SandboxPromotionService {
         if (!keyRows.length) continue;
         const keyId = keyRows[0].key_id;
 
-        // Get sandbox values for this key
+        // Get sandbox values for this key (including quality data)
         const svRows = await manager.query<
-          { locale_id: string; value: string | null; is_deleted: boolean }[]
+          {
+            locale_id: string;
+            value: string | null;
+            is_deleted: boolean;
+            quality_score: number | null;
+            quality_level: string | null;
+            quality_comment: string | null;
+            quality_checked_at: Date | null;
+            quality_review_state: string | null;
+            quality_content_hash: string | null;
+          }[]
         >(
-          `SELECT locale_id, value, is_deleted FROM sandbox_values
+          `SELECT locale_id, value, is_deleted,
+            quality_score, quality_level, quality_comment,
+            quality_checked_at, quality_review_state, quality_content_hash
+           FROM sandbox_values
            WHERE project_id = $1 AND key_id = $2`,
           [project.id, keyId],
         );
@@ -379,26 +490,67 @@ export class SandboxPromotionService {
               [keyId, sv.locale_id],
             );
           } else {
-            // Upsert into production
+            // Upsert into production (with quality data from sandbox)
             await manager.query(
-              `INSERT INTO translation_values (id, key_id, locale_id, value, updated_at)
-               VALUES (gen_random_uuid(), $1, $2, $3, now())
-               ON CONFLICT (key_id, locale_id) DO UPDATE SET value = $3, updated_at = now()`,
-              [keyId, sv.locale_id, sv.value],
+              `INSERT INTO translation_values (id, key_id, locale_id, value,
+                quality_score, quality_level, quality_comment,
+                quality_checked_at, quality_review_state, quality_content_hash, updated_at)
+               VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+               ON CONFLICT (key_id, locale_id) DO UPDATE SET
+                value = $3,
+                quality_score = $4, quality_level = $5, quality_comment = $6,
+                quality_checked_at = $7, quality_review_state = $8, quality_content_hash = $9,
+                updated_at = now()`,
+              [
+                keyId,
+                sv.locale_id,
+                sv.value,
+                sv.quality_score,
+                sv.quality_level,
+                sv.quality_comment,
+                sv.quality_checked_at,
+                sv.quality_review_state,
+                sv.quality_content_hash,
+              ],
             );
             promoted++;
           }
         }
 
-        // Re-sync sandbox for this key from production
+        // Copy sandbox context to translation_keys for this key
+        await manager.query(
+          `
+          UPDATE translation_keys tk
+          SET
+            context        = sv_ctx.context,
+            context_need   = sv_ctx.context_need,
+            context_reason = sv_ctx.context_reason
+          FROM (
+            SELECT sv.context, sv.context_need, sv.context_reason
+            FROM sandbox_values sv
+            WHERE sv.project_id = $1 AND sv.key_id = $2
+              AND sv.is_deleted = false AND sv.context IS NOT NULL
+            LIMIT 1
+          ) sv_ctx
+          WHERE tk.id = $2
+          `,
+          [project.id, keyId],
+        );
+
+        // Re-sync sandbox for this key from production (including quality data)
         await manager.query(
           `DELETE FROM sandbox_values WHERE project_id = $1 AND key_id = $2`,
           [project.id, keyId],
         );
         await manager.query(
-          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-           SELECT $1, tv.key_id, tv.locale_id, tv.value, false, now()
+          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+            context, context_need, context_reason,
+            quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
+           SELECT $1, tv.key_id, tv.locale_id, tv.value, false, now(),
+            tk.context, tk.context_need, tk.context_reason,
+            tv.quality_score, tv.quality_level, tv.quality_comment, tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
            FROM translation_values tv
+           JOIN translation_keys tk ON tk.id = tv.key_id
            WHERE tv.key_id = $2`,
           [project.id, keyId],
         );

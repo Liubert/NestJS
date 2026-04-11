@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { ProjectAccessHelper } from './helpers/project-access.helper.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
@@ -23,12 +23,20 @@ import {
   paginate,
   PaginatedResponse,
 } from '../../common/dto/paginated-response.dto.js';
+import { getLocaleSkill } from './locale-registry.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface LocaleInfo {
   code: string;
   isDefault: boolean;
+  aliases: string[];
+  localeSkill: string | null;
+}
+
+export interface NamespaceInfo {
+  slug: string;
+  avgScore: number | null;
 }
 
 export interface ProjectDetails {
@@ -38,8 +46,9 @@ export interface ProjectDetails {
   ownerId: string | null;
   createdAt: Date;
   locales: LocaleInfo[];
-  namespaces: string[];
+  namespaces: NamespaceInfo[];
   autoTranslateEnabled: boolean;
+  aiTokenDailyLimit: number | null;
 }
 
 export interface MemberRow {
@@ -65,6 +74,7 @@ export class TranslationProjectsService {
     private readonly memberRepo: Repository<ProjectMemberEntity>,
     @InjectRepository(UserEntity)
     private readonly userRepo: Repository<UserEntity>,
+    private readonly dataSource: DataSource,
     private readonly access: ProjectAccessHelper,
   ) {}
 
@@ -72,6 +82,11 @@ export class TranslationProjectsService {
 
   async getProjectBySlug(slug: string): Promise<ProjectEntity> {
     return this.access.requireProject(slug);
+  }
+
+  async getProjectLocales(projectSlug: string): Promise<LocaleEntity[]> {
+    const project = await this.access.requireProject(projectSlug);
+    return this.localeRepo.findBy({ projectId: project.id });
   }
 
   async requireNamespace(
@@ -148,9 +163,30 @@ export class TranslationProjectsService {
     const project = await this.access.requireProject(slug);
     await this.access.assertAccess(project, userId, userRole);
 
-    const [locales, namespaces] = await Promise.all([
-      this.localeRepo.findBy({ projectId: project.id }),
-      this.namespaceRepo.findBy({ projectId: project.id }),
+    const [locales, nsRows] = await Promise.all([
+      this.localeRepo.find({
+        where: { projectId: project.id },
+        order: { isDefault: 'DESC', code: 'ASC' },
+      }),
+      this.namespaceRepo
+        .createQueryBuilder('ns')
+        .select('ns.slug', 'slug')
+        .addSelect(
+          `(SELECT ROUND(AVG(min_score))::int
+            FROM (
+              SELECT MIN(sv.quality_score) AS min_score
+              FROM translation_keys tk
+              JOIN sandbox_values sv ON sv.key_id = tk.id
+                AND sv.project_id = ns.project_id
+                AND sv.is_deleted = false
+              WHERE tk.namespace_id = ns.id
+                AND sv.quality_score IS NOT NULL
+              GROUP BY tk.id
+            ) per_key)`,
+          'avgScore',
+        )
+        .where('ns.project_id = :projectId', { projectId: project.id })
+        .getRawMany<{ slug: string; avgScore: string | null }>(),
     ]);
 
     return {
@@ -159,9 +195,18 @@ export class TranslationProjectsService {
       name: project.name,
       ownerId: project.ownerId,
       createdAt: project.createdAt,
-      locales: locales.map((l) => ({ code: l.code, isDefault: l.isDefault })),
-      namespaces: namespaces.map((ns) => ns.slug),
+      locales: locales.map((l) => ({
+        code: l.code,
+        isDefault: l.isDefault,
+        aliases: l.aliases ?? [],
+        localeSkill: l.localeSkill ?? null,
+      })),
+      namespaces: nsRows.map((r) => ({
+        slug: r.slug,
+        avgScore: r.avgScore !== null ? Number(r.avgScore) : null,
+      })),
       autoTranslateEnabled: project.autoTranslateEnabled,
+      aiTokenDailyLimit: project.aiTokenDailyLimit ?? null,
     };
   }
 
@@ -298,12 +343,66 @@ export class TranslationProjectsService {
     );
   }
 
+  async updateNamespace(
+    projectSlug: string,
+    oldSlug: string,
+    newSlug: string,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<NamespaceEntity> {
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: oldSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${oldSlug}" not found`);
+
+    if (oldSlug !== newSlug) {
+      const exists = await this.namespaceRepo.existsBy({
+        projectId: project.id,
+        slug: newSlug,
+      });
+      if (exists) {
+        throw new ConflictException(
+          `Namespace "${newSlug}" already exists in project "${projectSlug}"`,
+        );
+      }
+    }
+
+    ns.slug = newSlug;
+    ns.originalFile = `${newSlug}.json`;
+    return this.namespaceRepo.save(ns);
+  }
+
+  async deleteNamespace(
+    projectSlug: string,
+    nsSlug: string,
+    userId: string,
+    userRole: UserRole,
+  ): Promise<void> {
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, userId, userRole);
+
+    const ns = await this.namespaceRepo.findOne({
+      where: { projectId: project.id, slug: nsSlug },
+    });
+    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+
+    await this.namespaceRepo.remove(ns);
+  }
+
+  // ─── Locales ──────────────────────────────────────────────────────────────
+
   async createLocale(
     projectSlug: string,
     code: string,
     isDefault = false,
     userId: string,
     userRole: UserRole,
+    aliases: string[] = [],
+    localeSkill?: string | null,
+    initTranslate = false,
   ): Promise<LocaleEntity> {
     const project = await this.access.requireProject(projectSlug);
     await this.access.assertManageAccess(project, userId, userRole);
@@ -318,9 +417,66 @@ export class TranslationProjectsService {
       );
     }
 
-    return this.localeRepo.save(
-      this.localeRepo.create({ projectId: project.id, code, isDefault }),
+    const locale = await this.localeRepo.save(
+      this.localeRepo.create({
+        projectId: project.id,
+        code,
+        isDefault,
+        aliases,
+        localeSkill: localeSkill ?? getLocaleSkill(code) ?? null,
+      }),
     );
+
+    // If initTranslate is requested and this is a non-default locale, create
+    // pending sandbox_value placeholders for all keys that have a default-locale
+    // sandbox value. The auto-translate worker picks up rows with
+    // pending_auto_translate=true regardless of the project's auto_translate_enabled flag.
+    if (initTranslate && !isDefault && project.sandboxInitializedAt) {
+      const defaultLocale = await this.localeRepo.findOneBy({
+        projectId: project.id,
+        isDefault: true,
+      });
+      if (defaultLocale) {
+        await this.dataSource.query(
+          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, pending_auto_translate, is_deleted, updated_at)
+           SELECT ns.project_id, tk.id, $1, NULL, true, false, NOW()
+           FROM translation_namespaces ns
+           JOIN translation_keys tk ON tk.namespace_id = ns.id
+           JOIN sandbox_values sv_def
+             ON sv_def.key_id = tk.id
+             AND sv_def.locale_id = $2
+             AND sv_def.project_id = ns.project_id
+             AND sv_def.is_deleted = false
+             AND sv_def.value IS NOT NULL
+           WHERE ns.project_id = $3
+           ON CONFLICT (project_id, key_id, locale_id) DO NOTHING`,
+          [locale.id, defaultLocale.id, project.id],
+        );
+      }
+    }
+
+    return locale;
+  }
+
+  async updateLocale(
+    projectSlug: string,
+    code: string,
+    aliases: string[],
+    userId: string,
+    userRole: UserRole,
+    localeSkill?: string | null,
+  ): Promise<LocaleEntity> {
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, userId, userRole);
+
+    const locale = await this.localeRepo.findOne({
+      where: { projectId: project.id, code },
+    });
+    if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
+
+    locale.aliases = aliases;
+    if (localeSkill !== undefined) locale.localeSkill = localeSkill;
+    return this.localeRepo.save(locale);
   }
 
   async deleteLocale(
@@ -337,20 +493,12 @@ export class TranslationProjectsService {
     });
     if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
 
+    if (locale.isDefault) {
+      throw new BadRequestException(
+        `Cannot delete the default locale "${code}". Change the default locale first.`,
+      );
+    }
+
     await this.localeRepo.remove(locale);
-  }
-
-  async deleteNamespace(
-    projectSlug: string,
-    nsSlug: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<void> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertManageAccess(project, userId, userRole);
-
-    const ns = await this.access.requireNamespace(project.id, nsSlug);
-
-    await this.namespaceRepo.remove(ns);
   }
 }
