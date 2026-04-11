@@ -9,10 +9,10 @@ export class ContextNeedReason1771400000004 implements MigrationInterface {
     `);
 
     // Backfill from old boolean column (if it still exists)
-    const hasCol = await queryRunner.query(`
+    const hasCol = (await queryRunner.query(`
       SELECT 1 FROM information_schema.columns
       WHERE table_name = 'translation_keys' AND column_name = 'context_required';
-    `);
+    `)) as unknown[];
     if (hasCol.length > 0) {
       await queryRunner.query(`
         UPDATE translation_keys SET context_need = CASE

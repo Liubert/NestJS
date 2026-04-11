@@ -84,7 +84,8 @@ export async function getAuthToken(
   }
 
   // Auth service returns { accessToken, user } (camelCase)
-  const token = res.body.accessToken ?? res.body.access_token;
+  const body = res.body as { accessToken?: string; access_token?: string };
+  const token = body.accessToken ?? body.access_token;
   if (!token) {
     throw new Error(
       `Login succeeded but no token in response: ${JSON.stringify(res.body)}`,

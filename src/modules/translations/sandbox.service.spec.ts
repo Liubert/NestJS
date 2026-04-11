@@ -69,9 +69,7 @@ describe('runSandboxQualityCheck', () => {
   const PROJECT_ID = 'project-uuid';
   const NS_ID = 'ns-uuid';
   const KEY_ID = 'key-uuid';
-  const LOCALE_ID = 'locale-uuid';
-  const LOCALE_CODE = 'uk';
-  const TEST_VALUE = 'test translation value';
+  // LOCALE_ID, LOCALE_CODE, TEST_VALUE removed — not yet used in tests
 
   function makeQbChain() {
     const executeMock = jest.fn().mockResolvedValue(undefined);

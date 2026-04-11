@@ -59,9 +59,14 @@ describe('Translations CRUD (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(res.body.initialized).toBe(true);
-    expect(res.body.initializedAt).toBeTruthy();
-    expect(res.body.hasChanges).toBe(false);
+    const body = res.body as {
+      initialized: boolean;
+      initializedAt: string;
+      hasChanges: boolean;
+    };
+    expect(body.initialized).toBe(true);
+    expect(body.initializedAt).toBeTruthy();
+    expect(body.hasChanges).toBe(false);
   });
 
   it('should allow creating sandbox entry without manual init', async () => {
@@ -76,8 +81,9 @@ describe('Translations CRUD (e2e)', () => {
       })
       .expect(201);
 
-    expect(res.body.key).toBe('sandbox.auto.test');
-    expect(res.body.values[TEST_LOCALE]).toBe('Sandbox works');
+    const body = res.body as { key: string; values: Record<string, string> };
+    expect(body.key).toBe('sandbox.auto.test');
+    expect(body.values[TEST_LOCALE]).toBe('Sandbox works');
   });
 
   it('should list sandbox entries without manual init', async () => {
@@ -88,8 +94,9 @@ describe('Translations CRUD (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(res.body).toHaveProperty('data');
-    expect(Array.isArray(res.body.data)).toBe(true);
+    const body = res.body as { data: unknown[] };
+    expect(body).toHaveProperty('data');
+    expect(Array.isArray(body.data)).toBe(true);
   });
 
   it('should return sandbox diff without manual init', async () => {
@@ -98,8 +105,9 @@ describe('Translations CRUD (e2e)', () => {
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
-    expect(res.body).toHaveProperty('total');
-    expect(res.body).toHaveProperty('entries');
+    const diffBody = res.body as { total: number; entries: unknown[] };
+    expect(diffBody).toHaveProperty('total');
+    expect(diffBody).toHaveProperty('entries');
   });
 
   it('should create a translation entry and retrieve it', async () => {
@@ -126,16 +134,19 @@ describe('Translations CRUD (e2e)', () => {
       .expect(200);
 
     // Response is PaginatedResponse<EntryRow>: { data: EntryRow[], meta: {...} }
-    expect(getRes.body).toHaveProperty('data');
-    expect(Array.isArray(getRes.body.data)).toBe(true);
+    const getBody = getRes.body as {
+      data: { key: string; values: Record<string, string> }[];
+    };
+    expect(getBody).toHaveProperty('data');
+    expect(Array.isArray(getBody.data)).toBe(true);
 
-    const entries = getRes.body.data;
-    const greeting = entries.find((e: any) => e.key === 'greeting');
+    const entries = getBody.data;
+    const greeting = entries.find((e) => e.key === 'greeting');
     expect(greeting).toBeDefined();
 
     // EntryRow.values is Record<string, string>: { en: 'Hello', ... }
-    expect(greeting.values).toBeDefined();
-    expect(greeting.values[TEST_LOCALE]).toBe('Hello');
+    expect(greeting!.values).toBeDefined();
+    expect(greeting!.values[TEST_LOCALE]).toBe('Hello');
   });
 
   it('should serve translations via public endpoint without auth', async () => {
