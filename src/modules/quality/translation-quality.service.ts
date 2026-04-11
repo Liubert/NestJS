@@ -7,16 +7,16 @@ import {
   expectedQualityFields,
   resetQualityFields,
   checkedQualityFields,
-} from './helpers/quality-state.helper.js';
+} from '../translations/helpers/quality-state.helper.js';
 import {
   QUALITY_MODE_LANGUAGE,
   QUALITY_MODE_TRANSLATION,
-} from './constants/quality.const.js';
-import { TranslationValueEntity } from './entities/translation-value.entity.js';
-import { LocaleEntity } from './entities/locale.entity.js';
+} from '../translations/constants/quality.const.js';
+import { TranslationValueEntity } from '../translations/entities/translation-value.entity.js';
+import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { UserRole } from '../users/types/user-role.enum.js';
-import type { QualityInfo } from './types/entry.types.js';
+import type { QualityInfo } from '../translations/types/entry.types.js';
 
 @Injectable()
 export class TranslationQualityService {

@@ -7,11 +7,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
-import { ProjectEntity } from './entities/project.entity.js';
-import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
-import { LocaleEntity } from './entities/locale.entity.js';
+import { ProjectEntity } from '../translations/entities/project.entity.js';
+import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
+import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
-import { getLocaleName } from './locale-registry.js';
+import { getLocaleName } from '../translations/locale-registry.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const MAX_KEYS_PER_CYCLE = 20;

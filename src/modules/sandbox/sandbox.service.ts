@@ -38,8 +38,8 @@ import {
   resetQualityFields,
 } from '../translations/helpers/quality-state.helper.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
-import { AutoTranslateWorkerService } from '../translations/auto-translate-worker.service.js';
-import { scoreToLevel } from '../translations/quality-constants.js';
+import { AutoTranslateWorkerService } from '../quality/auto-translate-worker.service.js';
+import { scoreToLevel } from '../quality/quality-constants.js';
 import type {
   AnalyzeEntriesResponse,
   AnalysisItemResult,

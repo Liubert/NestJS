@@ -4,7 +4,7 @@ import { SandboxService } from './sandbox.service.js';
 import { SandboxController } from './sandbox.controller.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { ProductionModule } from '../production/production.module.js';
-import { QualityWorkerModule } from '../translations/quality-worker.module.js';
+import { QualityWorkerModule } from '../quality/quality.module.js';
 import { ProjectEntity } from '../translations/entities/project.entity.js';
 import { NamespaceEntity } from '../translations/entities/namespace.entity.js';
 import { LocaleEntity } from '../translations/entities/locale.entity.js';

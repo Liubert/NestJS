@@ -7,10 +7,10 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, In, Repository } from 'typeorm';
 import { hashSha256 } from '../../common/utils/hash.util.js';
-import { checkedQualityFields } from './helpers/quality-state.helper.js';
-import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
-import { TranslationKeyEntity } from './entities/translation-key.entity.js';
-import { LocaleEntity } from './entities/locale.entity.js';
+import { checkedQualityFields } from '../translations/helpers/quality-state.helper.js';
+import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
+import { TranslationKeyEntity } from '../translations/entities/translation-key.entity.js';
+import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
 import {
   CONTEXT_REQUIRED_FACTOR,

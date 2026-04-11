@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AiConfigService } from './ai-config.service.js';
 import { AiUsageService } from './ai-usage.service.js';
-import { scoreToLevel } from '../translations/quality-constants.js';
+import { scoreToLevel } from '../quality/quality-constants.js';
 import {
   QUALITY_MODE_TRANSLATION,
   type QualityMode,

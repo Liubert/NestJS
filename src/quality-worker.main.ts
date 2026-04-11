@@ -3,7 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Module } from '@nestjs/common';
 import appConfig, { AppConfig } from './config/app.config';
-import { QualityWorkerModule } from './modules/translations/quality-worker.module';
+import { QualityWorkerModule } from './modules/quality/quality.module';
 
 /**
  * Standalone module for the quality worker process.

@@ -19,7 +19,7 @@ import {
   CONTEXT_REQUIRED_FACTOR,
   CONTEXT_USEFUL_FACTOR,
   scoreToLevel,
-} from '../translations/quality-constants.js';
+} from '../quality/quality-constants.js';
 import type { AiConfigEntity } from '../translations/entities/ai-config.entity.js';
 
 const API_KEY = process.env.GEMINI_API_KEY;
