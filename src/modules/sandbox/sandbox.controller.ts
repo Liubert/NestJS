@@ -26,6 +26,7 @@ import { BulkDeleteDto } from './dto/bulk-delete.dto.js';
 import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { AnalyzeEntriesDto } from '../translations/dto/analyze-entries.dto.js';
+import { RetranslateDto } from '../translations/dto/retranslate.dto.js';
 
 @ApiTags('sandbox')
 @Controller('translations/projects/:slug/sandbox')
@@ -321,6 +322,46 @@ export class SandboxController {
       ns,
       decodeURIComponent(key),
       locale,
+      user.userId,
+      user.role,
+    );
+  }
+
+  // ─── Namespace-level operations ───────────────────────────────────────────
+
+  @Post('namespaces/:ns/retranslate')
+  @ApiOperation({
+    summary:
+      'Delete sandbox translations and trigger re-translation. Scope: namespace (no body), locale ({ locale }), or key+locale ({ key, locale })',
+  })
+  async retranslate(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: RetranslateDto,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<{ deleted: number }> {
+    return this.sandboxService.retranslate(
+      slug,
+      ns,
+      dto,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Post('namespaces/:ns/reset-quality')
+  @ApiOperation({
+    summary:
+      'Reset all quality scores in a namespace — quality worker will re-evaluate',
+  })
+  async resetNamespaceQuality(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @CurrentUser() user: CurrentUserType,
+  ): Promise<{ reset: number }> {
+    return this.sandboxService.resetNamespaceQuality(
+      slug,
+      ns,
       user.userId,
       user.role,
     );

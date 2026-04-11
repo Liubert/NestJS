@@ -738,7 +738,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
         if (locale) body.locale = locale;
         if (key) body.key = key;
         const result = await apiPost<{ deleted: number }>(
-          `/translations/projects/${projectSlug}/namespaces/${namespace}/retranslate`,
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/retranslate`,
           Object.keys(body).length > 0 ? body : undefined,
         );
         logWrite(
@@ -781,7 +781,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
     async ({ projectSlug, namespace }) => {
       try {
         const result = await apiPost<{ reset: number }>(
-          `/translations/projects/${projectSlug}/namespaces/${namespace}/reset-quality`,
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/reset-quality`,
         );
         logWrite(
           'reset_namespace_quality',

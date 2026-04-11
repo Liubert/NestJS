@@ -24,7 +24,6 @@ import { CheckQualityDto } from '../ai/dto/check-quality.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { BulkQualityCheckAiDto } from '../ai/dto/bulk-quality-check-ai.dto.js';
 import { PreviewPromptDto } from '../ai/dto/preview-prompt.dto.js';
-import { RetranslateDto } from './dto/retranslate.dto.js';
 
 @ApiTags('translations')
 @Controller('translations')
@@ -356,48 +355,6 @@ export class TranslationsController {
   }
 
   // ─── Namespace bulk operations ────────────────────────────────────────────
-
-  @Post('projects/:slug/namespaces/:ns/retranslate')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary:
-      'Delete sandbox translations and trigger re-translation. Scope: namespace (no body), locale ({ locale }), or key+locale ({ key, locale })',
-  })
-  async retranslate(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: RetranslateDto,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<{ deleted: number }> {
-    return this.sandboxService.retranslate(
-      slug,
-      ns,
-      dto,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Post('projects/:slug/namespaces/:ns/reset-quality')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary:
-      'Reset all quality scores in a namespace — quality worker will re-evaluate',
-  })
-  async resetNamespaceQuality(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<{ reset: number }> {
-    return this.sandboxService.resetNamespaceQuality(
-      slug,
-      ns,
-      user.userId,
-      user.role,
-    );
-  }
 
   // ─── Entries (protected) ──────────────────────────────────────────────────
 

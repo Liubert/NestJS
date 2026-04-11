@@ -310,7 +310,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const resetNsQualityMutation = useMutation({
     mutationFn: (ns: string) =>
       apiClient.post(
-        `/translations/projects/${projectSlug}/namespaces/${ns}/reset-quality`,
+        `/translations/projects/${projectSlug}/sandbox/namespaces/${ns}/reset-quality`,
       ),
     onSuccess: (_data, ns) => {
       message.success(`Quality scores for "${ns}" reset — re-evaluation queued`);
@@ -323,7 +323,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
   const resetKeyLocaleMutation = useMutation({
     mutationFn: ({ key, locale }: { key: string; locale: string }) =>
       apiClient.post(
-        `/translations/projects/${projectSlug}/namespaces/${namespace}/retranslate`,
+        `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/retranslate`,
         { key, locale },
       ),
     onSuccess: (_data: any, { key, locale }: { key: string; locale: string }) => {
@@ -347,7 +347,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       // If source locale was edited in sandbox, retranslate all non-expected locales
       if (isSandbox && locale === defaultLocale) {
         await apiClient.post(
-          `/translations/projects/${projectSlug}/namespaces/${namespace}/retranslate`,
+          `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/retranslate`,
           { key },
         );
       }
@@ -576,7 +576,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           await Promise.all(
             selectedLocalesForReset.map((locale) =>
               apiClient.post(
-                `/translations/projects/${projectSlug}/namespaces/${namespace}/retranslate`,
+                `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/retranslate`,
                 { locale },
               ),
             ),
