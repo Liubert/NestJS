@@ -2,7 +2,7 @@ import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { TranslationsService } from './translations.service.js';
-import { SandboxService } from './sandbox.service.js';
+import { SandboxService } from '../sandbox/sandbox.service.js';
 import { LOCALE_REGISTRY } from './locale-registry.js';
 
 /**

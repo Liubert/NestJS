@@ -7,7 +7,10 @@ import {
 } from 'class-validator';
 import { IntersectionType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { BaseEntryKeyDto, RequiredValuesDto } from './base-entry.dto.js';
+import {
+  BaseEntryKeyDto,
+  RequiredValuesDto,
+} from '../../translations/dto/base-entry.dto.js';
 
 export class BulkImportEntryDto extends IntersectionType(
   BaseEntryKeyDto,

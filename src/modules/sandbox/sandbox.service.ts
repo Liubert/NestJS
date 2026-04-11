@@ -11,40 +11,40 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { hashSha256 } from '../../common/utils/hash.util.js';
-import { resolveLocaleAlias } from './constants/locale-aliases.const.js';
+import { resolveLocaleAlias } from '../translations/constants/locale-aliases.const.js';
 import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
 import { SandboxPromotionService } from './sandbox-promotion.service.js';
-import { ProjectEntity } from './entities/project.entity.js';
-import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
-import { TranslationValueEntity } from './entities/translation-value.entity.js';
-import { TranslationKeyEntity } from './entities/translation-key.entity.js';
-import { NamespaceEntity } from './entities/namespace.entity.js';
-import { LocaleEntity } from './entities/locale.entity.js';
+import { ProjectEntity } from '../translations/entities/project.entity.js';
+import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
+import { TranslationValueEntity } from '../translations/entities/translation-value.entity.js';
+import { TranslationKeyEntity } from '../translations/entities/translation-key.entity.js';
+import { NamespaceEntity } from '../translations/entities/namespace.entity.js';
+import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { UserRole } from '../users/types/user-role.enum.js';
-import { CreateEntryDto } from './dto/create-entry.dto.js';
-import { UpdateEntryDto } from './dto/update-entry.dto.js';
-import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
+import { CreateEntryDto } from '../translations/dto/create-entry.dto.js';
+import { UpdateEntryDto } from '../translations/dto/update-entry.dto.js';
+import { ListEntriesQueryDto } from '../translations/dto/list-entries-query.dto.js';
 import {
   paginate,
   PaginatedResponse,
 } from '../../common/dto/paginated-response.dto.js';
-import type { QualityInfo } from './types/entry.types.js';
+import type { QualityInfo } from '../translations/types/entry.types.js';
 import {
   groupQualityByKey,
   groupValuesByKey,
-} from './helpers/entry-list.helper.js';
+} from '../translations/helpers/entry-list.helper.js';
 import {
   expectedQualityFields,
   resetQualityFields,
-} from './helpers/quality-state.helper.js';
+} from '../translations/helpers/quality-state.helper.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
-import { AutoTranslateWorkerService } from './auto-translate-worker.service.js';
-import { scoreToLevel } from './quality-constants.js';
+import { AutoTranslateWorkerService } from '../translations/auto-translate-worker.service.js';
+import { scoreToLevel } from '../translations/quality-constants.js';
 import type {
   AnalyzeEntriesResponse,
   AnalysisItemResult,
-} from './dto/analyze-entries.dto.js';
-import type { RetranslateDto } from './dto/retranslate.dto.js';
+} from '../translations/dto/analyze-entries.dto.js';
+import type { RetranslateDto } from '../translations/dto/retranslate.dto.js';
 
 const CONTEXT_NEED_PRIORITY: Record<string, number> = {
   required: 2,

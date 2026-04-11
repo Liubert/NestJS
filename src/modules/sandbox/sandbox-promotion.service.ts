@@ -2,16 +2,16 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
-import { ProjectEntity } from './entities/project.entity.js';
-import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
+import { ProjectEntity } from '../translations/entities/project.entity.js';
+import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
 import {
   ProductionSnapshotEntity,
   SnapshotEntry,
-} from './entities/production-snapshot.entity.js';
-import { TranslationValueEntity } from './entities/translation-value.entity.js';
-import { TranslationKeyEntity } from './entities/translation-key.entity.js';
-import { NamespaceEntity } from './entities/namespace.entity.js';
-import { LocaleEntity } from './entities/locale.entity.js';
+} from '../translations/entities/production-snapshot.entity.js';
+import { TranslationValueEntity } from '../translations/entities/translation-value.entity.js';
+import { TranslationKeyEntity } from '../translations/entities/translation-key.entity.js';
+import { NamespaceEntity } from '../translations/entities/namespace.entity.js';
+import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { UserRole } from '../users/types/user-role.enum.js';
 
 const MAX_SNAPSHOTS = 5;

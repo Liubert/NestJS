@@ -22,9 +22,9 @@ import { ProjectsService } from '../projects/projects.service.js';
 import { SandboxService } from './sandbox.service.js';
 import { SandboxPromotionService } from './sandbox-promotion.service.js';
 import { SandboxLifecycleService } from './sandbox-lifecycle.service.js';
-import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
-import { CreateEntryDto } from './dto/create-entry.dto.js';
-import { UpdateEntryDto } from './dto/update-entry.dto.js';
+import { ListEntriesQueryDto } from '../translations/dto/list-entries-query.dto.js';
+import { CreateEntryDto } from '../translations/dto/create-entry.dto.js';
+import { UpdateEntryDto } from '../translations/dto/update-entry.dto.js';
 import { BulkImportDto } from './dto/bulk-import.dto.js';
 import { BulkDeleteDto } from './dto/bulk-delete.dto.js';
 
@@ -32,7 +32,7 @@ import { BulkRevertDto } from './dto/bulk-revert.dto.js';
 import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
-import { AnalyzeEntriesDto } from './dto/analyze-entries.dto.js';
+import { AnalyzeEntriesDto } from '../translations/dto/analyze-entries.dto.js';
 import { DiffQueryDto } from './dto/diff-query.dto.js';
 
 class RevertDto {

@@ -3,14 +3,10 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TranslationsController } from './translations.controller.js';
 import { PublicTranslationsController } from './public-translations.controller.js';
 import { TranslationsService } from './translations.service.js';
-import { SandboxService } from './sandbox.service.js';
-import { SandboxPromotionService } from './sandbox-promotion.service.js';
-import { SandboxLifecycleService } from './sandbox-lifecycle.service.js';
-import { SandboxController } from './sandbox.controller.js';
-import { TranslationQualityService } from './translation-quality.service.js';
 import { QualityWorkerModule } from './quality-worker.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { AiModule } from '../ai/ai.module.js';
+import { SandboxModule } from '../sandbox/sandbox.module.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
@@ -37,26 +33,15 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
     QualityWorkerModule,
     ProjectsModule,
     AiModule,
+    SandboxModule,
   ],
   controllers: [
     TranslationsController,
-    SandboxController,
     // PublicTranslationsController MUST be last — its wildcard routes
     // would otherwise intercept /projects/:slug/webhooks etc.
     PublicTranslationsController,
   ],
-  providers: [
-    TranslationQualityService,
-    TranslationsService,
-    SandboxService,
-    SandboxPromotionService,
-    SandboxLifecycleService,
-  ],
-  exports: [
-    TranslationsService,
-    SandboxService,
-    SandboxPromotionService,
-    SandboxLifecycleService,
-  ],
+  providers: [TranslationsService],
+  exports: [TranslationsService],
 })
 export class TranslationsModule {}

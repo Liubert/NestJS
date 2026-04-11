@@ -2,9 +2,9 @@ import { Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
-import { ProjectEntity } from './entities/project.entity.js';
-import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
-import { ProductionSnapshotEntity } from './entities/production-snapshot.entity.js';
+import { ProjectEntity } from '../translations/entities/project.entity.js';
+import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
+import { ProductionSnapshotEntity } from '../translations/entities/production-snapshot.entity.js';
 import { UserRole } from '../users/types/user-role.enum.js';
 
 @Injectable()

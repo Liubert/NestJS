@@ -26,7 +26,7 @@ import { TranslationsService } from './translations.service.js';
 import { ProjectsService } from '../projects/projects.service.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { AiUsageService } from '../ai/ai-usage.service.js';
-import { SandboxService } from './sandbox.service.js';
+import { SandboxService } from '../sandbox/sandbox.service.js';
 import { QualityWorkerService } from './quality-worker.service.js';
 import { AiTranslateDto } from '../ai/dto/ai-translate.dto.js';
 import { BulkAiTranslateDto } from '../ai/dto/bulk-ai-translate.dto.js';
