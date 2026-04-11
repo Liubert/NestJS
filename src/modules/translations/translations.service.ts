@@ -12,7 +12,7 @@ import { createHash } from 'crypto';
 import AdmZip from 'adm-zip';
 import { flattenJson, unflattenJson } from '../../common/utils/json.util.js';
 import { resolveLocaleAlias } from './constants/locale-aliases.const.js';
-import { ProjectAccessHelper } from './helpers/project-access.helper.js';
+import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';

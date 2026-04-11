@@ -12,7 +12,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { hashSha256 } from '../../common/utils/hash.util.js';
 import { resolveLocaleAlias } from './constants/locale-aliases.const.js';
-import { ProjectAccessHelper } from './helpers/project-access.helper.js';
+import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
 import { SandboxPromotionService } from './sandbox-promotion.service.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
@@ -37,7 +37,7 @@ import {
   expectedQualityFields,
   resetQualityFields,
 } from './helpers/quality-state.helper.js';
-import { AiTranslateService } from './ai-translate.service.js';
+import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { AutoTranslateWorkerService } from './auto-translate-worker.service.js';
 import { scoreToLevel } from './quality-constants.js';
 import type {

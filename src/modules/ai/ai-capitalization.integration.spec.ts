@@ -19,7 +19,7 @@ import {
   DEFAULT_CONTEXT_DETECTION_PROMPT,
 } from './ai-config.service.js';
 import { extractTranslateRules } from './ai-prompt-builder.js';
-import type { AiConfigEntity } from './entities/ai-config.entity.js';
+import type { AiConfigEntity } from '../translations/entities/ai-config.entity.js';
 
 const API_KEY = process.env.GEMINI_API_KEY;
 const RUN = !!API_KEY;

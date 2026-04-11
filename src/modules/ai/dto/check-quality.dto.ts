@@ -4,7 +4,7 @@ import {
   QUALITY_MODES,
   QUALITY_MODE_TRANSLATION,
   type QualityMode,
-} from '../constants/quality.const.js';
+} from '../../translations/constants/quality.const.js';
 
 export class CheckQualityDto {
   @ApiProperty({

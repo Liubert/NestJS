@@ -1,6 +1,6 @@
 import { interpolate } from './ai-config.service.js';
-import type { AiConfigEntity } from './entities/ai-config.entity.js';
-import { getLocaleName } from './locale-registry.js';
+import type { AiConfigEntity } from '../translations/entities/ai-config.entity.js';
+import { getLocaleName } from '../translations/locale-registry.js';
 
 /**
  * Strips per-item template variables and the output-format block from translatePrompt,

@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AiConfigEntity } from './entities/ai-config.entity.js';
+import { AiConfigEntity } from '../translations/entities/ai-config.entity.js';
 
 // ─── Default prompt templates ─────────────────────────────────────────────────
 // Variables interpolated at runtime (unknown {{...}} are left as-is):

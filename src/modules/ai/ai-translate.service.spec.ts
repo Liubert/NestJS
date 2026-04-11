@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiConfigService } from './ai-config.service.js';
 import { AiUsageService } from './ai-usage.service.js';
-import type { AiConfigEntity } from './entities/ai-config.entity.js';
+import type { AiConfigEntity } from '../translations/entities/ai-config.entity.js';
 
 // ─── Gemini mock ──────────────────────────────────────────────────────────────
 

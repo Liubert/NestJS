@@ -18,7 +18,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
-import { TranslationProjectsService } from './translation-projects.service.js';
+import { ProjectsService } from '../projects/projects.service.js';
 import { SandboxService } from './sandbox.service.js';
 import { SandboxPromotionService } from './sandbox-promotion.service.js';
 import { SandboxLifecycleService } from './sandbox-lifecycle.service.js';
@@ -49,7 +49,7 @@ export class SandboxController {
     private readonly sandboxService: SandboxService,
     private readonly promotionService: SandboxPromotionService,
     private readonly lifecycleService: SandboxLifecycleService,
-    private readonly projectsService: TranslationProjectsService,
+    private readonly projectsService: ProjectsService,
   ) {}
 
   @Get('status')

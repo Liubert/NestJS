@@ -1,7 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { ProjectAccessHelper } from './helpers/project-access.helper.js';
+import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import {

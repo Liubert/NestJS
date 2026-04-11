@@ -19,8 +19,8 @@ import {
   CONTEXT_REQUIRED_FACTOR,
   CONTEXT_USEFUL_FACTOR,
   scoreToLevel,
-} from './quality-constants.js';
-import type { AiConfigEntity } from './entities/ai-config.entity.js';
+} from '../translations/quality-constants.js';
+import type { AiConfigEntity } from '../translations/entities/ai-config.entity.js';
 
 const API_KEY = process.env.GEMINI_API_KEY;
 const RUN = !!API_KEY;
@@ -342,7 +342,7 @@ async function buildService(): Promise<AiTranslateService> {
 
       it('translate flags contextNeed as required (no existing translations)', async () => {
         const { contextInfo } = await service.bulkTranslate([
-          { key: KEY, text: SOURCE, context: null, targetLocales: ['uk'] },
+          { key: KEY, text: SOURCE, context: undefined, targetLocales: ['uk'] },
         ]);
 
         console.log(

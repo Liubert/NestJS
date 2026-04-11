@@ -6,11 +6,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ProjectEntity } from '../entities/project.entity.js';
-import { NamespaceEntity } from '../entities/namespace.entity.js';
-import { LocaleEntity } from '../entities/locale.entity.js';
-import { TranslationKeyEntity } from '../entities/translation-key.entity.js';
-import { ProjectMemberEntity } from '../entities/project-member.entity.js';
+import { ProjectEntity } from '../../translations/entities/project.entity.js';
+import { NamespaceEntity } from '../../translations/entities/namespace.entity.js';
+import { LocaleEntity } from '../../translations/entities/locale.entity.js';
+import { TranslationKeyEntity } from '../../translations/entities/translation-key.entity.js';
+import { ProjectMemberEntity } from '../../translations/entities/project-member.entity.js';
 import { UserRole } from '../../users/types/user-role.enum.js';
 
 @Injectable()

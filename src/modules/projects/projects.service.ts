@@ -7,13 +7,13 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { ProjectAccessHelper } from './helpers/project-access.helper.js';
-import { ProjectEntity } from './entities/project.entity.js';
-import { NamespaceEntity } from './entities/namespace.entity.js';
-import { LocaleEntity } from './entities/locale.entity.js';
+import { ProjectEntity } from '../translations/entities/project.entity.js';
+import { NamespaceEntity } from '../translations/entities/namespace.entity.js';
+import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import {
   ProjectMemberEntity,
   ProjectMemberRole,
-} from './entities/project-member.entity.js';
+} from '../translations/entities/project-member.entity.js';
 import { UserEntity } from '../users/user.entity.js';
 import { UserRole } from '../users/types/user-role.enum.js';
 import { CreateProjectDto } from './dto/create-project.dto.js';
@@ -23,7 +23,7 @@ import {
   paginate,
   PaginatedResponse,
 } from '../../common/dto/paginated-response.dto.js';
-import { getLocaleSkill } from './locale-registry.js';
+import { getLocaleSkill } from '../translations/locale-registry.js';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +62,7 @@ export interface MemberRow {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 @Injectable()
-export class TranslationProjectsService {
+export class ProjectsService {
   constructor(
     @InjectRepository(ProjectEntity)
     private readonly projectRepo: Repository<ProjectEntity>,

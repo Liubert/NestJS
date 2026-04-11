@@ -1,12 +1,10 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
-  Patch,
   Post,
   Query,
   UploadedFile,
@@ -19,33 +17,25 @@ import {
   ApiBody,
   ApiConsumes,
   ApiOperation,
-  ApiParam,
   ApiTags,
 } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
-import { TranslationProjectsService } from './translation-projects.service.js';
-import { AiTranslateService } from './ai-translate.service.js';
-import { AiUsageService } from './ai-usage.service.js';
+import { ProjectsService } from '../projects/projects.service.js';
+import { AiTranslateService } from '../ai/ai-translate.service.js';
+import { AiUsageService } from '../ai/ai-usage.service.js';
 import { SandboxService } from './sandbox.service.js';
 import { QualityWorkerService } from './quality-worker.service.js';
-import { AiTranslateDto } from './dto/ai-translate.dto.js';
-import { BulkAiTranslateDto } from './dto/bulk-ai-translate.dto.js';
-import { BulkTranslateAndSaveDto } from './dto/bulk-translate-and-save.dto.js';
-import { CheckQualityDto } from './dto/check-quality.dto.js';
+import { AiTranslateDto } from '../ai/dto/ai-translate.dto.js';
+import { BulkAiTranslateDto } from '../ai/dto/bulk-ai-translate.dto.js';
+import { BulkTranslateAndSaveDto } from '../ai/dto/bulk-translate-and-save.dto.js';
+import { CheckQualityDto } from '../ai/dto/check-quality.dto.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
-import { CreateProjectDto } from './dto/create-project.dto.js';
-import { CreateNamespaceDto } from './dto/create-namespace.dto.js';
-import { CreateLocaleDto } from './dto/create-locale.dto.js';
-import { UpdateLocaleDto } from './dto/update-locale.dto.js';
-import { UpdateNamespaceDto } from './dto/update-namespace.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
-import { AddMemberDto } from './dto/add-member.dto.js';
-import { BulkQualityCheckAiDto } from './dto/bulk-quality-check-ai.dto.js';
-import { PreviewPromptDto } from './dto/preview-prompt.dto.js';
-import { PaginationDto } from '../../common/dto/pagination.dto.js';
+import { BulkQualityCheckAiDto } from '../ai/dto/bulk-quality-check-ai.dto.js';
+import { PreviewPromptDto } from '../ai/dto/preview-prompt.dto.js';
 import { RetranslateDto } from './dto/retranslate.dto.js';
 
 @ApiTags('translations')
@@ -53,7 +43,7 @@ import { RetranslateDto } from './dto/retranslate.dto.js';
 export class TranslationsController {
   constructor(
     private readonly translationsService: TranslationsService,
-    private readonly projectsService: TranslationProjectsService,
+    private readonly projectsService: ProjectsService,
     private readonly aiTranslateService: AiTranslateService,
     private readonly aiUsageService: AiUsageService,
     private readonly sandboxService: SandboxService,
@@ -73,9 +63,6 @@ export class TranslationsController {
     const project = await this.projectsService.getProjectBySlug(slug);
     return this.aiUsageService.getProjectUsage(project.id);
   }
-
-  // Public (Locize-compatible) routes moved to PublicTranslationsController
-  // to avoid wildcard route conflicts with webhooks/sandbox controllers.
 
   @Post('import')
   @HttpCode(HttpStatus.OK)
@@ -164,7 +151,6 @@ export class TranslationsController {
       }, {});
       if (Object.keys(guidance).length) localeGuidance = guidance;
 
-      // Filter targetLocales to only include codes that exist in the project (excluding default)
       if (dto.targetLocales && dto.targetLocales.length > 0) {
         const projectLocaleCodes = new Set(
           locales.filter((l) => !l.isDefault).map((l) => l.code),
@@ -173,7 +159,6 @@ export class TranslationsController {
           projectLocaleCodes.has(code),
         );
       } else if (!dto.targetLocales) {
-        // No targetLocales provided — use all non-default project locales
         targetLocales = locales.filter((l) => !l.isDefault).map((l) => l.code);
       }
     }
@@ -229,14 +214,12 @@ export class TranslationsController {
       targetLocales = locales.filter((l) => !l.isDefault).map((l) => l.code);
     }
 
-    // Load existing quality comments for keys being retranslated
     const commentMap = await this.sandboxService.getQualityCommentsForKeys(
       project.id,
       namespace.id,
       dto.entries.map((e) => e.key),
     );
 
-    // Translate all entries, passing any prior quality feedback to Gemini
     const entriesWithLocales = dto.entries.map((e) => ({
       ...e,
       targetLocales,
@@ -249,7 +232,6 @@ export class TranslationsController {
         guidanceParam,
       );
 
-    // Build sandbox entries — include all translated locales
     const sandboxEntries = dto.entries
       .filter((e) => translations[e.key])
       .map((e) => ({
@@ -258,7 +240,6 @@ export class TranslationsController {
         context: e.context,
       }));
 
-    // Save to sandbox
     const saved = await this.sandboxService.bulkUpsert(
       project,
       namespace,
@@ -266,7 +247,6 @@ export class TranslationsController {
     );
 
     if (dto.skipQuality === true) {
-      // Fire-and-forget quality check via background worker
       void this.qualityWorkerService.triggerNow();
       return {
         translations,
@@ -275,7 +255,6 @@ export class TranslationsController {
       };
     }
 
-    // Run synchronous quality check and persist results
     const qualityItems = dto.entries
       .filter((e) => translations[e.key])
       .map((e) => ({
@@ -293,7 +272,6 @@ export class TranslationsController {
       guidanceParam,
     );
 
-    // Persist quality results to sandbox
     await this.sandboxService.persistQualityResults(
       project.id,
       dto.namespace,
@@ -415,219 +393,6 @@ export class TranslationsController {
     return { prompt };
   }
 
-  // ─── Projects (protected) ─────────────────────────────────────────────────
-
-  @Get('projects')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'List projects accessible to the current user' })
-  async listProjects(
-    @Query() query: PaginationDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.listProjects(
-      query.page,
-      query.limit,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Post('projects')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new project' })
-  async createProject(
-    @Body() dto: CreateProjectDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.createProject(dto, user.userId);
-  }
-
-  @Get('projects/:slug')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get project details (namespaces + locales)' })
-  async getProject(
-    @Param('slug') slug: string,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.getProjectDetails(slug, user.userId, user.role);
-  }
-
-  @Delete('projects/:slug')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete a project (owner or admin only)' })
-  async deleteProject(
-    @Param('slug') slug: string,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<void> {
-    return this.projectsService.deleteProject(slug, user.userId, user.role);
-  }
-
-  // ─── Members (protected) ──────────────────────────────────────────────────
-
-  @Get('projects/:slug/members')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'List project members' })
-  async listMembers(
-    @Param('slug') slug: string,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.listMembers(slug, user.userId, user.role);
-  }
-
-  @Post('projects/:slug/members')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Add a user to a project (owner or admin)' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  async addMember(
-    @Param('slug') slug: string,
-    @Body() dto: AddMemberDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.addMember(slug, dto, user.userId, user.role);
-  }
-
-  @Delete('projects/:slug/members/:userId')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Remove a user from a project (owner or admin)' })
-  async removeMember(
-    @Param('slug') slug: string,
-    @Param('userId') targetUserId: string,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<void> {
-    return this.projectsService.removeMember(
-      slug,
-      targetUserId,
-      user.userId,
-      user.role,
-    );
-  }
-
-  // ─── Namespaces (protected) ───────────────────────────────────────────────
-
-  @Post('projects/:slug/namespaces')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new namespace in a project' })
-  async createNamespace(
-    @Param('slug') slug: string,
-    @Body() dto: CreateNamespaceDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.createNamespace(
-      slug,
-      dto,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Post('projects/:slug/locales')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Add a locale to a project' })
-  async createLocale(
-    @Param('slug') slug: string,
-    @Body() dto: CreateLocaleDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.createLocale(
-      slug,
-      dto.code,
-      dto.isDefault,
-      user.userId,
-      user.role,
-      dto.aliases,
-      dto.localeSkill,
-      dto.initTranslate ?? false,
-    );
-  }
-
-  @Patch('projects/:slug/locales/:code')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update locale aliases' })
-  async updateLocale(
-    @Param('slug') slug: string,
-    @Param('code') code: string,
-    @Body() dto: UpdateLocaleDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.updateLocale(
-      slug,
-      code,
-      dto.aliases ?? [],
-      user.userId,
-      user.role,
-      dto.localeSkill,
-    );
-  }
-
-  @Delete('projects/:slug/locales/:code')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Remove a locale from a project' })
-  async deleteLocale(
-    @Param('slug') slug: string,
-    @Param('code') code: string,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<void> {
-    return this.projectsService.deleteLocale(
-      slug,
-      code,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Patch('projects/:slug/namespaces/:ns')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Rename a namespace' })
-  async updateNamespace(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: UpdateNamespaceDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.projectsService.updateNamespace(
-      slug,
-      ns,
-      dto.slug,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Delete('projects/:slug/namespaces/:ns')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Delete a namespace (cascades to all keys and values)',
-  })
-  async deleteNamespace(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @CurrentUser() user: CurrentUserType,
-  ): Promise<void> {
-    return this.projectsService.deleteNamespace(
-      slug,
-      ns,
-      user.userId,
-      user.role,
-    );
-  }
-
   // ─── Namespace bulk operations ────────────────────────────────────────────
 
   @Post('projects/:slug/namespaces/:ns/retranslate')
@@ -694,27 +459,4 @@ export class TranslationsController {
       user.role,
     );
   }
-
-  // DISABLED: production entries are read-only — use sandbox flow instead
-  // @Post('projects/:slug/namespaces/:ns/entries')
-  // @UseGuards(JwtAuthGuard, BlockMcpGuard)
-  // async createEntry(...) { ... }
-
-  // DISABLED: production entries are read-only — use sandbox flow instead
-  // @Patch('projects/:slug/namespaces/:ns/entries/:key')
-  // @UseGuards(JwtAuthGuard, BlockMcpGuard)
-  // async updateEntry(...) { ... }
-
-  // DISABLED: production attention items are read-only — use sandbox flow instead
-  // @Get('projects/:slug/namespaces/:ns/attention') — removed; sandbox endpoint is correct consumer
-
-  // DISABLED: production quality checks go through sandbox flow
-  // @Post('projects/:slug/namespaces/:ns/entries/:key/check-quality')
-  // async checkEntryQuality(...) { ... }
-
-  // Production mark-expected and bulk-quality-check removed — use sandbox endpoints
-
-  // DISABLED: production entries are read-only — use sandbox flow instead
-  // @Delete('projects/:slug/namespaces/:ns/entries/:key')
-  // async deleteEntry(...) { ... }
 }

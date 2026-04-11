@@ -10,7 +10,7 @@ import { DataSource, In, Repository } from 'typeorm';
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
-import { AiTranslateService } from './ai-translate.service.js';
+import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { getLocaleName } from './locale-registry.js';
 
 const POLL_INTERVAL_MS = 10_000;

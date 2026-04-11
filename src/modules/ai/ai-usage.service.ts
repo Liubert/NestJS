@@ -1,8 +1,8 @@
 import { HttpException, HttpStatus, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { AiUsageLogEntity } from './entities/ai-usage-log.entity.js';
-import { ProjectEntity } from './entities/project.entity.js';
+import { AiUsageLogEntity } from '../translations/entities/ai-usage-log.entity.js';
+import { ProjectEntity } from '../translations/entities/project.entity.js';
 
 @Injectable()
 export class AiUsageService {

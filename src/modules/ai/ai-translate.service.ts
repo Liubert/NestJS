@@ -8,12 +8,12 @@ import { ConfigService } from '@nestjs/config';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AiConfigService } from './ai-config.service.js';
 import { AiUsageService } from './ai-usage.service.js';
-import { scoreToLevel } from './quality-constants.js';
+import { scoreToLevel } from '../translations/quality-constants.js';
 import {
   QUALITY_MODE_TRANSLATION,
   type QualityMode,
-} from './constants/quality.const.js';
-import { getLocaleName } from './locale-registry.js';
+} from '../translations/constants/quality.const.js';
+import { getLocaleName } from '../translations/locale-registry.js';
 import {
   buildBulkQualityPrompt,
   buildBulkTranslatePrompt,

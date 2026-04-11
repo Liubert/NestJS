@@ -14,6 +14,8 @@ import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { QualityWorkerModule } from './modules/translations/quality-worker.module';
+import { ProjectsModule } from './modules/projects/projects.module';
+import { AiModule } from './modules/ai/ai.module';
 
 @Module({
   imports: [
@@ -37,6 +39,8 @@ import { QualityWorkerModule } from './modules/translations/quality-worker.modul
     UsersModule,
     WebhooksModule,
     FeedbackModule,
+    ProjectsModule,
+    AiModule,
     TranslationsModule,
     McpPromptsModule,
     QualityWorkerModule,

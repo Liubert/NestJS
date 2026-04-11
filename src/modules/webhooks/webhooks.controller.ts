@@ -14,7 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
-import { TranslationProjectsService } from '../translations/translation-projects.service.js';
+import { ProjectsService } from '../projects/projects.service.js';
 import { WebhooksService } from './webhooks.service.js';
 import { CreateWebhookDto } from './dto/create-webhook.dto.js';
 import { UpdateWebhookDto } from './dto/update-webhook.dto.js';
@@ -26,7 +26,7 @@ import { UpdateWebhookDto } from './dto/update-webhook.dto.js';
 export class WebhooksController {
   constructor(
     private readonly webhooksService: WebhooksService,
-    private readonly projectsService: TranslationProjectsService,
+    private readonly projectsService: ProjectsService,
   ) {}
 
   @Get()

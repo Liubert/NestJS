@@ -2,7 +2,7 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { hashSha256 } from '../../common/utils/hash.util.js';
-import { ProjectAccessHelper } from './helpers/project-access.helper.js';
+import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
 import {
   expectedQualityFields,
   resetQualityFields,
@@ -14,7 +14,7 @@ import {
 } from './constants/quality.const.js';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
-import { AiTranslateService } from './ai-translate.service.js';
+import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { UserRole } from '../users/types/user-role.enum.js';
 import type { QualityInfo } from './types/entry.types.js';
 

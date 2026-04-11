@@ -1,5 +1,5 @@
 import { IsEmail, IsIn, IsOptional } from 'class-validator';
-import type { ProjectMemberRole } from '../entities/project-member.entity.js';
+import type { ProjectMemberRole } from '../../translations/entities/project-member.entity.js';
 
 export class AddMemberDto {
   @IsEmail()

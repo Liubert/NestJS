@@ -11,7 +11,7 @@ import { checkedQualityFields } from './helpers/quality-state.helper.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
-import { AiTranslateService } from './ai-translate.service.js';
+import { AiTranslateService } from '../ai/ai-translate.service.js';
 import {
   CONTEXT_REQUIRED_FACTOR,
   CONTEXT_USEFUL_FACTOR,

@@ -2,7 +2,7 @@ import { HttpException, HttpStatus } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 import { AutoTranslateWorkerService } from './auto-translate-worker.service.js';
-import { AiTranslateService } from './ai-translate.service.js';
+import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
