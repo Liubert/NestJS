@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
-import { createHash } from 'crypto';
+import { hashSha256 } from '../../common/utils/hash.util.js';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
@@ -187,9 +187,7 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         if (!locale || !valMap) continue;
         checkedLocaleIds.add(locale.id);
         const value = valMap.get(locale.id);
-        const hash = value
-          ? createHash('sha256').update(value).digest('hex')
-          : null;
+        const hash = value ? hashSha256(value) : null;
 
         await this.valueRepo.update(
           { keyId, localeId: locale.id },

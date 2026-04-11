@@ -5,7 +5,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
+import { hashSha256 } from '../../common/utils/hash.util.js';
 import { McpTokenEntity } from './entities/mcp-token.entity.js';
 
 const TOKEN_PREFIX = 'lmcp_';
@@ -22,7 +23,7 @@ export class McpTokensService {
     name: string,
   ): Promise<{ token: string; id: string; createdAt: Date }> {
     const raw = TOKEN_PREFIX + randomBytes(32).toString('base64url');
-    const tokenHash = createHash('sha256').update(raw).digest('hex');
+    const tokenHash = hashSha256(raw);
 
     const entity = this.repo.create({ userId, name, tokenHash });
     const saved = await this.repo.save(entity);
@@ -47,7 +48,7 @@ export class McpTokensService {
 
   // Called by McpTokenStrategy on every authenticated request
   async validateAndTouch(rawToken: string): Promise<McpTokenEntity | null> {
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const tokenHash = hashSha256(rawToken);
 
     const token = await this.repo
       .createQueryBuilder('t')

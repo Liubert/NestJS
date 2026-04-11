@@ -1,13 +1,12 @@
 import {
-  BadRequestException,
   ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-
+import { resolveLocaleAlias } from './constants/locale-aliases.const.js';
+import { ProjectAccessHelper } from './helpers/project-access.helper.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
 import {
@@ -74,19 +73,8 @@ export class SandboxService {
     @InjectRepository(LocaleEntity)
     private readonly localeRepo: Repository<LocaleEntity>,
     private readonly dataSource: DataSource,
+    private readonly access: ProjectAccessHelper,
   ) {}
-
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  private async requireProject(slug: string): Promise<ProjectEntity> {
-    const project = await this.projectRepo.findOne({ where: { slug } });
-    if (!project) throw new NotFoundException(`Project "${slug}" not found`);
-    return project;
-  }
-
-  private isAdmin(role: UserRole): boolean {
-    return role === UserRole.ADMIN;
-  }
 
   // ─── Initialize sandbox ───────────────────────────────────────────────────
 
@@ -101,7 +89,7 @@ export class SandboxService {
     role: UserRole,
     force = false,
   ): Promise<{ initialized: boolean; copiedRows: number }> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
     if (force) {
       await this.sandboxRepo.delete({ projectId: project.id });
@@ -148,7 +136,7 @@ export class SandboxService {
     hasChanges: boolean;
     snapshotCount: number;
   }> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
     const snapshotCount = await this.snapshotRepo.count({
       where: { projectId: project.id },
     });
@@ -174,13 +162,9 @@ export class SandboxService {
     deleted: number;
     entries: DiffEntry[];
   }> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException(
-        'Sandbox is not initialized for this project',
-      );
-    }
+    this.access.assertSandboxInitialized(project);
 
     // Raw SQL: FULL OUTER JOIN production vs sandbox for this project
     const rows = await this.dataSource.query<
@@ -261,9 +245,14 @@ export class SandboxService {
           : 'changed',
       productionValue: r.production_value,
       sandboxValue: r.is_deleted ? null : r.sandbox_value,
-      quality: r.quality_score != null
-        ? { score: r.quality_score, level: r.quality_level as DiffQuality['level'], comment: r.quality_comment }
-        : null,
+      quality:
+        r.quality_score != null
+          ? {
+              score: r.quality_score,
+              level: r.quality_level as DiffQuality['level'],
+              comment: r.quality_comment,
+            }
+          : null,
     }));
 
     return {
@@ -326,18 +315,16 @@ export class SandboxService {
     userId: string,
     role: UserRole,
   ): Promise<{ snapshotId: string; promoted: number }> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
+    this.access.assertSandboxInitialized(project);
 
-    // Only project owner or admin can promote
-    if (!this.isAdmin(role) && project.ownerId !== userId) {
-      throw new ForbiddenException(
-        'Only the project owner or admin can promote sandbox to production',
-      );
-    }
+    this.access.assertOwnerOrAdmin(
+      project,
+      userId,
+      role,
+      'promote sandbox to production',
+    );
 
     return this.dataSource.transaction(async (manager) => {
       // 1. Snapshot current production state
@@ -459,17 +446,16 @@ export class SandboxService {
     userId: string,
     role: UserRole,
   ): Promise<{ snapshotId: string; promoted: number }> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
+    this.access.assertSandboxInitialized(project);
 
-    if (!this.isAdmin(role) && project.ownerId !== userId) {
-      throw new ForbiddenException(
-        'Only the project owner or admin can promote sandbox to production',
-      );
-    }
+    this.access.assertOwnerOrAdmin(
+      project,
+      userId,
+      role,
+      'promote sandbox to production',
+    );
 
     return this.dataSource.transaction(async (manager) => {
       // 1. Snapshot current production state
@@ -488,7 +474,10 @@ export class SandboxService {
         label: `before-selective-promote-${new Date().toISOString().slice(0, 10)}`,
         data: snapshotRows,
       });
-      const savedSnapshot = await manager.save(ProductionSnapshotEntity, snapshot);
+      const savedSnapshot = await manager.save(
+        ProductionSnapshotEntity,
+        snapshot,
+      );
 
       let promoted = 0;
 
@@ -562,7 +551,9 @@ export class SandboxService {
         [project.id],
       );
       const hasChanges = Number(remaining[0]?.cnt ?? 0) > 0;
-      await manager.update(ProjectEntity, project.id, { sandboxHasChanges: hasChanges });
+      await manager.update(ProjectEntity, project.id, {
+        sandboxHasChanges: hasChanges,
+      });
 
       return { snapshotId: savedSnapshot.id, promoted };
     });
@@ -580,13 +571,9 @@ export class SandboxService {
     userId: string,
     role: UserRole,
   ): Promise<{ restored: number }> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!this.isAdmin(role) && project.ownerId !== userId) {
-      throw new ForbiddenException(
-        'Only the project owner or admin can revert production',
-      );
-    }
+    this.access.assertOwnerOrAdmin(project, userId, role, 'revert production');
 
     const snapshot = await this.snapshotRepo.findOne({
       where: { id: snapshotId, projectId: project.id },
@@ -646,7 +633,7 @@ export class SandboxService {
   ): Promise<
     { id: string; label: string | null; createdAt: Date; entryCount: number }[]
   > {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
     const snapshots = await this.snapshotRepo.find({
       where: { projectId: project.id },
@@ -671,13 +658,9 @@ export class SandboxService {
     userId: string,
     role: UserRole,
   ): Promise<{ copiedRows: number }> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!this.isAdmin(role) && project.ownerId !== userId) {
-      throw new ForbiddenException(
-        'Only the project owner or admin can reset sandbox',
-      );
-    }
+    this.access.assertOwnerOrAdmin(project, userId, role, 'reset sandbox');
 
     const result = await this.initSandbox(projectSlug, userId, role, true);
     return { copiedRows: result.copiedRows };
@@ -698,16 +681,9 @@ export class SandboxService {
     namespace: string,
     locale: string,
   ): Promise<Record<string, string>> {
-    // Resolve BCP 47 aliases (no → nb-NO, da → da-DK)
-    const localeAliases: Record<string, string> = {
-      no: 'nb-NO',
-      nb: 'nb-NO',
-      da: 'da-DK',
-      nn: 'nb-NO',
-    };
-    const resolvedLocale = localeAliases[locale.toLowerCase()] ?? locale;
+    const resolvedLocale = resolveLocaleAlias(locale);
 
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
     if (!project.sandboxInitializedAt) {
       // Sandbox not initialized — fall back to production data
@@ -777,16 +753,11 @@ export class SandboxService {
     _userId: string,
     _role: UserRole,
   ): Promise<PaginatedResponse<SandboxEntryRow>> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
+    this.access.assertSandboxInitialized(project);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
     const {
       page,
@@ -1008,16 +979,11 @@ export class SandboxService {
     _userId: string,
     _role: UserRole,
   ): Promise<SandboxEntryRow> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
+    this.access.assertSandboxInitialized(project);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
     const exists = await this.keyRepo.existsBy({
       namespaceId: ns.id,
@@ -1068,21 +1034,13 @@ export class SandboxService {
     _userId: string,
     _role: UserRole,
   ): Promise<SandboxEntryRow> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
+    this.access.assertSandboxInitialized(project);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
-    const keyEntity = await this.keyRepo.findOne({
-      where: { namespaceId: ns.id, key },
-    });
-    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+    const keyEntity = await this.access.requireKey(ns.id, key);
 
     if (dto.context !== undefined) {
       keyEntity.context = dto.context ?? null;
@@ -1122,21 +1080,13 @@ export class SandboxService {
     userId: string,
     role: UserRole,
   ): Promise<void> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
+    this.access.assertSandboxInitialized(project);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
-    const keyEntity = await this.keyRepo.findOne({
-      where: { namespaceId: ns.id, key },
-    });
-    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+    const keyEntity = await this.access.requireKey(ns.id, key);
 
     const productionValues = await this.valueRepo.find({
       where: { keyId: keyEntity.id },
@@ -1184,21 +1134,13 @@ export class SandboxService {
     _userId: string,
     _role: UserRole,
   ): Promise<void> {
-    const project = await this.requireProject(projectSlug);
+    const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
+    this.access.assertSandboxInitialized(project);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
-    const keyEntity = await this.keyRepo.findOne({
-      where: { namespaceId: ns.id, key },
-    });
-    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+    const keyEntity = await this.access.requireKey(ns.id, key);
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
 
@@ -1222,9 +1164,7 @@ export class SandboxService {
       context?: string;
     }[],
   ): Promise<{ created: number; updated: number }> {
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
+    this.access.assertSandboxInitialized(project);
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const localeByCode = new Map(locales.map((l) => [l.code, l]));

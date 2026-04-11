@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   ConflictException,
-  ForbiddenException,
   Inject,
   Injectable,
   NotFoundException,
@@ -9,8 +8,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { createHash } from 'crypto';
 import AdmZip from 'adm-zip';
+import { hashSha256 } from '../../common/utils/hash.util.js';
+import { flattenJson, unflattenJson } from '../../common/utils/json.util.js';
+import { resolveLocaleAlias } from './constants/locale-aliases.const.js';
+import { ProjectAccessHelper } from './helpers/project-access.helper.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
@@ -110,6 +112,7 @@ export class TranslationsService {
     private readonly aiTranslateService: AiTranslateService,
     @Inject(forwardRef(() => WebhooksService))
     private readonly webhooksService: WebhooksService,
+    private readonly access: ProjectAccessHelper,
   ) {}
 
   private emitWebhook(
@@ -132,66 +135,17 @@ export class TranslationsService {
     });
   }
 
-  // ─── Access control helpers ────────────────────────────────────────────────
+  // ─── Delegated access helpers ───────────────────────────────────────────────
 
-  private isAdmin(role: UserRole): boolean {
-    return role === UserRole.ADMIN;
-  }
-
-  /** Throws ForbiddenException if user is not a member of the project (admins bypass). */
-  private async assertAccess(
-    project: ProjectEntity,
-    userId: string,
-    role: UserRole,
-  ): Promise<void> {
-    if (this.isAdmin(role)) return;
-    const member = await this.memberRepo.findOne({
-      where: { projectId: project.id, userId },
-    });
-    if (!member) {
-      throw new ForbiddenException(`No access to project "${project.slug}"`);
-    }
-  }
-
-  /** Throws ForbiddenException if user is not owner of the project (admins bypass). */
-  private async assertManageAccess(
-    project: ProjectEntity,
-    userId: string,
-    role: UserRole,
-  ): Promise<void> {
-    if (this.isAdmin(role)) return;
-    const member = await this.memberRepo.findOne({
-      where: { projectId: project.id, userId },
-    });
-    if (!member || member.role !== 'owner') {
-      throw new ForbiddenException(
-        `Only the project owner or an admin can manage project "${project.slug}"`,
-      );
-    }
-  }
-
-  /** Resolves project by slug; throws NotFoundException if not found. */
-  private async requireProject(slug: string): Promise<ProjectEntity> {
-    const project = await this.projectRepo.findOne({ where: { slug } });
-    if (!project) throw new NotFoundException(`Project "${slug}" not found`);
-    return project;
-  }
-
-  /** Public accessor for project by slug (used by controllers). */
   async getProjectBySlug(slug: string): Promise<ProjectEntity> {
-    return this.requireProject(slug);
+    return this.access.requireProject(slug);
   }
 
-  /** Public accessor for namespace by projectId + slug (used by controllers). */
   async requireNamespace(
     projectId: string,
     nsSlug: string,
   ): Promise<NamespaceEntity> {
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
-    return ns;
+    return this.access.requireNamespace(projectId, nsSlug);
   }
 
   // ─── Projects ─────────────────────────────────────────────────────────────
@@ -206,7 +160,7 @@ export class TranslationsService {
       .createQueryBuilder('p')
       .orderBy('p.name', 'ASC');
 
-    if (!this.isAdmin(userRole)) {
+    if (!this.access.isAdmin(userRole)) {
       qb.innerJoin(
         'project_members',
         'pm',
@@ -258,8 +212,8 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<ProjectDetails> {
-    const project = await this.requireProject(slug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(slug);
+    await this.access.assertAccess(project, userId, userRole);
 
     const [locales, namespaces] = await Promise.all([
       this.localeRepo.findBy({ projectId: project.id }),
@@ -283,8 +237,8 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<void> {
-    const project = await this.requireProject(slug);
-    await this.assertManageAccess(project, userId, userRole);
+    const project = await this.access.requireProject(slug);
+    await this.access.assertManageAccess(project, userId, userRole);
     await this.projectRepo.remove(project);
   }
 
@@ -295,8 +249,8 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<MemberRow[]> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
     const rows = await this.memberRepo
       .createQueryBuilder('pm')
@@ -321,8 +275,8 @@ export class TranslationsService {
     requesterId: string,
     requesterRole: UserRole,
   ): Promise<MemberRow> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertManageAccess(project, requesterId, requesterRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, requesterId, requesterRole);
 
     const targetUser = await this.userRepo.findOne({
       where: { email: dto.email },
@@ -363,8 +317,8 @@ export class TranslationsService {
     requesterId: string,
     requesterRole: UserRole,
   ): Promise<void> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertManageAccess(project, requesterId, requesterRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, requesterId, requesterRole);
 
     const member = await this.memberRepo.findOne({
       where: { projectId: project.id, userId: targetUserId },
@@ -389,8 +343,8 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<NamespaceEntity> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertManageAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, userId, userRole);
 
     const exists = await this.namespaceRepo.existsBy({
       projectId: project.id,
@@ -418,8 +372,8 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<LocaleEntity> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertManageAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, userId, userRole);
 
     const exists = await this.localeRepo.existsBy({
       projectId: project.id,
@@ -442,8 +396,8 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<void> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertManageAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, userId, userRole);
 
     const locale = await this.localeRepo.findOne({
       where: { projectId: project.id, code },
@@ -459,13 +413,10 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<void> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertManageAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertManageAccess(project, userId, userRole);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
     await this.namespaceRepo.remove(ns);
   }
@@ -490,13 +441,10 @@ export class TranslationsService {
       missingLocale,
     } = query;
 
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const localeMap = new Map(locales.map((l) => [l.id, l.code]));
@@ -647,13 +595,10 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<EntryRow> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
     const exists = await this.keyRepo.existsBy({
       namespaceId: ns.id,
@@ -704,18 +649,12 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<EntryRow> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
-    const keyEntity = await this.keyRepo.findOne({
-      where: { namespaceId: ns.id, key },
-    });
-    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+    const keyEntity = await this.access.requireKey(ns.id, key);
 
     if (dto.context !== undefined) {
       keyEntity.context = dto.context ?? null;
@@ -752,18 +691,12 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<void> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
-    const keyEntity = await this.keyRepo.findOne({
-      where: { namespaceId: ns.id, key },
-    });
-    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+    const keyEntity = await this.access.requireKey(ns.id, key);
 
     this.emitWebhook('translation.deleted', project, nsSlug, key);
 
@@ -772,28 +705,12 @@ export class TranslationsService {
 
   // ─── Locize-compatible read (public — no access check) ────────────────────
 
-  /**
-   * BCP 47 locale aliases — maps short ISO 639-1 codes (used by legacy apps) to
-   * the full BCP 47 codes stored on the server. Tried as fallback when the exact
-   * locale code is not found.
-   *
-   * To add a new alias: append an entry here. No other changes needed.
-   */
-  private static readonly LOCALE_ALIASES: Record<string, string> = {
-    no: 'nb-NO', // Norwegian (legacy ISO 639-1 → BCP 47)
-    nb: 'nb-NO', // Norwegian Bokmål short form
-    da: 'da-DK', // Danish (legacy ISO 639-1 → BCP 47)
-    nn: 'nb-NO', // Norwegian Nynorsk — fall back to Bokmål
-  };
-
   async getNamespace(
     projectSlug: string,
     namespace: string,
     locale: string,
   ): Promise<Record<string, unknown>> {
-    // Resolve alias: if the consumer passes 'no' or 'da', map to the canonical code
-    const resolvedLocale =
-      TranslationsService.LOCALE_ALIASES[locale.toLowerCase()] ?? locale;
+    const resolvedLocale = resolveLocaleAlias(locale);
 
     const rows = await this.valueRepo
       .createQueryBuilder('tv')
@@ -828,27 +745,17 @@ export class TranslationsService {
     const flat: Record<string, string> = Object.fromEntries(
       rows.map((r) => [r.key, r.value ?? '']),
     );
-    return this.unflattenJson(flat);
+    return unflattenJson(flat);
   }
 
   async getLocales(projectSlug: string): Promise<string[]> {
-    const project = await this.projectRepo.findOne({
-      where: { slug: projectSlug },
-    });
-    if (!project) {
-      throw new NotFoundException(`Project "${projectSlug}" not found`);
-    }
+    const project = await this.access.requireProject(projectSlug);
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     return locales.map((l) => l.code);
   }
 
   async getNamespaces(projectSlug: string): Promise<string[]> {
-    const project = await this.projectRepo.findOne({
-      where: { slug: projectSlug },
-    });
-    if (!project) {
-      throw new NotFoundException(`Project "${projectSlug}" not found`);
-    }
+    const project = await this.access.requireProject(projectSlug);
     const namespaces = await this.namespaceRepo.findBy({
       projectId: project.id,
     });
@@ -1016,7 +923,7 @@ export class TranslationsService {
     localeId: string,
     value: string,
   ): Promise<void> {
-    const hash = createHash('sha256').update(value).digest('hex');
+    const hash = hashSha256(value);
     await this.valueRepo
       .createQueryBuilder()
       .update()
@@ -1065,18 +972,12 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<Record<string, QualityInfo | null>> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
-    const keyEntity = await this.keyRepo.findOne({
-      where: { namespaceId: ns.id, key },
-    });
-    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+    const keyEntity = await this.access.requireKey(ns.id, key);
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const defaultLocale = locales.find((l) => l.isDefault);
@@ -1151,24 +1052,14 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<QualityInfo> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
-    const keyEntity = await this.keyRepo.findOne({
-      where: { namespaceId: ns.id, key },
-    });
-    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+    const keyEntity = await this.access.requireKey(ns.id, key);
 
-    const locale = await this.localeRepo.findOne({
-      where: { projectId: project.id, code: localeCode },
-    });
-    if (!locale)
-      throw new NotFoundException(`Locale "${localeCode}" not found`);
+    const locale = await this.access.requireLocale(project.id, localeCode);
 
     const valueEntity = await this.valueRepo.findOne({
       where: { keyId: keyEntity.id, localeId: locale.id },
@@ -1179,7 +1070,7 @@ export class TranslationsService {
       );
     }
 
-    const hash = createHash('sha256').update(valueEntity.value).digest('hex');
+    const hash = hashSha256(valueEntity.value);
     await this.valueRepo.update(
       { keyId: keyEntity.id, localeId: locale.id },
       {
@@ -1209,24 +1100,14 @@ export class TranslationsService {
     userId: string,
     userRole: UserRole,
   ): Promise<QualityInfo> {
-    const project = await this.requireProject(projectSlug);
-    await this.assertAccess(project, userId, userRole);
+    const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
-    const ns = await this.namespaceRepo.findOne({
-      where: { projectId: project.id, slug: nsSlug },
-    });
-    if (!ns) throw new NotFoundException(`Namespace "${nsSlug}" not found`);
+    const ns = await this.access.requireNamespace(project.id, nsSlug);
 
-    const keyEntity = await this.keyRepo.findOne({
-      where: { namespaceId: ns.id, key },
-    });
-    if (!keyEntity) throw new NotFoundException(`Key "${key}" not found`);
+    const keyEntity = await this.access.requireKey(ns.id, key);
 
-    const locale = await this.localeRepo.findOne({
-      where: { projectId: project.id, code: localeCode },
-    });
-    if (!locale)
-      throw new NotFoundException(`Locale "${localeCode}" not found`);
+    const locale = await this.access.requireLocale(project.id, localeCode);
 
     await this.valueRepo.update(
       { keyId: keyEntity.id, localeId: locale.id },
@@ -1279,58 +1160,11 @@ export class TranslationsService {
       }
 
       result[locale] ??= {};
-      result[locale][nsSlug] = this.flattenJson(
+      result[locale][nsSlug] = flattenJson(
         rawContent as Record<string, unknown>,
       );
     }
 
-    return result;
-  }
-
-  private flattenJson(
-    obj: Record<string, unknown>,
-    prefix = '',
-  ): Record<string, string> {
-    const result: Record<string, string> = {};
-    for (const [key, value] of Object.entries(obj)) {
-      const fullKey = prefix ? `${prefix}.${key}` : key;
-      if (
-        typeof value === 'object' &&
-        value !== null &&
-        !Array.isArray(value)
-      ) {
-        Object.assign(
-          result,
-          this.flattenJson(value as Record<string, unknown>, fullKey),
-        );
-      } else {
-        result[fullKey] =
-          value != null ? (value as string | number | boolean).toString() : '';
-      }
-    }
-    return result;
-  }
-
-  private unflattenJson(flat: Record<string, string>): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(flat)) {
-      const parts = key.split('.');
-      if (parts.length === 1) {
-        result[key] = value;
-        continue;
-      }
-      let current = result;
-      for (let i = 0; i < parts.length - 1; i++) {
-        if (
-          typeof current[parts[i]] !== 'object' ||
-          current[parts[i]] === null
-        ) {
-          current[parts[i]] = {};
-        }
-        current = current[parts[i]] as Record<string, unknown>;
-      }
-      current[parts[parts.length - 1]] = value;
-    }
     return result;
   }
 }

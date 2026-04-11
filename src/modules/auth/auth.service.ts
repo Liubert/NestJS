@@ -7,7 +7,8 @@ import { JwtService } from '@nestjs/jwt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { IsNull, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
-import { createHash, randomBytes } from 'crypto';
+import { randomBytes } from 'crypto';
+import { hashSha256 } from '../../common/utils/hash.util.js';
 
 import { UsersService } from '../users/users.service.js';
 import { JwtPayload } from './types/jwt-payload.type.js';
@@ -87,7 +88,7 @@ export class AuthService {
     await this.resetTokenRepo.delete({ userId: user.id, usedAt: IsNull() });
 
     const rawToken = randomBytes(32).toString('base64url');
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const tokenHash = hashSha256(rawToken);
     const expiresAt = new Date(
       Date.now() + RESET_TOKEN_TTL_HOURS * 60 * 60 * 1000,
     );
@@ -106,7 +107,7 @@ export class AuthService {
 
   // ─── Reset password ─────────────────────────────────────────────────────────
   async resetPassword(rawToken: string, newPassword: string): Promise<void> {
-    const tokenHash = createHash('sha256').update(rawToken).digest('hex');
+    const tokenHash = hashSha256(rawToken);
 
     const record = await this.resetTokenRepo.findOne({
       where: { tokenHash },
