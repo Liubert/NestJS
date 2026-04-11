@@ -17,9 +17,16 @@ import {
   scoreToLevel,
 } from './quality-constants.js';
 
-const POLL_INTERVAL_MS = 10_000;
+const POLL_INTERVAL_MS = Number(process.env.QUALITY_POLL_INTERVAL_MS ?? 10_000);
 const BATCH_SIZE = 5;
 const MAX_KEYS_PER_CYCLE = 50;
+
+/**
+ * Runs as a standalone process (quality-worker.main.ts) OR inside the API.
+ * When QUALITY_WORKER_STANDALONE=true (set by the standalone entry point),
+ * the in-API polling is disabled — the standalone process handles it.
+ */
+const IS_STANDALONE = process.env.QUALITY_WORKER_STANDALONE === 'true';
 
 @Injectable()
 export class QualityWorkerService
@@ -41,18 +48,35 @@ export class QualityWorkerService
   ) {}
 
   onApplicationBootstrap(): void {
-    this.timer = setInterval(() => {
-      void this.pollAndProcess();
-    }, POLL_INTERVAL_MS);
-    this.logger.log('Quality worker polling started (sandbox, every 10s)');
+    if (IS_STANDALONE) {
+      // Standalone process — always poll
+      this.startPolling();
+    } else if (!process.env.QUALITY_WORKER_DISABLED) {
+      // API process — poll only if standalone worker is not deployed separately
+      this.startPolling();
+    } else {
+      this.logger.log(
+        'Quality worker polling disabled (handled by standalone process)',
+      );
+    }
   }
 
   onModuleDestroy(): void {
     if (this.timer) clearInterval(this.timer);
   }
 
+  private startPolling(): void {
+    this.timer = setInterval(() => {
+      void this.pollAndProcess();
+    }, POLL_INTERVAL_MS);
+    const mode = IS_STANDALONE ? 'standalone' : 'in-process';
+    this.logger.log(
+      `Quality worker polling started (${mode}, every ${POLL_INTERVAL_MS / 1000}s)`,
+    );
+  }
+
   /**
-   * Immediately trigger a quality check cycle, bypassing the 30s interval.
+   * Immediately trigger a quality check cycle, bypassing the poll interval.
    * If a cycle is already in progress, returns without waiting.
    * Fire-and-forget safe — callers need not await.
    */
@@ -73,15 +97,22 @@ export class QualityWorkerService
            AND quality_review_state IN ('not_checked', 'processing', 'failed', 'skipped')`,
       );
 
+      // Atomically claim keys by setting state to 'processing' and returning them.
+      // This prevents race conditions when multiple worker processes run concurrently.
       const rows = await this.dataSource.query<
         { project_id: string; key_id: string }[]
       >(
-        `SELECT DISTINCT sv.project_id, sv.key_id
-         FROM sandbox_values sv
-         WHERE sv.quality_review_state IN ('not_checked', 'failed', 'skipped')
-           AND sv.value IS NOT NULL
-           AND sv.is_deleted = false
-         LIMIT $1`,
+        `UPDATE sandbox_values
+         SET quality_review_state = 'processing'
+         WHERE id IN (
+           SELECT DISTINCT ON (project_id, key_id) id
+           FROM sandbox_values
+           WHERE quality_review_state IN ('not_checked', 'failed', 'skipped')
+             AND value IS NOT NULL
+             AND is_deleted = false
+           LIMIT $1
+         )
+         RETURNING DISTINCT project_id, key_id`,
         [MAX_KEYS_PER_CYCLE],
       );
 
@@ -135,7 +166,8 @@ export class QualityWorkerService
   ): Promise<void> {
     if (!keyIds.length) return;
 
-    // Mark as processing in sandbox (only non-null values)
+    // Keys already claimed as 'processing' by pollAndProcess() atomic UPDATE RETURNING.
+    // Mark remaining locales of the same keys as processing too.
     await this.sandboxRepo
       .createQueryBuilder()
       .update()
@@ -276,10 +308,13 @@ export class QualityWorkerService
     let allSkippedKeys = new Set<string>();
 
     try {
+      // Standalone worker: no timeout (separate process, can wait as long as needed)
+      // In-process: 90s per chunk to avoid blocking the API event loop
+      const chunkTimeout = IS_STANDALONE ? 0 : 90_000;
       const mainResult = await this.aiTranslateService.bulkCheckQuality(
         items,
         5,
-        90_000,
+        chunkTimeout,
         projectId,
         guidanceParam,
       );
@@ -438,10 +473,14 @@ export class QualityWorkerService
       .createQueryBuilder()
       .update()
       .set({ qualityReviewState: state })
-      .where('project_id = :projectId AND key_id IN (:...keyIds)', {
-        projectId,
-        keyIds,
-      })
+      .where(
+        'project_id = :projectId AND key_id IN (:...keyIds) AND quality_review_state != :protected',
+        {
+          projectId,
+          keyIds,
+          protected: 'expected',
+        },
+      )
       .execute();
   }
 }

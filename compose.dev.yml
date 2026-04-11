@@ -58,6 +58,32 @@ services:
     command: ["npm", "run", "seed"]
     profiles: ["dev-tools"]
 
+  quality-worker:
+    image: ${APP_IMAGE:-nest-js-app:local}-dev
+    env_file:
+      - .env
+    build:
+      context: .
+      target: dev
+    command: npx ts-node src/quality-worker.main.ts
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      QUALITY_WORKER_STANDALONE: "true"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    volumes:
+      - ./:/usr/src/app
+      - /usr/src/app/node_modules
+    networks:
+      - internal
+
   admin-ui:
     profiles: ["disabled"]
 

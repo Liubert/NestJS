@@ -357,13 +357,22 @@ export class AiTranslateService {
 
       let raw: string;
       try {
-        const timeout = new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('chunk_timeout')), chunkTimeoutMs),
-        );
         const geminiCall = model
           .generateContent(prompt)
           .then((r) => r.response.text().trim());
-        raw = await Promise.race([geminiCall, timeout]);
+
+        if (chunkTimeoutMs > 0) {
+          const timeout = new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error('chunk_timeout')),
+              chunkTimeoutMs,
+            ),
+          );
+          raw = await Promise.race([geminiCall, timeout]);
+        } else {
+          // No timeout — let Gemini take as long as needed (standalone worker)
+          raw = await geminiCall;
+        }
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         if (msg === 'chunk_timeout') {

@@ -42,6 +42,7 @@ services:
       AWS_S3_BUCKET: ${AWS_S3_BUCKET}
       AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
       AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      QUALITY_WORKER_DISABLED: "true"
     networks:
       - internal
       - public
@@ -54,6 +55,30 @@ services:
       start_period: 30s
     ports:
       - "8080:3000"
+
+  quality-worker:
+    image: ${APP_IMAGE}
+    build:
+      context: .
+      target: prod
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      QUALITY_WORKER_STANDALONE: "true"
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASS: ${DB_PASS}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+    command: ["node", "dist/quality-worker.main.js"]
+    networks:
+      - internal
+    restart: unless-stopped
 
   admin-ui:
     image: ${ADMIN_UI_IMAGE}
