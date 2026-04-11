@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TranslationsController } from './translations.controller.js';
 import { PublicTranslationsController } from './public-translations.controller.js';
@@ -29,7 +29,7 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
       SandboxValueEntity,
       ProductionSnapshotEntity,
     ]),
-    forwardRef(() => WebhooksModule),
+    WebhooksModule,
     QualityWorkerModule,
     ProjectsModule,
     AiModule,

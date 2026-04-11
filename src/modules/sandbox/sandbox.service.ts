@@ -2,11 +2,9 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  Inject,
   Injectable,
   Logger,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -87,7 +85,6 @@ export class SandboxService {
     private readonly dataSource: DataSource,
     private readonly access: ProjectAccessHelper,
     private readonly promotionService: PromotionService,
-    @Inject(forwardRef(() => AiTranslateService))
     private readonly aiTranslateService: AiTranslateService,
     private readonly autoTranslateWorkerService: AutoTranslateWorkerService,
   ) {}

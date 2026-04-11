@@ -5,6 +5,7 @@ import { SandboxController } from './sandbox.controller.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { ProductionModule } from '../production/production.module.js';
 import { QualityWorkerModule } from '../quality/quality.module.js';
+import { AiModule } from '../ai/ai.module.js';
 import { ProjectEntity } from '../translations/entities/project.entity.js';
 import { NamespaceEntity } from '../translations/entities/namespace.entity.js';
 import { LocaleEntity } from '../translations/entities/locale.entity.js';
@@ -27,6 +28,7 @@ import { ProductionSnapshotEntity } from '../translations/entities/production-sn
     ProjectsModule,
     ProductionModule,
     QualityWorkerModule,
+    AiModule,
   ],
   controllers: [SandboxController],
   providers: [SandboxService],

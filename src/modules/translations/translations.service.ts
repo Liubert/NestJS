@@ -1,10 +1,8 @@
 import {
   BadRequestException,
   ConflictException,
-  Inject,
   Injectable,
   NotFoundException,
-  forwardRef,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
@@ -52,7 +50,6 @@ export class TranslationsService {
     @InjectRepository(TranslationValueEntity)
     private readonly valueRepo: Repository<TranslationValueEntity>,
     private readonly dataSource: DataSource,
-    @Inject(forwardRef(() => WebhooksService))
     private readonly webhooksService: WebhooksService,
     private readonly access: ProjectAccessHelper,
   ) {}
