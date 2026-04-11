@@ -57,7 +57,7 @@ import {
   updateSandboxEntry,
   deleteSandboxEntry,
   revertSandboxKey,
-  promoteSelective,
+  promote,
 } from './components/api';
 import { QUALITY_COLOR } from './components/QualityBadge';
 import { buildColumns } from './components/columns';
@@ -696,9 +696,9 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     qc.invalidateQueries({ queryKey: ['sandbox-entries', projectSlug] });
   }, [qc, projectSlug]);
 
-  const promoteSelectiveMutation = useMutation({
+  const promoteMutation = useMutation({
     mutationFn: (keys: { namespace: string; key: string }[]) =>
-      promoteSelective(projectSlug, keys),
+      promote(projectSlug, keys),
     onSuccess: (data) => {
       message.success(
         `Pushed — ${data.promoted} entries are now live in production`,
@@ -810,8 +810,8 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     const selectedKeys = nsKeyDiffRows
       .filter((r) => selectedRowKeys.has(r.id))
       .map((r) => ({ namespace: r.namespace, key: r.key }));
-    promoteSelectiveMutation.mutate(selectedKeys);
-  }, [nsKeyDiffRows, selectedRowKeys, promoteSelectiveMutation]);
+    promoteMutation.mutate(selectedKeys);
+  }, [nsKeyDiffRows, selectedRowKeys, promoteMutation]);
 
   if (!projectSlug)
     return <Empty description="Select a project" style={{ marginTop: 48 }} />;
@@ -1131,7 +1131,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
             key="push"
             type="primary"
             icon={<ArrowRightOutlined />}
-            loading={promoteSelectiveMutation.isPending}
+            loading={promoteMutation.isPending}
             disabled={selectedCount === 0}
             onClick={handlePromoteSelected}
           >

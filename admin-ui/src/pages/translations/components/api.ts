@@ -238,12 +238,12 @@ export const unmarkSandboxExpected = async (
   );
 };
 
-export const promoteSelective = async (
+export const promote = async (
   slug: string,
   keys: { namespace: string; key: string }[],
 ): Promise<{ snapshotId: string; promoted: number }> => {
   const res = await apiClient.post(
-    `/translations/projects/${slug}/sandbox/promote-selective`,
+    `/translations/projects/${slug}/sandbox/promote`,
     { keys },
   );
   return res.data;
