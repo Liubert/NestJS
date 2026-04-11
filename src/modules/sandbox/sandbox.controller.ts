@@ -23,7 +23,6 @@ import { CreateEntryDto } from '../translations/dto/create-entry.dto.js';
 import { UpdateEntryDto } from '../translations/dto/update-entry.dto.js';
 import { BulkImportDto } from './dto/bulk-import.dto.js';
 import { BulkDeleteDto } from './dto/bulk-delete.dto.js';
-import { BulkRevertDto } from './dto/bulk-revert.dto.js';
 import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { AnalyzeEntriesDto } from '../translations/dto/analyze-entries.dto.js';
@@ -253,25 +252,6 @@ export class SandboxController {
     @CurrentUser() user: CurrentUserType,
   ) {
     return this.sandboxService.bulkDelete(
-      slug,
-      ns,
-      dto.keys,
-      user.userId,
-      user.role,
-    );
-  }
-
-  @Post('namespaces/:ns/entries/bulk-revert')
-  @ApiOperation({
-    summary: 'Revert multiple sandbox keys to their production values',
-  })
-  async bulkRevertEntries(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: BulkRevertDto,
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.sandboxService.bulkRevert(
       slug,
       ns,
       dto.keys,

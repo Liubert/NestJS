@@ -2,23 +2,12 @@ import {
   Body,
   Controller,
   Get,
-  HttpCode,
-  HttpStatus,
   Param,
   Post,
   Query,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
-  ApiOperation,
-  ApiTags,
-} from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
@@ -32,7 +21,6 @@ import { AiTranslateDto } from '../ai/dto/ai-translate.dto.js';
 import { BulkAiTranslateDto } from '../ai/dto/bulk-ai-translate.dto.js';
 import { BulkTranslateAndSaveDto } from '../ai/dto/bulk-translate-and-save.dto.js';
 import { CheckQualityDto } from '../ai/dto/check-quality.dto.js';
-import { ImportTranslationsDto } from './dto/import-translations.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { BulkQualityCheckAiDto } from '../ai/dto/bulk-quality-check-ai.dto.js';
 import { PreviewPromptDto } from '../ai/dto/preview-prompt.dto.js';
@@ -62,32 +50,6 @@ export class TranslationsController {
   ) {
     const project = await this.projectsService.getProjectBySlug(slug);
     return this.aiUsageService.getProjectUsage(project.id);
-  }
-
-  @Post('import')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Import translations from a ZIP file' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['file', 'projectSlug'],
-      properties: {
-        file: { type: 'string', format: 'binary' },
-        projectSlug: { type: 'string' },
-        projectName: { type: 'string' },
-      },
-    },
-  })
-  async importTranslations(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() dto: ImportTranslationsDto,
-  ) {
-    if (!file) return { error: 'No file uploaded' };
-    return this.translationsService.importFromZip(file.buffer, dto);
   }
 
   // ─── AI (protected) ───────────────────────────────────────────────────────
