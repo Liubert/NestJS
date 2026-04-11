@@ -7,9 +7,9 @@ import {
   Unique,
   UpdateDateColumn,
 } from 'typeorm';
-import { TranslationKeyEntity } from './translation-key.entity';
-import { LocaleEntity } from './locale.entity';
-import { ProjectEntity } from './project.entity';
+import { TranslationKeyEntity } from './translation-key.entity.js';
+import { LocaleEntity } from './locale.entity.js';
+import { ProjectEntity } from './project.entity.js';
 
 @Entity('sandbox_values')
 @Unique(['projectId', 'keyId', 'localeId'])

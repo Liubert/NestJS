@@ -20,6 +20,8 @@ import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
 import { SandboxService } from './sandbox.service.js';
+import { SandboxPromotionService } from './sandbox-promotion.service.js';
+import { SandboxLifecycleService } from './sandbox-lifecycle.service.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
@@ -45,13 +47,15 @@ class RevertDto {
 export class SandboxController {
   constructor(
     private readonly sandboxService: SandboxService,
+    private readonly promotionService: SandboxPromotionService,
+    private readonly lifecycleService: SandboxLifecycleService,
     private readonly translationsService: TranslationsService,
   ) {}
 
   @Get('status')
   @ApiOperation({ summary: 'Get sandbox status for a project' })
   status(@Param('slug') slug: string) {
-    return this.sandboxService.getSandboxStatus(slug);
+    return this.lifecycleService.getSandboxStatus(slug);
   }
 
   @Post('init')
@@ -64,7 +68,7 @@ export class SandboxController {
     @Body() dto: InitSandboxDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.sandboxService.initSandbox(
+    return this.lifecycleService.initSandbox(
       slug,
       user.userId,
       user.role,
@@ -75,7 +79,7 @@ export class SandboxController {
   @Get('diff')
   @ApiOperation({ summary: 'Get diff between sandbox and production' })
   diff(@Param('slug') slug: string, @CurrentUser() user: CurrentUserType) {
-    return this.sandboxService.getDiff(slug, user.userId, user.role);
+    return this.promotionService.getDiff(slug, user.userId, user.role);
   }
 
   @Post('promote')
@@ -85,7 +89,7 @@ export class SandboxController {
     summary: 'Promote sandbox to production (takes snapshot before replacing)',
   })
   promote(@Param('slug') slug: string, @CurrentUser() user: CurrentUserType) {
-    return this.sandboxService.promote(slug, user.userId, user.role);
+    return this.promotionService.promote(slug, user.userId, user.role);
   }
 
   @Post('promote-selective')
@@ -99,7 +103,7 @@ export class SandboxController {
     @Body() dto: SelectivePromoteDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.sandboxService.promoteSelective(
+    return this.promotionService.promoteSelective(
       slug,
       dto.keys,
       user.userId,
@@ -116,7 +120,7 @@ export class SandboxController {
     @Body() dto: RevertDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.sandboxService.revert(
+    return this.promotionService.revert(
       slug,
       dto.snapshotId,
       user.userId,
@@ -130,13 +134,13 @@ export class SandboxController {
     summary: 'Discard sandbox changes and re-copy from current production',
   })
   reset(@Param('slug') slug: string, @CurrentUser() user: CurrentUserType) {
-    return this.sandboxService.resetSandbox(slug, user.userId, user.role);
+    return this.lifecycleService.resetSandbox(slug, user.userId, user.role);
   }
 
   @Get('snapshots')
   @ApiOperation({ summary: 'List production snapshots (for revert)' })
   listSnapshots(@Param('slug') slug: string) {
-    return this.sandboxService.listSnapshots(slug);
+    return this.lifecycleService.listSnapshots(slug);
   }
 
   // ─── Sandbox entry management ──────────────────────────────────────────────
@@ -334,7 +338,7 @@ export class SandboxController {
     @Body() body: { autoTranslateEnabled?: boolean },
   ) {
     if (body.autoTranslateEnabled !== undefined) {
-      return this.sandboxService.updateAutoTranslate(
+      return this.lifecycleService.updateAutoTranslate(
         slug,
         body.autoTranslateEnabled,
       );

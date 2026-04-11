@@ -7,12 +7,12 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
 
-import { UserEntity } from '../users/user.entity';
-import { FileVisibility, PresignUploadDto } from './dto/presign.dto';
-import { FileRecordEntity, FileStatus } from './file-record.entity';
-import { CompleteUploadDto } from './dto/complete.dto';
-import { S3StorageService } from './storage/s3-storage.service';
-import { CurrentUserType } from '../users/types/current-user.type';
+import { UserEntity } from '../users/user.entity.js';
+import { FileVisibility, PresignUploadDto } from './dto/presign.dto.js';
+import { FileRecordEntity, FileStatus } from './file-record.entity.js';
+import { CompleteUploadDto } from './dto/complete.dto.js';
+import { S3StorageService } from './storage/s3-storage.service.js';
+import { CurrentUserType } from '../users/types/current-user.type.js';
 
 const S3_PRESIGNED_GET_TTL_SECONDS = 3600;
 

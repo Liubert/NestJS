@@ -7,12 +7,9 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { resolveLocaleAlias } from './constants/locale-aliases.const.js';
 import { ProjectAccessHelper } from './helpers/project-access.helper.js';
+import { SandboxPromotionService } from './sandbox-promotion.service.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { SandboxValueEntity } from './entities/sandbox-value.entity.js';
-import {
-  ProductionSnapshotEntity,
-  SnapshotEntry,
-} from './entities/production-snapshot.entity.js';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
@@ -35,27 +32,7 @@ import {
   resetQualityFields,
 } from './helpers/quality-state.helper.js';
 
-const MAX_SNAPSHOTS = 5;
-
 export type SandboxEntryRow = EntryRow;
-
-export type DiffStatus = 'added' | 'changed' | 'deleted' | 'unchanged';
-
-export interface DiffQuality {
-  score: number | null;
-  level: 'green' | 'yellow' | 'red' | null;
-  comment: string | null;
-}
-
-export interface DiffEntry {
-  namespace: string;
-  key: string;
-  locale: string;
-  status: DiffStatus;
-  productionValue: string | null;
-  sandboxValue: string | null;
-  quality: DiffQuality | null;
-}
 
 @Injectable()
 export class SandboxService {
@@ -64,209 +41,18 @@ export class SandboxService {
     private readonly projectRepo: Repository<ProjectEntity>,
     @InjectRepository(SandboxValueEntity)
     private readonly sandboxRepo: Repository<SandboxValueEntity>,
-    @InjectRepository(ProductionSnapshotEntity)
-    private readonly snapshotRepo: Repository<ProductionSnapshotEntity>,
     @InjectRepository(TranslationValueEntity)
     private readonly valueRepo: Repository<TranslationValueEntity>,
     @InjectRepository(TranslationKeyEntity)
     private readonly keyRepo: Repository<TranslationKeyEntity>,
-    @InjectRepository(NamespaceEntity)
-    private readonly namespaceRepo: Repository<NamespaceEntity>,
     @InjectRepository(LocaleEntity)
     private readonly localeRepo: Repository<LocaleEntity>,
     private readonly dataSource: DataSource,
     private readonly access: ProjectAccessHelper,
+    private readonly promotionService: SandboxPromotionService,
   ) {}
 
-  // ─── Initialize sandbox ───────────────────────────────────────────────────
-
-  /**
-   * Copies all current production values into sandbox_values.
-   * Safe to call multiple times — existing sandbox rows are preserved (ON CONFLICT DO NOTHING).
-   * Call explicitly to reset: pass force=true to wipe and re-copy.
-   */
-  async initSandbox(
-    projectSlug: string,
-    userId: string,
-    role: UserRole,
-    force = false,
-  ): Promise<{ initialized: boolean; copiedRows: number }> {
-    const project = await this.access.requireProject(projectSlug);
-
-    if (force) {
-      await this.sandboxRepo.delete({ projectId: project.id });
-    } else if (project.sandboxInitializedAt) {
-      return { initialized: false, copiedRows: 0 };
-    }
-
-    // Copy all production values for this project into sandbox
-    const result = await this.dataSource.query<{ count: string }[]>(
-      `
-      INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-      SELECT
-        ns.project_id,
-        tv.key_id,
-        tv.locale_id,
-        tv.value,
-        false,
-        now()
-      FROM translation_values tv
-      JOIN translation_keys tk ON tk.id = tv.key_id
-      JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-      WHERE ns.project_id = $1
-      ON CONFLICT (project_id, key_id, locale_id) DO NOTHING
-      RETURNING id
-    `,
-      [project.id],
-    );
-
-    const copiedRows = Array.isArray(result) ? result.length : 0;
-
-    await this.projectRepo.update(project.id, {
-      sandboxInitializedAt: new Date(),
-      sandboxHasChanges: false,
-    });
-
-    return { initialized: true, copiedRows };
-  }
-
-  // ─── Get sandbox status ───────────────────────────────────────────────────
-
-  async getSandboxStatus(projectSlug: string): Promise<{
-    initialized: boolean;
-    initializedAt: Date | null;
-    hasChanges: boolean;
-    snapshotCount: number;
-  }> {
-    const project = await this.access.requireProject(projectSlug);
-    const snapshotCount = await this.snapshotRepo.count({
-      where: { projectId: project.id },
-    });
-
-    return {
-      initialized: !!project.sandboxInitializedAt,
-      initializedAt: project.sandboxInitializedAt,
-      hasChanges: project.sandboxHasChanges,
-      snapshotCount,
-    };
-  }
-
-  // ─── Diff ─────────────────────────────────────────────────────────────────
-
-  async getDiff(
-    projectSlug: string,
-    _userId: string,
-    _role: UserRole,
-  ): Promise<{
-    total: number;
-    added: number;
-    changed: number;
-    deleted: number;
-    entries: DiffEntry[];
-  }> {
-    const project = await this.access.requireProject(projectSlug);
-
-    this.access.assertSandboxInitialized(project);
-
-    // Raw SQL: FULL OUTER JOIN production vs sandbox for this project
-    const rows = await this.dataSource.query<
-      {
-        ns_slug: string;
-        key: string;
-        locale: string;
-        production_value: string | null;
-        sandbox_value: string | null;
-        is_deleted: boolean | null;
-        quality_score: number | null;
-        quality_level: string | null;
-        quality_comment: string | null;
-      }[]
-    >(
-      `
-      WITH production AS (
-        SELECT
-          ns.slug        AS ns_slug,
-          tk.key         AS key,
-          l.code         AS locale,
-          tv.value       AS value
-        FROM translation_values tv
-        JOIN translation_keys tk ON tk.id = tv.key_id
-        JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-        JOIN translation_locales l ON l.id = tv.locale_id
-        WHERE ns.project_id = $1
-      ),
-      sandbox AS (
-        SELECT
-          ns.slug               AS ns_slug,
-          tk.key                AS key,
-          l.code                AS locale,
-          sv.value              AS value,
-          sv.is_deleted         AS is_deleted,
-          sv.quality_score      AS quality_score,
-          sv.quality_level      AS quality_level,
-          sv.quality_comment    AS quality_comment
-        FROM sandbox_values sv
-        JOIN translation_keys tk ON tk.id = sv.key_id
-        JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-        JOIN translation_locales l ON l.id = sv.locale_id
-        WHERE sv.project_id = $1
-      )
-      SELECT
-        COALESCE(p.ns_slug, s.ns_slug)  AS ns_slug,
-        COALESCE(p.key,     s.key)      AS key,
-        COALESCE(p.locale,  s.locale)   AS locale,
-        p.value                         AS production_value,
-        s.value                         AS sandbox_value,
-        s.is_deleted                    AS is_deleted,
-        s.quality_score                 AS quality_score,
-        s.quality_level                 AS quality_level,
-        s.quality_comment               AS quality_comment
-      FROM production p
-      FULL OUTER JOIN sandbox s
-        ON p.ns_slug = s.ns_slug
-       AND p.key = s.key
-       AND p.locale = s.locale
-      WHERE
-        -- Only rows that differ between production and sandbox
-        p.key IS NULL                                          -- added in sandbox
-        OR s.is_deleted = true                                 -- deleted in sandbox
-        OR (p.value IS DISTINCT FROM s.value AND s.is_deleted IS NOT TRUE)  -- changed
-      ORDER BY ns_slug, key, locale
-    `,
-      [project.id],
-    );
-
-    const entries: DiffEntry[] = rows.map((r) => ({
-      namespace: r.ns_slug,
-      key: r.key,
-      locale: r.locale,
-      status: r.is_deleted
-        ? 'deleted'
-        : r.production_value === null
-          ? 'added'
-          : 'changed',
-      productionValue: r.production_value,
-      sandboxValue: r.is_deleted ? null : r.sandbox_value,
-      quality:
-        r.quality_score != null
-          ? {
-              score: r.quality_score,
-              level: r.quality_level as DiffQuality['level'],
-              comment: r.quality_comment,
-            }
-          : null,
-    }));
-
-    return {
-      total: entries.length,
-      added: entries.filter((e) => e.status === 'added').length,
-      changed: entries.filter((e) => e.status === 'changed').length,
-      deleted: entries.filter((e) => e.status === 'deleted').length,
-      entries,
-    };
-  }
-
-  // ─── Update a value in sandbox ────────────────────────────────────────────
+  // ─── Sandbox value operations ─────────────────────────────────────────────
 
   /**
    * Upserts a sandbox value. Called from the entries service when sandbox mode is active.
@@ -301,371 +87,6 @@ export class SandboxService {
       { conflictPaths: ['projectId', 'keyId', 'localeId'] },
     );
     await this.projectRepo.update(projectId, { sandboxHasChanges: true });
-  }
-
-  // ─── Promote ──────────────────────────────────────────────────────────────
-
-  /**
-   * Promotes sandbox to production atomically:
-   * 1. Snapshot production state for revert
-   * 2. Replace production values with sandbox values
-   * 3. Clean up sandbox-only deleted keys
-   * 4. Re-init sandbox from new production state
-   */
-  async promote(
-    projectSlug: string,
-    userId: string,
-    role: UserRole,
-  ): Promise<{ snapshotId: string; promoted: number }> {
-    const project = await this.access.requireProject(projectSlug);
-
-    this.access.assertSandboxInitialized(project);
-
-    this.access.assertOwnerOrAdmin(
-      project,
-      userId,
-      role,
-      'promote sandbox to production',
-    );
-
-    return this.dataSource.transaction(async (manager) => {
-      // 1. Snapshot current production state
-      const snapshotRows = await manager.query<SnapshotEntry[]>(
-        `
-        SELECT
-          ns.slug   AS namespace,
-          tk.key    AS key,
-          l.code    AS locale,
-          tv.value  AS value
-        FROM translation_values tv
-        JOIN translation_keys tk ON tk.id = tv.key_id
-        JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-        JOIN translation_locales l ON l.id = tv.locale_id
-        WHERE ns.project_id = $1
-      `,
-        [project.id],
-      );
-
-      const snapshot = manager.getRepository(ProductionSnapshotEntity).create({
-        projectId: project.id,
-        label: `before-promote-${new Date().toISOString().slice(0, 10)}`,
-        data: snapshotRows,
-      });
-      const savedSnapshot = await manager.save(
-        ProductionSnapshotEntity,
-        snapshot,
-      );
-
-      // Prune old snapshots — keep only MAX_SNAPSHOTS most recent
-      await manager.query(
-        `
-        DELETE FROM production_snapshots
-        WHERE project_id = $1
-          AND id NOT IN (
-            SELECT id FROM production_snapshots
-            WHERE project_id = $1
-            ORDER BY created_at DESC
-            LIMIT $2
-          )
-      `,
-        [project.id, MAX_SNAPSHOTS],
-      );
-
-      // 2. Delete current production values for this project
-      await manager.query(
-        `
-        DELETE FROM translation_values
-        WHERE key_id IN (
-          SELECT tk.id FROM translation_keys tk
-          JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-          WHERE ns.project_id = $1
-        )
-      `,
-        [project.id],
-      );
-
-      // 3. Insert sandbox values (non-deleted) as new production values
-      const insertResult = await manager.query<{ id: string }[]>(
-        `
-        INSERT INTO translation_values (id, key_id, locale_id, value, updated_at)
-        SELECT gen_random_uuid(), sv.key_id, sv.locale_id, sv.value, now()
-        FROM sandbox_values sv
-        WHERE sv.project_id = $1 AND sv.is_deleted = false
-        RETURNING id
-      `,
-        [project.id],
-      );
-
-      const promotedCount = insertResult.length;
-
-      // 4. Delete sandbox-only keys that were deleted in sandbox
-      // (keys with no production values after the insert and no non-deleted sandbox values)
-      await manager.query(
-        `
-        DELETE FROM translation_keys
-        WHERE id IN (
-          SELECT DISTINCT sv.key_id
-          FROM sandbox_values sv
-          WHERE sv.project_id = $1
-            AND sv.is_deleted = true
-            AND NOT EXISTS (
-              SELECT 1 FROM translation_values tv2 WHERE tv2.key_id = sv.key_id
-            )
-        )
-      `,
-        [project.id],
-      );
-
-      // 5. Reset sandbox: delete all sandbox rows, re-copy from new production
-      await manager.query(`DELETE FROM sandbox_values WHERE project_id = $1`, [
-        project.id,
-      ]);
-
-      await manager.query(
-        `
-        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-        SELECT ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now()
-        FROM translation_values tv
-        JOIN translation_keys tk ON tk.id = tv.key_id
-        JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-        WHERE ns.project_id = $1
-      `,
-        [project.id],
-      );
-
-      await manager.update(ProjectEntity, project.id, {
-        sandboxInitializedAt: new Date(),
-        sandboxHasChanges: false,
-      });
-
-      return { snapshotId: savedSnapshot.id, promoted: promotedCount };
-    });
-  }
-
-  async promoteSelective(
-    projectSlug: string,
-    keys: { namespace: string; key: string }[],
-    userId: string,
-    role: UserRole,
-  ): Promise<{ snapshotId: string; promoted: number }> {
-    const project = await this.access.requireProject(projectSlug);
-
-    this.access.assertSandboxInitialized(project);
-
-    this.access.assertOwnerOrAdmin(
-      project,
-      userId,
-      role,
-      'promote sandbox to production',
-    );
-
-    return this.dataSource.transaction(async (manager) => {
-      // 1. Snapshot current production state
-      const snapshotRows = await manager.query<SnapshotEntry[]>(
-        `SELECT ns.slug AS namespace, tk.key AS key, l.code AS locale, tv.value AS value
-         FROM translation_values tv
-         JOIN translation_keys tk ON tk.id = tv.key_id
-         JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-         JOIN translation_locales l ON l.id = tv.locale_id
-         WHERE ns.project_id = $1`,
-        [project.id],
-      );
-
-      const snapshot = manager.getRepository(ProductionSnapshotEntity).create({
-        projectId: project.id,
-        label: `before-selective-promote-${new Date().toISOString().slice(0, 10)}`,
-        data: snapshotRows,
-      });
-      const savedSnapshot = await manager.save(
-        ProductionSnapshotEntity,
-        snapshot,
-      );
-
-      let promoted = 0;
-
-      for (const { namespace, key } of keys) {
-        // Find the key
-        const keyRows = await manager.query<{ key_id: string }[]>(
-          `SELECT tk.id AS key_id
-           FROM translation_keys tk
-           JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-           WHERE ns.project_id = $1 AND ns.slug = $2 AND tk.key = $3`,
-          [project.id, namespace, key],
-        );
-        if (!keyRows.length) continue;
-        const keyId = keyRows[0].key_id;
-
-        // Get sandbox values for this key
-        const svRows = await manager.query<
-          { locale_id: string; value: string | null; is_deleted: boolean }[]
-        >(
-          `SELECT locale_id, value, is_deleted FROM sandbox_values
-           WHERE project_id = $1 AND key_id = $2`,
-          [project.id, keyId],
-        );
-
-        for (const sv of svRows) {
-          if (sv.is_deleted) {
-            // Delete from production
-            await manager.query(
-              `DELETE FROM translation_values WHERE key_id = $1 AND locale_id = $2`,
-              [keyId, sv.locale_id],
-            );
-          } else {
-            // Upsert into production
-            await manager.query(
-              `INSERT INTO translation_values (id, key_id, locale_id, value, updated_at)
-               VALUES (gen_random_uuid(), $1, $2, $3, now())
-               ON CONFLICT (key_id, locale_id) DO UPDATE SET value = $3, updated_at = now()`,
-              [keyId, sv.locale_id, sv.value],
-            );
-            promoted++;
-          }
-        }
-
-        // Re-sync sandbox for this key from production
-        await manager.query(
-          `DELETE FROM sandbox_values WHERE project_id = $1 AND key_id = $2`,
-          [project.id, keyId],
-        );
-        await manager.query(
-          `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at)
-           SELECT $1, tv.key_id, tv.locale_id, tv.value, false, now()
-           FROM translation_values tv
-           WHERE tv.key_id = $2`,
-          [project.id, keyId],
-        );
-      }
-
-      // Check if sandbox still has remaining changes
-      const remaining = await manager.query<{ cnt: string }[]>(
-        `SELECT COUNT(*) AS cnt FROM (
-           SELECT sv.key_id, sv.locale_id
-           FROM sandbox_values sv
-           WHERE sv.project_id = $1
-           EXCEPT
-           SELECT tv.key_id, tv.locale_id
-           FROM translation_values tv
-           JOIN translation_keys tk ON tk.id = tv.key_id
-           JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-           WHERE ns.project_id = $1
-         ) diff`,
-        [project.id],
-      );
-      const hasChanges = Number(remaining[0]?.cnt ?? 0) > 0;
-      await manager.update(ProjectEntity, project.id, {
-        sandboxHasChanges: hasChanges,
-      });
-
-      return { snapshotId: savedSnapshot.id, promoted };
-    });
-  }
-
-  // ─── Revert ───────────────────────────────────────────────────────────────
-
-  /**
-   * Reverts production to a previous snapshot.
-   * Sandbox is NOT affected — it retains its current state.
-   */
-  async revert(
-    projectSlug: string,
-    snapshotId: string,
-    userId: string,
-    role: UserRole,
-  ): Promise<{ restored: number }> {
-    const project = await this.access.requireProject(projectSlug);
-
-    this.access.assertOwnerOrAdmin(project, userId, role, 'revert production');
-
-    const snapshot = await this.snapshotRepo.findOne({
-      where: { id: snapshotId, projectId: project.id },
-    });
-    if (!snapshot) {
-      throw new NotFoundException('Snapshot not found');
-    }
-
-    return this.dataSource.transaction(async (manager) => {
-      // Delete current production values for this project
-      await manager.query(
-        `
-        DELETE FROM translation_values
-        WHERE key_id IN (
-          SELECT tk.id FROM translation_keys tk
-          JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-          WHERE ns.project_id = $1
-        )
-      `,
-        [project.id],
-      );
-
-      // Restore from snapshot via temp lookup of key/locale IDs by name
-      let restoredCount = 0;
-      for (const entry of snapshot.data) {
-        const ns = await manager.findOne(NamespaceEntity, {
-          where: { projectId: project.id, slug: entry.namespace },
-        });
-        if (!ns) continue;
-
-        const key = await manager.findOne(TranslationKeyEntity, {
-          where: { namespaceId: ns.id, key: entry.key },
-        });
-        if (!key) continue;
-
-        const locale = await manager.findOne(LocaleEntity, {
-          where: { projectId: project.id, code: entry.locale },
-        });
-        if (!locale) continue;
-
-        await manager.insert(TranslationValueEntity, {
-          keyId: key.id,
-          localeId: locale.id,
-          value: entry.value,
-        });
-        restoredCount++;
-      }
-
-      return { restored: restoredCount };
-    });
-  }
-
-  // ─── List snapshots ───────────────────────────────────────────────────────
-
-  async listSnapshots(
-    projectSlug: string,
-  ): Promise<
-    { id: string; label: string | null; createdAt: Date; entryCount: number }[]
-  > {
-    const project = await this.access.requireProject(projectSlug);
-
-    const snapshots = await this.snapshotRepo.find({
-      where: { projectId: project.id },
-      order: { createdAt: 'DESC' },
-    });
-
-    return snapshots.map((s) => ({
-      id: s.id,
-      label: s.label,
-      createdAt: s.createdAt,
-      entryCount: s.data.length,
-    }));
-  }
-
-  // ─── Reset sandbox ────────────────────────────────────────────────────────
-
-  /**
-   * Discards all sandbox changes and re-copies from current production.
-   */
-  async resetSandbox(
-    projectSlug: string,
-    userId: string,
-    role: UserRole,
-  ): Promise<{ copiedRows: number }> {
-    const project = await this.access.requireProject(projectSlug);
-
-    this.access.assertOwnerOrAdmin(project, userId, role, 'reset sandbox');
-
-    const result = await this.initSandbox(projectSlug, userId, role, true);
-    return { copiedRows: result.copiedRows };
   }
 
   // ─── Sandbox HTTP namespace (flat JSON for consumer apps) ────────────────
@@ -916,7 +337,7 @@ export class SandboxService {
 
     const valuesByKey = groupValuesByKey(values);
 
-    // Quality is stored on production translation_values rows
+    // Quality: sandbox overrides production (sandbox quality takes precedence)
     const qualityRows = await this.dataSource.query<
       {
         key_id: string;
@@ -928,13 +349,35 @@ export class SandboxService {
         quality_review_state: string | null;
       }[]
     >(
-      `SELECT tv.key_id, l.code AS locale,
-              tv.quality_score, tv.quality_level, tv.quality_comment,
-              tv.quality_checked_at, tv.quality_review_state
+      `SELECT
+         COALESCE(sv.key_id, tv.key_id) AS key_id,
+         l.code AS locale,
+         COALESCE(sv.quality_score, tv.quality_score) AS quality_score,
+         COALESCE(sv.quality_level, tv.quality_level) AS quality_level,
+         COALESCE(sv.quality_comment, tv.quality_comment) AS quality_comment,
+         COALESCE(sv.quality_checked_at, tv.quality_checked_at) AS quality_checked_at,
+         COALESCE(sv.quality_review_state, tv.quality_review_state) AS quality_review_state
        FROM translation_values tv
        JOIN translation_locales l ON l.id = tv.locale_id
-       WHERE tv.key_id = ANY($1)`,
-      [keyIds],
+       LEFT JOIN sandbox_values sv
+         ON sv.key_id = tv.key_id AND sv.locale_id = tv.locale_id
+         AND sv.project_id = $2 AND sv.is_deleted = false
+       WHERE tv.key_id = ANY($1)
+
+       UNION ALL
+
+       -- Sandbox-only entries (no production value)
+       SELECT sv.key_id, l.code AS locale,
+              sv.quality_score, sv.quality_level, sv.quality_comment,
+              sv.quality_checked_at, sv.quality_review_state
+       FROM sandbox_values sv
+       JOIN translation_locales l ON l.id = sv.locale_id
+       WHERE sv.key_id = ANY($1) AND sv.project_id = $2 AND sv.is_deleted = false
+         AND NOT EXISTS (
+           SELECT 1 FROM translation_values tv2
+           WHERE tv2.key_id = sv.key_id AND tv2.locale_id = sv.locale_id
+         )`,
+      [keyIds, project.id],
     );
 
     const qualityByKey = groupQualityByKey(qualityRows);
@@ -949,6 +392,8 @@ export class SandboxService {
 
     return paginate(data, Number(count), page, limit);
   }
+
+  // ─── Create entry ─────────────────────────────────────────────────────────
 
   /**
    * Creates a new translation key and stores initial values in sandbox only.
@@ -1005,6 +450,8 @@ export class SandboxService {
     };
   }
 
+  // ─── Update entry ─────────────────────────────────────────────────────────
+
   /**
    * Updates sandbox values for an existing key (does not touch production).
    */
@@ -1024,10 +471,8 @@ export class SandboxService {
 
     const keyEntity = await this.access.requireKey(ns.id, key);
 
-    if (dto.context !== undefined) {
-      keyEntity.context = dto.context ?? null;
-      await this.keyRepo.save(keyEntity);
-    }
+    // Context lives on translation_keys (production) — do not modify it from sandbox.
+    // Context changes will be supported after sandbox_keys staging is implemented.
 
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const resultValues: Record<string, string> = {};
@@ -1048,6 +493,8 @@ export class SandboxService {
       quality: {},
     };
   }
+
+  // ─── Revert key ───────────────────────────────────────────────────────────
 
   /**
    * Reverts a specific key in sandbox to its production state.
@@ -1099,11 +546,13 @@ export class SandboxService {
     }
 
     // Recalculate sandboxHasChanges
-    const diff = await this.getDiff(projectSlug, userId, role);
+    const diff = await this.promotionService.getDiff(projectSlug, userId, role);
     await this.projectRepo.update(project.id, {
       sandboxHasChanges: diff.total > 0,
     });
   }
+
+  // ─── Delete entry ─────────────────────────────────────────────────────────
 
   /**
    * Soft-deletes a key in sandbox across all locales (marks is_deleted=true).
@@ -1175,11 +624,7 @@ export class SandboxService {
         existingKeyMap.set(entry.key, keyEntity);
         created++;
       } else {
-        // Update context if provided
-        if (entry.context !== undefined) {
-          keyEntity.context = entry.context ?? null;
-          await this.keyRepo.save(keyEntity);
-        }
+        // Context lives on translation_keys (production) — skip in sandbox mode
         updated++;
       }
 
@@ -1282,17 +727,6 @@ export class SandboxService {
 
     Object.assign(sv, resetQualityFields());
     await this.sandboxRepo.save(sv);
-  }
-
-  async updateAutoTranslate(
-    slug: string,
-    enabled: boolean,
-  ): Promise<{ autoTranslateEnabled: boolean }> {
-    const project = await this.projectRepo.findOneBy({ slug });
-    if (!project) throw new NotFoundException('Project not found');
-    project.autoTranslateEnabled = enabled;
-    await this.projectRepo.save(project);
-    return { autoTranslateEnabled: enabled };
   }
 
   // ─── Private helper ─────────────────────────────────────────────────────────

@@ -7,6 +7,8 @@ import { AiConfigService } from './ai-config.service.js';
 import { AiUsageService } from './ai-usage.service.js';
 import { AiConfigController } from './ai-config.controller.js';
 import { SandboxService } from './sandbox.service.js';
+import { SandboxPromotionService } from './sandbox-promotion.service.js';
+import { SandboxLifecycleService } from './sandbox-lifecycle.service.js';
 import { SandboxController } from './sandbox.controller.js';
 import { ProjectAccessHelper } from './helpers/project-access.helper.js';
 import { TranslationProjectsService } from './translation-projects.service.js';
@@ -51,11 +53,15 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
     AiConfigService,
     AiUsageService,
     SandboxService,
+    SandboxPromotionService,
+    SandboxLifecycleService,
   ],
   exports: [
     ProjectAccessHelper,
     TranslationsService,
     SandboxService,
+    SandboxPromotionService,
+    SandboxLifecycleService,
     AiConfigService,
     AiUsageService,
   ],
