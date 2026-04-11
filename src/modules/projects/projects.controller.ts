@@ -246,4 +246,27 @@ export class ProjectsController {
       user.role,
     );
   }
+
+  // ─── Settings ─────────────────────────────────────────────────────────────
+
+  @Patch('projects/:slug/settings')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({
+    summary:
+      'Update project settings (auto-translate toggle, daily token limit)',
+  })
+  updateSettings(
+    @Param('slug') slug: string,
+    @Body()
+    body: { autoTranslateEnabled?: boolean; aiTokenDailyLimit?: number | null },
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.projectsService.updateProjectSettings(
+      slug,
+      body,
+      user.userId,
+      user.role,
+    );
+  }
 }

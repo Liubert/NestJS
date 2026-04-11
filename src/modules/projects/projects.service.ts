@@ -529,4 +529,38 @@ export class ProjectsService {
 
     await this.localeRepo.remove(locale);
   }
+
+  // ─── Settings ─────────────────────────────────────────────────────────────
+
+  async updateProjectSettings(
+    slug: string,
+    settings: {
+      autoTranslateEnabled?: boolean;
+      aiTokenDailyLimit?: number | null;
+    },
+    userId: string,
+    role: UserRole,
+  ): Promise<{
+    autoTranslateEnabled: boolean;
+    aiTokenDailyLimit: number | null;
+  }> {
+    const project = await this.access.requireProject(slug);
+    this.access.assertOwnerOrAdmin(
+      project,
+      userId,
+      role,
+      'update project settings',
+    );
+    if (settings.autoTranslateEnabled !== undefined) {
+      project.autoTranslateEnabled = settings.autoTranslateEnabled;
+    }
+    if ('aiTokenDailyLimit' in settings) {
+      project.aiTokenDailyLimit = settings.aiTokenDailyLimit ?? null;
+    }
+    await this.projectRepo.save(project);
+    return {
+      autoTranslateEnabled: project.autoTranslateEnabled,
+      aiTokenDailyLimit: project.aiTokenDailyLimit,
+    };
+  }
 }

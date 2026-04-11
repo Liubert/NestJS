@@ -5,7 +5,6 @@ import {
   HttpCode,
   HttpStatus,
   Param,
-  Patch,
   Post,
   Query,
   UseGuards,
@@ -113,24 +112,5 @@ export class ProductionController {
   @ApiOperation({ summary: 'List production snapshots (for revert)' })
   listSnapshots(@Param('slug') slug: string) {
     return this.lifecycleService.listSnapshots(slug);
-  }
-
-  @Patch('settings')
-  @ApiOperation({
-    summary:
-      'Update project sandbox settings (auto-translate toggle, daily token limit)',
-  })
-  updateSettings(
-    @Param('slug') slug: string,
-    @Body()
-    body: { autoTranslateEnabled?: boolean; aiTokenDailyLimit?: number | null },
-    @CurrentUser() user: CurrentUserType,
-  ) {
-    return this.lifecycleService.updateProjectSettings(
-      slug,
-      body,
-      user.userId,
-      user.role,
-    );
   }
 }

@@ -264,7 +264,7 @@ const DailyLimitEditor: React.FC<{ slug: string; limit: number | null }> = ({
 
   const save = async (val: number | null) => {
     try {
-      await apiClient.patch(`/translations/projects/${slug}/sandbox/settings`, {
+      await apiClient.patch(`/translations/projects/${slug}/settings`, {
         aiTokenDailyLimit: val,
       });
       qc.invalidateQueries({ queryKey: ['project', slug] });
@@ -567,7 +567,7 @@ const ProjectSettingsPage: React.FC = () => {
             onChange={async (checked) => {
               try {
                 await apiClient.patch(
-                  `/translations/projects/${slug}/sandbox/settings`,
+                  `/translations/projects/${slug}/settings`,
                   { autoTranslateEnabled: checked },
                 );
                 qc.invalidateQueries({ queryKey: ['project', slug] });
