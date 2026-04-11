@@ -51,42 +51,6 @@ export const fetchEntries = async (
   return res.data;
 };
 
-export const createEntry = async (
-  slug: string,
-  ns: string,
-  payload: { key: string; values: Record<string, string>; context?: string },
-) => {
-  const res = await apiClient.post(
-    `/translations/projects/${slug}/namespaces/${ns}/entries`,
-    payload,
-  );
-  return res.data;
-};
-
-export const updateEntry = async (
-  slug: string,
-  ns: string,
-  key: string,
-  values: Record<string, string>,
-  context?: string,
-) => {
-  const res = await apiClient.patch(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
-    { values, ...(context !== undefined ? { context } : {}) },
-  );
-  return res.data;
-};
-
-export const deleteEntry = async (
-  slug: string,
-  ns: string,
-  key: string,
-): Promise<void> => {
-  await apiClient.delete(
-    `/translations/projects/${slug}/namespaces/${ns}/entries/${encodeURIComponent(key)}`,
-  );
-};
-
 export const aiTranslate = async (
   text: string,
   projectSlug?: string,

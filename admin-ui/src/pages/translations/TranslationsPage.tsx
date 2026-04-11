@@ -341,7 +341,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
     }
     try {
       await apiClient.patch(
-        `/translations/projects/${projectSlug}/namespaces/${namespace}/entries/${encodeURIComponent(key)}`,
+        `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/entries/${encodeURIComponent(key)}`,
         { values: { [locale]: value } },
       );
       // If source locale was edited in sandbox, retranslate all non-expected locales
