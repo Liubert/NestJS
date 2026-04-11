@@ -93,14 +93,14 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
 
     // fallback: translations['nb'] found for locale 'nb-NO' → INSERT called
     // translateKey: 1 UPSERT + 1 clear-pending UPDATE (+ optional contextNeed UPDATE)
-    const insertCalls = (dataSourceQueryMock.mock.calls as [string, unknown[]][]).filter(
-      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
+    const insertCalls = (
+      dataSourceQueryMock.mock.calls as [string, unknown[]][]
+    ).filter(
+      ([sql]) =>
+        typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
     );
     expect(insertCalls).toHaveLength(1);
-    const [, params] = insertCalls[0] as [
-      string,
-      unknown[][],
-    ];
+    const [, params] = insertCalls[0] as [string, unknown[][]];
     expect(params[3]).toEqual(['Hei verden']); // value saved
   });
 
@@ -121,8 +121,11 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
     ]);
 
     // translation found → INSERT called (+ clear-pending UPDATE)
-    const insertCalls = (dataSourceQueryMock.mock.calls as [string, unknown[]][]).filter(
-      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
+    const insertCalls = (
+      dataSourceQueryMock.mock.calls as [string, unknown[]][]
+    ).filter(
+      ([sql]) =>
+        typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
     );
     expect(insertCalls).toHaveLength(1);
     const [sql, params] = insertCalls[0] as [string, unknown[][]];
@@ -176,14 +179,14 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
     );
 
     // translateKey: 1 UPSERT + 1 clear-pending UPDATE (+ optional contextNeed UPDATE)
-    const insertCalls = (dataSourceQueryMock.mock.calls as [string, unknown[]][]).filter(
-      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
+    const insertCalls = (
+      dataSourceQueryMock.mock.calls as [string, unknown[]][]
+    ).filter(
+      ([sql]) =>
+        typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
     );
     expect(insertCalls).toHaveLength(1);
-    const [, params] = insertCalls[0] as [
-      string,
-      unknown[][],
-    ];
+    const [, params] = insertCalls[0] as [string, unknown[][]];
     expect(params[3]).toEqual(expect.arrayContaining(['Привіт', 'Hej', 'Hej']));
   });
 });
@@ -346,14 +349,14 @@ describe('AutoTranslateWorkerService — translateKeysBulk', () => {
 
     // UPSERT should be called with the translated value
     // translateKey: 1 UPSERT + 1 clear-pending UPDATE (+ optional contextNeed UPDATE)
-    const insertCalls = (dataSourceQueryMock.mock.calls as [string, unknown[]][]).filter(
-      ([sql]) => typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
+    const insertCalls = (
+      dataSourceQueryMock.mock.calls as [string, unknown[]][]
+    ).filter(
+      ([sql]) =>
+        typeof sql === 'string' && sql.includes('INSERT INTO sandbox_values'),
     );
     expect(insertCalls).toHaveLength(1);
-    const [, params] = insertCalls[0] as [
-      string,
-      unknown[][],
-    ];
+    const [, params] = insertCalls[0] as [string, unknown[][]];
     expect(params[3]).toEqual(['Hei verden']);
   });
 
