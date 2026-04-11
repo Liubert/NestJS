@@ -350,13 +350,15 @@ export class SandboxService {
       }[]
     >(
       `SELECT
-         COALESCE(sv.key_id, tv.key_id) AS key_id,
+         tv.key_id,
          l.code AS locale,
-         COALESCE(sv.quality_score, tv.quality_score) AS quality_score,
-         COALESCE(sv.quality_level, tv.quality_level) AS quality_level,
-         COALESCE(sv.quality_comment, tv.quality_comment) AS quality_comment,
-         COALESCE(sv.quality_checked_at, tv.quality_checked_at) AS quality_checked_at,
-         COALESCE(sv.quality_review_state, tv.quality_review_state) AS quality_review_state
+         -- If sandbox row exists, use its quality entirely (even NULLs = intentional reset).
+         -- Fall back to production quality only when no sandbox row is present.
+         CASE WHEN sv.key_id IS NOT NULL THEN sv.quality_score        ELSE tv.quality_score        END AS quality_score,
+         CASE WHEN sv.key_id IS NOT NULL THEN sv.quality_level         ELSE tv.quality_level         END AS quality_level,
+         CASE WHEN sv.key_id IS NOT NULL THEN sv.quality_comment       ELSE tv.quality_comment       END AS quality_comment,
+         CASE WHEN sv.key_id IS NOT NULL THEN sv.quality_checked_at    ELSE tv.quality_checked_at    END AS quality_checked_at,
+         CASE WHEN sv.key_id IS NOT NULL THEN sv.quality_review_state  ELSE tv.quality_review_state  END AS quality_review_state
        FROM translation_values tv
        JOIN translation_locales l ON l.id = tv.locale_id
        LEFT JOIN sandbox_values sv
