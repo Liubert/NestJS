@@ -1,43 +1,18 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty } from '@nestjs/swagger';
 import {
   ArrayMaxSize,
   ArrayMinSize,
   IsArray,
-  IsObject,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
   ValidateNested,
 } from 'class-validator';
+import { IntersectionType } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
+import { BaseEntryKeyDto, RequiredValuesDto } from './base-entry.dto.js';
 
-export class BulkImportEntryDto {
-  @ApiProperty({ example: 'accessControl' })
-  @IsString()
-  @Matches(/^[a-zA-Z0-9._-]+$/, {
-    message:
-      'key must contain only letters, digits, dots, underscores or dashes',
-  })
-  @MaxLength(255)
-  key!: string;
-
-  @ApiProperty({
-    example: { en: 'Access control', 'nb-NO': 'Adgangskontroll' },
-    description: 'Values per locale code',
-  })
-  @IsObject()
-  values!: Record<string, string>;
-
-  @ApiPropertyOptional({
-    example: 'Button label on the settings page',
-    description: 'Short context describing where/how the key is used',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  context?: string;
-}
+export class BulkImportEntryDto extends IntersectionType(
+  BaseEntryKeyDto,
+  RequiredValuesDto,
+) {}
 
 export class BulkImportDto {
   @ApiProperty({ type: [BulkImportEntryDto] })

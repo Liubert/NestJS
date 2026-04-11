@@ -1,36 +1,7 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import {
-  IsObject,
-  IsOptional,
-  IsString,
-  Matches,
-  MaxLength,
-} from 'class-validator';
+import { IntersectionType } from '@nestjs/swagger';
+import { BaseEntryKeyDto, OptionalValuesDto } from './base-entry.dto.js';
 
-export class CreateEntryDto {
-  @ApiProperty({ example: 'accessControl' })
-  @IsString()
-  @Matches(/^[a-zA-Z0-9._-]+$/, {
-    message:
-      'key must contain only letters, digits, dots, underscores or dashes',
-  })
-  @MaxLength(255)
-  key!: string;
-
-  @ApiPropertyOptional({
-    example: { en: 'Access control', 'nb-NO': 'Adgangskontroll' },
-    description: 'Initial values per locale code',
-  })
-  @IsOptional()
-  @IsObject()
-  values?: Record<string, string>;
-
-  @ApiPropertyOptional({
-    example: 'Button label on the settings page',
-    description: 'Short context describing where/how the key is used (max 200 chars)',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  context?: string;
-}
+export class CreateEntryDto extends IntersectionType(
+  BaseEntryKeyDto,
+  OptionalValuesDto,
+) {}

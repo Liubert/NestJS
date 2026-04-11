@@ -1,5 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import {
+  QUALITY_MODES,
+  QUALITY_MODE_TRANSLATION,
+  type QualityMode,
+} from '../constants/quality.const.js';
 
 export class CheckQualityDto {
   @ApiProperty({
@@ -24,12 +29,12 @@ export class CheckQualityDto {
   locale!: string;
 
   @ApiPropertyOptional({
-    example: 'translation_quality',
-    enum: ['translation_quality', 'language_quality'],
+    example: QUALITY_MODE_TRANSLATION,
+    enum: QUALITY_MODES,
     description:
       'translation_quality: compare to source. language_quality: evaluate text standalone.',
   })
   @IsOptional()
-  @IsIn(['translation_quality', 'language_quality'])
-  mode?: 'translation_quality' | 'language_quality';
+  @IsIn([...QUALITY_MODES])
+  mode?: QualityMode;
 }

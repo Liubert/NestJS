@@ -1,20 +1,3 @@
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsObject, IsOptional, IsString, MaxLength } from 'class-validator';
+import { RequiredValuesDto } from './base-entry.dto.js';
 
-export class UpdateEntryDto {
-  @ApiProperty({
-    example: { en: 'Access control', 'nb-NO': 'Adgangskontroll' },
-    description: 'Values to upsert per locale code',
-  })
-  @IsObject()
-  values!: Record<string, string>;
-
-  @ApiPropertyOptional({
-    example: 'Button label on the settings page',
-    description: 'Short context describing where/how the key is used (max 200 chars)',
-  })
-  @IsOptional()
-  @IsString()
-  @MaxLength(200)
-  context?: string;
-}
+export class UpdateEntryDto extends RequiredValuesDto {}

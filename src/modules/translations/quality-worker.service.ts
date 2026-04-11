@@ -2,6 +2,7 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
 import { hashSha256 } from '../../common/utils/hash.util.js';
+import { checkedQualityFields } from './helpers/quality-state.helper.js';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
@@ -192,11 +193,8 @@ export class QualityWorkerService implements OnApplicationBootstrap {
         await this.valueRepo.update(
           { keyId, localeId: locale.id },
           {
-            qualityScore: r.score,
-            qualityLevel: r.level,
-            qualityComment: r.comment,
+            ...checkedQualityFields(r),
             qualityCheckedAt: now,
-            qualityReviewState: 'checked',
             qualityContentHash: hash,
           },
         );

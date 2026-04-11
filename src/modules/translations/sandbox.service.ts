@@ -25,17 +25,19 @@ import {
   paginate,
   PaginatedResponse,
 } from '../../common/dto/paginated-response.dto.js';
-import type { QualityInfo } from './translations.service.js';
+import type { QualityInfo, EntryRow } from './types/entry.types.js';
+import {
+  groupQualityByKey,
+  groupValuesByKey,
+} from './helpers/entry-list.helper.js';
+import {
+  expectedQualityFields,
+  resetQualityFields,
+} from './helpers/quality-state.helper.js';
 
 const MAX_SNAPSHOTS = 5;
 
-export interface SandboxEntryRow {
-  key: string;
-  createdAt: Date;
-  context: string | null;
-  values: Record<string, string>;
-  quality: Record<string, QualityInfo | null>;
-}
+export type SandboxEntryRow = EntryRow;
 
 export type DiffStatus = 'added' | 'changed' | 'deleted' | 'unchanged';
 
@@ -912,11 +914,7 @@ export class SandboxService {
       [project.id, keyIds],
     );
 
-    const valuesByKey = new Map<string, Record<string, string>>();
-    for (const v of values) {
-      if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
-      if (v.value != null) valuesByKey.get(v.key_id)![v.locale] = v.value;
-    }
+    const valuesByKey = groupValuesByKey(values);
 
     // Quality is stored on production translation_values rows
     const qualityRows = await this.dataSource.query<
@@ -939,23 +937,7 @@ export class SandboxService {
       [keyIds],
     );
 
-    const qualityByKey = new Map<string, Record<string, QualityInfo | null>>();
-    for (const q of qualityRows) {
-      if (!qualityByKey.has(q.key_id)) qualityByKey.set(q.key_id, {});
-      qualityByKey.get(q.key_id)![q.locale] = {
-        reviewState: (q.quality_review_state ??
-          'not_checked') as QualityInfo['reviewState'],
-        score: q.quality_score,
-        level: q.quality_level as
-          | 'green'
-          | 'yellow'
-          | 'red'
-          | 'expected'
-          | null,
-        comment: q.quality_comment,
-        checkedAt: q.quality_checked_at,
-      };
-    }
+    const qualityByKey = groupQualityByKey(qualityRows);
 
     const data: SandboxEntryRow[] = keys.map((k) => ({
       key: k.key,
@@ -1271,11 +1253,8 @@ export class SandboxService {
     const sv = await this.findSandboxValue(project.id, ns, key, locale);
     if (!sv) throw new NotFoundException('Sandbox value not found');
 
-    sv.qualityReviewState = 'expected';
-    sv.qualityScore = 100;
-    sv.qualityLevel = 'expected';
-    sv.qualityComment = null;
-    sv.qualityCheckedAt = new Date();
+    const fields = expectedQualityFields();
+    Object.assign(sv, fields);
     await this.sandboxRepo.save(sv);
 
     return {
@@ -1283,7 +1262,7 @@ export class SandboxService {
       score: 100,
       level: 'expected',
       comment: null,
-      checkedAt: sv.qualityCheckedAt.toISOString(),
+      checkedAt: fields.qualityCheckedAt!.toISOString(),
     };
   }
 
@@ -1301,11 +1280,7 @@ export class SandboxService {
     const sv = await this.findSandboxValue(project.id, ns, key, locale);
     if (!sv) throw new NotFoundException('Sandbox value not found');
 
-    sv.qualityReviewState = 'not_checked';
-    sv.qualityScore = null;
-    sv.qualityLevel = null;
-    sv.qualityComment = null;
-    sv.qualityCheckedAt = null;
+    Object.assign(sv, resetQualityFields());
     await this.sandboxRepo.save(sv);
   }
 

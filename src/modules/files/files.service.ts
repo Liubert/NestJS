@@ -106,8 +106,6 @@ export class FilesService {
   }
 
   public async getViewUrl(file: FileRecordEntity): Promise<string | null> {
-    // if (!file || file.status !== FileStatus.READY) return null;
-
     return this.s3Storage.presignGet(file.key, S3_PRESIGNED_GET_TTL_SECONDS);
   }
 

@@ -27,11 +27,6 @@ export class ProductsController {
     return this.productsService.create(createProductDto);
   }
 
-  // @Get()
-  // findAllInfinite(@Query() query: ListProductsDto) {
-  //   return this.productsService.findAllInfinite(query);
-  // }
-
   @Get()
   findAll() {
     return this.productsService.findAll();

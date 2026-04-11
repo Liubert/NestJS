@@ -8,6 +8,10 @@ import { GoogleGenerativeAI } from '@google/generative-ai';
 import { AiConfigService, interpolate } from './ai-config.service.js';
 import { AiUsageService } from './ai-usage.service.js';
 import { scoreToLevel } from './quality-constants.js';
+import {
+  QUALITY_MODE_TRANSLATION,
+  type QualityMode,
+} from './constants/quality.const.js';
 
 const TARGET_LOCALES: Record<string, string> = {
   uk: 'Ukrainian',
@@ -78,7 +82,10 @@ export class AiTranslateService {
           inputTokens,
           outputTokens,
           model: aiCfg.model,
-          metadata: { textLength: text.length, localeCount: Object.keys(parsed).length },
+          metadata: {
+            textLength: text.length,
+            localeCount: Object.keys(parsed).length,
+          },
         })
         .catch(() => {}); // Non-blocking: don't fail the translation if logging fails
     }
@@ -232,7 +239,7 @@ ${JSON.stringify(items, null, 2)}`;
     source: string,
     translation: string,
     locale: string,
-    mode: 'translation_quality' | 'language_quality' = 'translation_quality',
+    mode: QualityMode = QUALITY_MODE_TRANSLATION,
     projectId?: string,
   ): Promise<{
     score: number;
@@ -251,7 +258,7 @@ ${JSON.stringify(items, null, 2)}`;
     const model = genAI.getGenerativeModel({ model: aiCfg.model });
 
     const template =
-      mode === 'translation_quality'
+      mode === QUALITY_MODE_TRANSLATION
         ? aiCfg.qualityTranslatePrompt
         : aiCfg.qualityLanguagePrompt;
 

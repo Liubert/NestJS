@@ -9,6 +9,8 @@ import { AiConfigController } from './ai-config.controller.js';
 import { SandboxService } from './sandbox.service.js';
 import { SandboxController } from './sandbox.controller.js';
 import { ProjectAccessHelper } from './helpers/project-access.helper.js';
+import { TranslationProjectsService } from './translation-projects.service.js';
+import { TranslationQualityService } from './translation-quality.service.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
@@ -42,6 +44,8 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
   controllers: [TranslationsController, SandboxController, AiConfigController],
   providers: [
     ProjectAccessHelper,
+    TranslationProjectsService,
+    TranslationQualityService,
     TranslationsService,
     AiTranslateService,
     AiConfigService,

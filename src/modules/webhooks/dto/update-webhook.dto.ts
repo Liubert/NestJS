@@ -1,32 +1,4 @@
-import {
-  IsArray,
-  IsBoolean,
-  IsIn,
-  IsOptional,
-  IsString,
-  IsUrl,
-} from 'class-validator';
-import { WEBHOOK_EVENTS, WebhookEvent } from '../entities/webhook.entity.js';
+import { PartialType } from '@nestjs/swagger';
+import { CreateWebhookDto } from './create-webhook.dto.js';
 
-export class UpdateWebhookDto {
-  @IsOptional()
-  @IsUrl({ require_tld: false }, { message: 'Must be a valid URL' })
-  url?: string;
-
-  @IsOptional()
-  @IsString()
-  description?: string;
-
-  @IsOptional()
-  @IsArray()
-  @IsIn(WEBHOOK_EVENTS as unknown as string[], { each: true })
-  events?: WebhookEvent[];
-
-  @IsOptional()
-  @IsString()
-  secret?: string;
-
-  @IsOptional()
-  @IsBoolean()
-  enabled?: boolean;
-}
+export class UpdateWebhookDto extends PartialType(CreateWebhookDto) {}

@@ -9,7 +9,6 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import AdmZip from 'adm-zip';
-import { hashSha256 } from '../../common/utils/hash.util.js';
 import { flattenJson, unflattenJson } from '../../common/utils/json.util.js';
 import { resolveLocaleAlias } from './constants/locale-aliases.const.js';
 import { ProjectAccessHelper } from './helpers/project-access.helper.js';
@@ -18,19 +17,13 @@ import { NamespaceEntity } from './entities/namespace.entity.js';
 import { LocaleEntity } from './entities/locale.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
-import {
-  ProjectMemberEntity,
-  ProjectMemberRole,
-} from './entities/project-member.entity.js';
+import { ProjectMemberEntity } from './entities/project-member.entity.js';
 import { UserEntity } from '../users/user.entity.js';
 import { UserRole } from '../users/types/user-role.enum.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
-import { CreateProjectDto } from './dto/create-project.dto.js';
-import { CreateNamespaceDto } from './dto/create-namespace.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
-import { AddMemberDto } from './dto/add-member.dto.js';
 import {
   paginate,
   PaginatedResponse,
@@ -40,54 +33,17 @@ import {
   WebhooksService,
   WebhookEventPayload,
 } from '../webhooks/webhooks.service.js';
+import type { QualityInfo, EntryRow } from './types/entry.types.js';
+import { groupQualityByKeyWithLocaleMap } from './helpers/entry-list.helper.js';
+import { TranslationProjectsService } from './translation-projects.service.js';
+import { TranslationQualityService } from './translation-quality.service.js';
 
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-export interface QualityInfo {
-  reviewState:
-    | 'not_checked'
-    | 'queued'
-    | 'processing'
-    | 'checked'
-    | 'expected'
-    | 'failed';
-  score: number | null;
-  level: 'green' | 'yellow' | 'red' | 'expected' | null;
-  comment: string | null;
-  checkedAt: string | null;
-}
-
-export interface EntryRow {
-  key: string;
-  createdAt: Date;
-  context: string | null;
-  values: Record<string, string>;
-  quality: Record<string, QualityInfo | null>;
-}
-
-export interface LocaleInfo {
-  code: string;
-  isDefault: boolean;
-}
-
-export interface ProjectDetails {
-  id: string;
-  slug: string;
-  name: string;
-  ownerId: string | null;
-  createdAt: Date;
-  locales: LocaleInfo[];
-  namespaces: string[];
-  autoTranslateEnabled: boolean;
-}
-
-export interface MemberRow {
-  userId: string;
-  email: string;
-  firstName: string;
-  lastName: string | null;
-  role: ProjectMemberRole;
-}
+export type { QualityInfo, EntryRow };
+export type {
+  LocaleInfo,
+  ProjectDetails,
+  MemberRow,
+} from './translation-projects.service.js';
 
 // ─── Service ──────────────────────────────────────────────────────────────────
 
@@ -113,6 +69,8 @@ export class TranslationsService {
     @Inject(forwardRef(() => WebhooksService))
     private readonly webhooksService: WebhooksService,
     private readonly access: ProjectAccessHelper,
+    private readonly projectsService: TranslationProjectsService,
+    private readonly qualityService: TranslationQualityService,
   ) {}
 
   private emitWebhook(
@@ -135,291 +93,32 @@ export class TranslationsService {
     });
   }
 
-  // ─── Delegated access helpers ───────────────────────────────────────────────
+  // ─── Delegated: Projects, Members, Namespaces, Locales ─────────────────────
+  // These delegate to TranslationProjectsService — kept here for controller backward compat.
 
-  async getProjectBySlug(slug: string): Promise<ProjectEntity> {
-    return this.access.requireProject(slug);
-  }
-
-  async requireNamespace(
-    projectId: string,
-    nsSlug: string,
-  ): Promise<NamespaceEntity> {
-    return this.access.requireNamespace(projectId, nsSlug);
-  }
-
-  // ─── Projects ─────────────────────────────────────────────────────────────
-
-  async listProjects(
-    page: number,
-    limit: number,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<PaginatedResponse<ProjectEntity>> {
-    const qb = this.projectRepo
-      .createQueryBuilder('p')
-      .orderBy('p.name', 'ASC');
-
-    if (!this.access.isAdmin(userRole)) {
-      qb.innerJoin(
-        'project_members',
-        'pm',
-        'pm.project_id = p.id AND pm.user_id = :userId',
-        { userId },
-      );
-    }
-
-    const total = await qb.getCount();
-    const data = await qb
-      .skip((page - 1) * limit)
-      .take(limit)
-      .getMany();
-
-    return paginate(data, total, page, limit);
-  }
-
-  async createProject(
-    dto: CreateProjectDto,
-    userId: string,
-  ): Promise<ProjectEntity> {
-    const exists = await this.projectRepo.existsBy({ slug: dto.slug });
-    if (exists) {
-      throw new ConflictException(`Project "${dto.slug}" already exists`);
-    }
-
-    const project = await this.projectRepo.save(
-      this.projectRepo.create({
-        slug: dto.slug,
-        name: dto.name ?? dto.slug,
-        ownerId: userId,
-      }),
-    );
-
-    // Auto-add creator as owner member
-    await this.memberRepo.save(
-      this.memberRepo.create({
-        projectId: project.id,
-        userId,
-        role: 'owner',
-      }),
-    );
-
-    return project;
-  }
-
-  async getProjectDetails(
-    slug: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<ProjectDetails> {
-    const project = await this.access.requireProject(slug);
-    await this.access.assertAccess(project, userId, userRole);
-
-    const [locales, namespaces] = await Promise.all([
-      this.localeRepo.findBy({ projectId: project.id }),
-      this.namespaceRepo.findBy({ projectId: project.id }),
-    ]);
-
-    return {
-      id: project.id,
-      slug: project.slug,
-      name: project.name,
-      ownerId: project.ownerId,
-      createdAt: project.createdAt,
-      locales: locales.map((l) => ({ code: l.code, isDefault: l.isDefault })),
-      namespaces: namespaces.map((ns) => ns.slug),
-      autoTranslateEnabled: project.autoTranslateEnabled,
-    };
-  }
-
-  async deleteProject(
-    slug: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<void> {
-    const project = await this.access.requireProject(slug);
-    await this.access.assertManageAccess(project, userId, userRole);
-    await this.projectRepo.remove(project);
-  }
-
-  // ─── Members ──────────────────────────────────────────────────────────────
-
-  async listMembers(
-    projectSlug: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<MemberRow[]> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertAccess(project, userId, userRole);
-
-    const rows = await this.memberRepo
-      .createQueryBuilder('pm')
-      .innerJoin(UserEntity, 'u', 'u.id = pm.user_id')
-      .where('pm.project_id = :projectId', { projectId: project.id })
-      .select([
-        'pm.user_id AS "userId"',
-        'pm.role AS role',
-        'u.email AS email',
-        'u.first_name AS "firstName"',
-        'u.last_name AS "lastName"',
-      ])
-      .orderBy('pm.created_at', 'ASC')
-      .getRawMany<MemberRow>();
-
-    return rows;
-  }
-
-  async addMember(
-    projectSlug: string,
-    dto: AddMemberDto,
-    requesterId: string,
-    requesterRole: UserRole,
-  ): Promise<MemberRow> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertManageAccess(project, requesterId, requesterRole);
-
-    const targetUser = await this.userRepo.findOne({
-      where: { email: dto.email },
-    });
-    if (!targetUser) {
-      throw new NotFoundException(`No user with email "${dto.email}"`);
-    }
-
-    const existing = await this.memberRepo.findOne({
-      where: { projectId: project.id, userId: targetUser.id },
-    });
-    if (existing) {
-      throw new ConflictException(
-        `User "${dto.email}" is already a member of this project`,
-      );
-    }
-
-    const member = await this.memberRepo.save(
-      this.memberRepo.create({
-        projectId: project.id,
-        userId: targetUser.id,
-        role: dto.role ?? 'member',
-      }),
-    );
-
-    return {
-      userId: member.userId,
-      email: targetUser.email,
-      firstName: targetUser.firstName,
-      lastName: targetUser.lastName,
-      role: member.role,
-    };
-  }
-
-  async removeMember(
-    projectSlug: string,
-    targetUserId: string,
-    requesterId: string,
-    requesterRole: UserRole,
-  ): Promise<void> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertManageAccess(project, requesterId, requesterRole);
-
-    const member = await this.memberRepo.findOne({
-      where: { projectId: project.id, userId: targetUserId },
-    });
-    if (!member) {
-      throw new NotFoundException(`User is not a member of this project`);
-    }
-    if (member.role === 'owner') {
-      throw new BadRequestException(
-        'Cannot remove the project owner. Transfer ownership first.',
-      );
-    }
-
-    await this.memberRepo.remove(member);
-  }
-
-  // ─── Namespaces ───────────────────────────────────────────────────────────
-
-  async createNamespace(
-    projectSlug: string,
-    dto: CreateNamespaceDto,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<NamespaceEntity> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertManageAccess(project, userId, userRole);
-
-    const exists = await this.namespaceRepo.existsBy({
-      projectId: project.id,
-      slug: dto.slug,
-    });
-    if (exists) {
-      throw new ConflictException(
-        `Namespace "${dto.slug}" already exists in project "${projectSlug}"`,
-      );
-    }
-
-    return this.namespaceRepo.save(
-      this.namespaceRepo.create({
-        projectId: project.id,
-        slug: dto.slug,
-        originalFile: `${dto.slug}.json`,
-      }),
-    );
-  }
-
-  async createLocale(
-    projectSlug: string,
-    code: string,
-    isDefault = false,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<LocaleEntity> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertManageAccess(project, userId, userRole);
-
-    const exists = await this.localeRepo.existsBy({
-      projectId: project.id,
-      code,
-    });
-    if (exists) {
-      throw new ConflictException(
-        `Locale "${code}" already exists in project "${projectSlug}"`,
-      );
-    }
-
-    return this.localeRepo.save(
-      this.localeRepo.create({ projectId: project.id, code, isDefault }),
-    );
-  }
-
-  async deleteLocale(
-    projectSlug: string,
-    code: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<void> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertManageAccess(project, userId, userRole);
-
-    const locale = await this.localeRepo.findOne({
-      where: { projectId: project.id, code },
-    });
-    if (!locale) throw new NotFoundException(`Locale "${code}" not found`);
-
-    await this.localeRepo.remove(locale);
-  }
-
-  async deleteNamespace(
-    projectSlug: string,
-    nsSlug: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<void> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertManageAccess(project, userId, userRole);
-
-    const ns = await this.access.requireNamespace(project.id, nsSlug);
-
-    await this.namespaceRepo.remove(ns);
-  }
+  getProjectBySlug = this.projectsService.getProjectBySlug.bind(
+    this.projectsService,
+  );
+  requireNamespace = this.projectsService.requireNamespace.bind(
+    this.projectsService,
+  );
+  listProjects = this.projectsService.listProjects.bind(this.projectsService);
+  createProject = this.projectsService.createProject.bind(this.projectsService);
+  getProjectDetails = this.projectsService.getProjectDetails.bind(
+    this.projectsService,
+  );
+  deleteProject = this.projectsService.deleteProject.bind(this.projectsService);
+  listMembers = this.projectsService.listMembers.bind(this.projectsService);
+  addMember = this.projectsService.addMember.bind(this.projectsService);
+  removeMember = this.projectsService.removeMember.bind(this.projectsService);
+  createNamespace = this.projectsService.createNamespace.bind(
+    this.projectsService,
+  );
+  createLocale = this.projectsService.createLocale.bind(this.projectsService);
+  deleteLocale = this.projectsService.deleteLocale.bind(this.projectsService);
+  deleteNamespace = this.projectsService.deleteNamespace.bind(
+    this.projectsService,
+  );
 
   // ─── Entries ──────────────────────────────────────────────────────────────
 
@@ -553,29 +252,10 @@ export class TranslationsService {
         quality_review_state: string | null;
       }>();
 
-    const valuesByKey = new Map<string, Record<string, string>>();
-    const qualityByKey = new Map<string, Record<string, QualityInfo | null>>();
-    for (const v of values) {
-      if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, {});
-      if (!qualityByKey.has(v.key_id)) qualityByKey.set(v.key_id, {});
-      const locale = localeMap.get(v.locale_id);
-      if (locale) {
-        valuesByKey.get(v.key_id)![locale] = v.value ?? '';
-        qualityByKey.get(v.key_id)![locale] = {
-          reviewState: (v.quality_review_state ??
-            'not_checked') as QualityInfo['reviewState'],
-          score: v.quality_score,
-          level: v.quality_level as
-            | 'green'
-            | 'yellow'
-            | 'red'
-            | 'expected'
-            | null,
-          comment: v.quality_comment,
-          checkedAt: v.quality_checked_at,
-        };
-      }
-    }
+    const { valuesByKey, qualityByKey } = groupQualityByKeyWithLocaleMap(
+      values,
+      localeMap,
+    );
 
     const data: EntryRow[] = keys.map((k) => ({
       key: k.key,
@@ -918,217 +598,16 @@ export class TranslationsService {
     return result;
   }
 
-  private async resetQualityStateIfChanged(
-    keyId: string,
-    localeId: string,
-    value: string,
-  ): Promise<void> {
-    const hash = hashSha256(value);
-    await this.valueRepo
-      .createQueryBuilder()
-      .update()
-      .set({
-        qualityReviewState: 'not_checked',
-        qualityContentHash: hash,
-        qualityScore: null,
-        qualityLevel: null,
-        qualityComment: null,
-        qualityCheckedAt: null,
-      })
-      .where(
-        'key_id = :keyId AND locale_id = :localeId AND quality_review_state != :expectedState AND (quality_content_hash IS NULL OR quality_content_hash != :hash)',
-        { keyId, localeId, hash, expectedState: 'expected' },
-      )
-      .execute();
-  }
+  private resetQualityStateIfChanged =
+    this.qualityService.resetQualityStateIfChanged.bind(this.qualityService);
 
-  // ─── Quality check ────────────────────────────────────────────────────────
+  // ─── Delegated: Quality ───────────────────────────────────────────────────
 
-  private async persistQualityResult(
-    keyId: string,
-    localeId: string,
-    result: {
-      score: number;
-      level: 'green' | 'yellow' | 'red';
-      comment: string;
-    },
-  ): Promise<void> {
-    await this.valueRepo.update(
-      { keyId, localeId },
-      {
-        qualityScore: result.score,
-        qualityLevel: result.level,
-        qualityComment: result.comment,
-        qualityCheckedAt: new Date(),
-        qualityReviewState: 'checked',
-      },
-    );
-  }
-
-  async runQualityCheck(
-    projectSlug: string,
-    nsSlug: string,
-    key: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<Record<string, QualityInfo | null>> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertAccess(project, userId, userRole);
-
-    const ns = await this.access.requireNamespace(project.id, nsSlug);
-
-    const keyEntity = await this.access.requireKey(ns.id, key);
-
-    const locales = await this.localeRepo.findBy({ projectId: project.id });
-    const defaultLocale = locales.find((l) => l.isDefault);
-
-    let source: string | undefined;
-    if (defaultLocale) {
-      const sourceValue = await this.valueRepo.findOne({
-        where: { keyId: keyEntity.id, localeId: defaultLocale.id },
-      });
-      source = sourceValue?.value ?? undefined;
-    }
-
-    const results: Record<string, QualityInfo | null> = {};
-
-    await Promise.allSettled(
-      locales.map(async (locale) => {
-        const valueEntity = await this.valueRepo.findOne({
-          where: { keyId: keyEntity.id, localeId: locale.id },
-        });
-        // Skip expected (manually accepted) translations
-        if (valueEntity?.qualityReviewState === 'expected') {
-          results[locale.code] = {
-            reviewState: 'expected',
-            score: 100,
-            level: 'expected',
-            comment: null,
-            checkedAt: valueEntity.qualityCheckedAt?.toISOString() ?? null,
-          };
-          return;
-        }
-        const translation = valueEntity?.value;
-        if (!translation) {
-          results[locale.code] = null;
-          return;
-        }
-        try {
-          // Default locale has no source to compare against — check language quality only
-          const mode = locale.isDefault
-            ? 'language_quality'
-            : source
-              ? 'translation_quality'
-              : 'language_quality';
-          const result = await this.aiTranslateService.checkQuality(
-            locale.isDefault ? translation : (source ?? translation),
-            translation,
-            locale.code,
-            mode,
-            project.id,
-          );
-          await this.persistQualityResult(keyEntity.id, locale.id, result);
-          results[locale.code] = {
-            reviewState: 'checked',
-            score: result.score,
-            level: result.level,
-            comment: result.comment,
-            checkedAt: new Date().toISOString(),
-          };
-        } catch {
-          results[locale.code] = null;
-        }
-      }),
-    );
-
-    return results;
-  }
-
-  async markAsExpected(
-    projectSlug: string,
-    nsSlug: string,
-    key: string,
-    localeCode: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<QualityInfo> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertAccess(project, userId, userRole);
-
-    const ns = await this.access.requireNamespace(project.id, nsSlug);
-
-    const keyEntity = await this.access.requireKey(ns.id, key);
-
-    const locale = await this.access.requireLocale(project.id, localeCode);
-
-    const valueEntity = await this.valueRepo.findOne({
-      where: { keyId: keyEntity.id, localeId: locale.id },
-    });
-    if (!valueEntity || !valueEntity.value) {
-      throw new BadRequestException(
-        `No value to mark as expected for ${localeCode}`,
-      );
-    }
-
-    const hash = hashSha256(valueEntity.value);
-    await this.valueRepo.update(
-      { keyId: keyEntity.id, localeId: locale.id },
-      {
-        qualityScore: 100,
-        qualityLevel: 'expected',
-        qualityReviewState: 'expected',
-        qualityCheckedAt: new Date(),
-        qualityContentHash: hash,
-        qualityComment: null,
-      },
-    );
-
-    return {
-      reviewState: 'expected',
-      score: 100,
-      level: 'expected',
-      comment: null,
-      checkedAt: new Date().toISOString(),
-    };
-  }
-
-  async unmarkExpected(
-    projectSlug: string,
-    nsSlug: string,
-    key: string,
-    localeCode: string,
-    userId: string,
-    userRole: UserRole,
-  ): Promise<QualityInfo> {
-    const project = await this.access.requireProject(projectSlug);
-    await this.access.assertAccess(project, userId, userRole);
-
-    const ns = await this.access.requireNamespace(project.id, nsSlug);
-
-    const keyEntity = await this.access.requireKey(ns.id, key);
-
-    const locale = await this.access.requireLocale(project.id, localeCode);
-
-    await this.valueRepo.update(
-      { keyId: keyEntity.id, localeId: locale.id },
-      {
-        qualityScore: null,
-        qualityLevel: null,
-        qualityReviewState: 'not_checked',
-        qualityCheckedAt: null,
-        qualityContentHash: null,
-        qualityComment: null,
-      },
-    );
-
-    return {
-      reviewState: 'not_checked',
-      score: null,
-      level: null,
-      comment: null,
-      checkedAt: null,
-    };
-  }
+  runQualityCheck = this.qualityService.runQualityCheck.bind(
+    this.qualityService,
+  );
+  markAsExpected = this.qualityService.markAsExpected.bind(this.qualityService);
+  unmarkExpected = this.qualityService.unmarkExpected.bind(this.qualityService);
 
   private parseZip(
     buffer: Buffer,
