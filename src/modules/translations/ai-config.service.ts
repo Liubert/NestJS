@@ -5,9 +5,10 @@ import { AiConfigEntity } from './entities/ai-config.entity.js';
 
 // ─── Default prompt templates ─────────────────────────────────────────────────
 // Variables interpolated at runtime (unknown {{...}} are left as-is):
-//   translatePrompt         → {{text}}, {{languages}}
-//   qualityTranslatePrompt  → {{source}}, {{translation}}, {{locale}}
-//   qualityLanguagePrompt   → {{translation}}, {{locale}}
+//   translatePrompt         → {{text}}, {{languages}}, {{context}}
+//   qualityTranslatePrompt  → {{source}}, {{translation}}, {{locale}}, {{context}}
+//   qualityLanguagePrompt   → {{translation}}, {{locale}}, {{context}}
+//   contextDetectionPrompt  → (embedded in bulk quality prompt, no runtime variables)
 
 export const DEFAULT_TRANSLATE_PROMPT = `\
 You are a software localization assistant. Translate the following English UI text into the specified languages.
@@ -15,61 +16,58 @@ You are a software localization assistant. Translate the following English UI te
 Rules:
 - Use natural, concise wording suitable for UI labels and short phrases
 - Preserve any placeholders, variables, or formatting tokens exactly (e.g. {{name}}, %s, {count})
+- Preserve the capitalization of the source text (e.g. ALL CAPS, Title Case, sentence case) unless the target language's grammar requires different casing
 - Return ONLY a valid JSON object with language codes as keys and translated strings as values
 - No explanations, no commentary, no markdown fences — only raw JSON
 
 Target languages: {{languages}}
-
+{{context}}
 English text: "{{text}}"
 
-Required output format: {"uk": "...", "nb-NO": "...", "sv": "...", "da-DK": "..."}`;
+Required output format: {"<locale_code>": "..."}`;
 
 export const DEFAULT_QUALITY_TRANSLATE_PROMPT = `\
 You are a strict software localization and language quality reviewer.
 
-Mode: translation_quality
-You are evaluating a translation. Check both translation accuracy AND writing quality.
 Source (English): "{{source}}"
 Translation ({{locale}}): "{{translation}}"
 
-IMPORTANT — Ambiguity and multiple meanings:
-- Many English words have multiple valid meanings depending on context (e.g. "train" can mean a rail vehicle or to practice/exercise; "moon" can mean the celestial body or a proper name; "light" can mean illumination, lightweight, or a pale color).
-- Before judging accuracy, consider ALL reasonable meanings of the source text.
-- If the translation is correct for ANY valid interpretation of the source that makes sense in a software/product UI context, treat it as accurate.
-- Do NOT penalize a translation that uses a less common but valid interpretation.
-- When the source is genuinely ambiguous, give the benefit of the doubt to the translator.
-- Only flag a meaning error if the translation cannot reasonably correspond to any valid interpretation of the source.
+{{meaning_rule}}
 
-Additional checks:
-- Does the translation accurately convey the meaning of the source (for at least one valid interpretation)?
-- Is nuance preserved correctly?
-- Does the translation sound natural in UI/product context?
-- Meaning errors or lost nuance must reduce the score significantly — but only when the translation is genuinely wrong, not merely using an alternative valid meaning.
+Checks:
+- Grammar, spelling, punctuation ({{locale}} conventions)
+- Natural, idiomatic phrasing for software/product UI
+- Nuance and meaning preserved
+- Placeholders ({{name}}, %s, {count}, {0}) must be preserved EXACTLY — same names, same count. Any renaming, removal, or addition = score 1–3 regardless of other quality
 
-Checks to apply (all modes):
-- Grammar: correct forms, agreement, case, verb forms
-- Spelling: correctly spelled in {{locale}}
-- Punctuation: follows conventions of {{locale}}
-- Comma usage: correct placement
-- Unnatural or awkward phrasing
-- Clumsy sentence structure
-- Natural wording for software/product UI
-- Placeholders, variables, interpolation tokens ({{name}}, %s, {count}, {0}) and markup must be preserved exactly
+Scoring (1–100):
+- 90–100: excellent, production-ready
+- 80–89: strong, minor improvements only
+- 60–79: understandable but imperfect
+- below 60: significant errors
 
-Scoring rules — be strict on real errors, fair on ambiguity. Score on a 1–100 scale:
-- 95–100: excellent, production-ready, no meaningful issues
-- 80–94: very strong, minor improvement opportunities
-- 60–79: understandable, but clearly imperfect
-- below 60: noticeable quality problems
+Comment: empty string if ≥90; otherwise explain the main issue (max 60 words).
 
-Comment rules:
-- score 95–100: comment should be empty string
-- score 80–94: comment must explain what could still be improved
-- score below 80: comment must explain the main issue
-- keep comment practical and concise, up to 30 words
+Context need — evaluate the ENGLISH SOURCE TEXT only, not the translation quality:
 
-Return ONLY valid JSON, no markdown, no extra text:
-{"score": <1-100>, "comment": "<string>"}`;
+"required" — ANY of the following is true:
+  - The word/phrase has 2+ meanings that would produce DIFFERENT words in translation.
+  - It is a short label (1–2 words) with no surrounding sentence to anchor its meaning.
+  - Do NOT apply "dominant meaning" reasoning — if another meaning is plausible in a UI, mark "required".
+
+"useful" — phrase is 3+ words giving ~85% confidence, but UI location would still confirm intent.
+
+"none" — meaning is 100% unambiguous in any software context.
+
+Examples — "required": "Train", "Light", "Draft", "By", "Log", "Save", "Match", "Charge", "Issue", "Open", "File", "Record", "Run", "Post"
+Examples — "useful": "Delete account", "Approve request"
+Examples — "none": "Email address", "Password", "Sign in", "Cancel", "Loading..."
+
+Do NOT let a high translation score influence contextNeed. A translation can be correct AND the source can still be ambiguous.
+Add "contextReason" if required or useful (1 sentence, max 30 words explaining what other meanings are possible).
+
+Return ONLY valid JSON:
+{"score": <1-100>, "comment": "<string>", "contextNeed": "<required|useful|none>", "contextReason": "<string or null>"}`;
 
 export const DEFAULT_QUALITY_LANGUAGE_PROMPT = `\
 You are a strict software localization and language quality reviewer.
@@ -80,6 +78,9 @@ Text ({{locale}}): "{{translation}}"
 
 Check only whether the text is written correctly and naturally in {{locale}}.
 Do not evaluate translation accuracy.
+
+Context (if provided): "{{context}}"
+- If context is present, use it to judge whether the text is appropriate for its intended use.
 
 Checks to apply:
 - Grammar: correct forms, agreement, case, verb forms
@@ -92,19 +93,52 @@ Checks to apply:
 - Placeholders, variables, interpolation tokens ({{name}}, %s, {count}, {0}) and markup must be preserved exactly
 
 Scoring rules — be strict. Do NOT round up. Do NOT give benefit of the doubt. Score on a 1–100 scale:
-- 95–100: excellent, production-ready, no meaningful issues
-- 80–94: very strong, minor improvement opportunities
+- 90–100: excellent, production-ready, no meaningful issues
+- 80–89: very strong, minor improvement opportunities
 - 60–79: understandable, but clearly imperfect
 - below 60: noticeable quality problems
 
 Comment rules:
-- score 95–100: comment should be empty string
-- score 80–94: comment must explain what could still be improved
+- score 90–100: comment should be empty string
+- score 80–89: comment must explain what could still be improved
 - score below 80: comment must explain the main issue
-- keep comment practical and concise, up to 30 words
+- keep comment practical and concise, up to 60 words
+
+Context need — evaluate the TEXT itself, independently of quality score:
+
+"required" — ANY of the following is true:
+  - The word/phrase has 2+ meanings that would produce DIFFERENT words in translation.
+  - It is a short label (1–2 words) with no surrounding sentence to anchor its meaning.
+  - Do NOT apply "dominant meaning" reasoning — if another meaning is plausible in a UI, mark "required".
+
+"useful" — phrase is 3+ words giving ~85% confidence, but UI location would still confirm intent.
+
+"none" — meaning is 100% unambiguous in any software context.
+
+Examples — "required": "Train", "Light", "Draft", "By", "Log", "Save", "Match", "Charge", "Issue", "Open", "File", "Record", "Run", "Post"
+Examples — "useful": "Delete account", "Approve request"
+Examples — "none": "Email address", "Password", "Sign in", "Cancel", "Loading..."
+
+Do NOT let a high quality score influence contextNeed.
+If contextNeed is "required" or "useful", add "contextReason" — a short plain-language explanation (1 sentence, max 30 words).
 
 Return ONLY valid JSON, no markdown, no extra text:
-{"score": <1-100>, "comment": "<string>"}`;
+{"score": <1-100>, "comment": "<string>", "contextNeed": "<required|useful|none>", "contextReason": "<string or null>"}`;
+
+export const DEFAULT_CONTEXT_DETECTION_PROMPT = `\
+Context need — reason about translation ambiguity:
+
+For each key, ask: could this text map to multiple distinct real-world concepts that translate to different words?
+
+- "required": yes — wrong concept = wrong translation. List 2–3 meanings in "contextReason".
+- "useful": dominant meaning clear, but UI location or tone would increase confidence.
+- "none": only one reasonable interpretation exists.
+
+Examples:
+- "Home" → homepage vs address vs device screen → required
+- "Book" → reserve/schedule vs book to read → required
+- "Reservation" → a booking vs a doubt/hesitation ("I have reservations") → required
+- "Delete account" → clearly removes the account → none`;
 
 // ─── Interpolation helper ─────────────────────────────────────────────────────
 
@@ -115,7 +149,7 @@ export function interpolate(
 ): string {
   return template.replace(
     /\{\{(\w[\w-]*)\}\}/g,
-    (match, key: string) => vars[key] ?? match,
+    (_match, key: string) => vars[key] ?? '',
   );
 }
 
@@ -126,6 +160,7 @@ export interface AiConfigUpdate {
   translatePrompt?: string;
   qualityTranslatePrompt?: string;
   qualityLanguagePrompt?: string;
+  contextDetectionPrompt?: string;
 }
 
 @Injectable()
@@ -145,13 +180,18 @@ export class AiConfigService {
         translatePrompt: DEFAULT_TRANSLATE_PROMPT,
         qualityTranslatePrompt: DEFAULT_QUALITY_TRANSLATE_PROMPT,
         qualityLanguagePrompt: DEFAULT_QUALITY_LANGUAGE_PROMPT,
+        contextDetectionPrompt: DEFAULT_CONTEXT_DETECTION_PROMPT,
       }),
     );
   }
 
   async updateConfig(dto: AiConfigUpdate): Promise<AiConfigEntity> {
     const config = await this.getConfig();
-    Object.assign(config, dto);
+    for (const [key, value] of Object.entries(dto)) {
+      if (value !== undefined) {
+        (config as unknown as Record<string, unknown>)[key] = value;
+      }
+    }
     return this.repo.save(config);
   }
 
@@ -161,6 +201,7 @@ export class AiConfigService {
       translatePrompt: DEFAULT_TRANSLATE_PROMPT,
       qualityTranslatePrompt: DEFAULT_QUALITY_TRANSLATE_PROMPT,
       qualityLanguagePrompt: DEFAULT_QUALITY_LANGUAGE_PROMPT,
+      contextDetectionPrompt: DEFAULT_CONTEXT_DETECTION_PROMPT,
     });
   }
 }

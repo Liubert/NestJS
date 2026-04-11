@@ -12,11 +12,11 @@ export type QualityMode = (typeof QUALITY_MODES)[number];
 
 export const REVIEW_STATES = [
   'not_checked',
-  'queued',
   'processing',
   'checked',
   'expected',
   'failed',
+  'skipped',
 ] as const;
 export type ReviewState = (typeof REVIEW_STATES)[number];
 

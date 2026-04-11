@@ -1,4 +1,11 @@
 {
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs",
+      "moduleResolution": "node10"
+    },
+    "experimentalResolver": true
+  },
   "compilerOptions": {
     "module": "nodenext",
     "moduleResolution": "nodenext",

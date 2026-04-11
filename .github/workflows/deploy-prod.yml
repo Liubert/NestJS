@@ -81,7 +81,7 @@ jobs:
             set -euo pipefail
             cd "${DEPLOY_PATH}"
             COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
-            SERVICES="${SERVICES:-api worker admin-ui}"
+            SERVICES="${SERVICES:-api admin-ui}"
             PROD_HEALTHCHECK_URL="${PROD_HEALTHCHECK_URL:-http://localhost:8080/health}"
 
             cat > .env.cicd <<EOF
@@ -90,10 +90,10 @@ jobs:
             GEMINI_API_KEY=${GEMINI_API_KEY}
             EOF
 
-            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES}
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd --profile tools pull ${SERVICES} migrate
 
             echo "Running database migrations..."
-            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd run --rm migrate
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd --profile tools run --rm migrate
 
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd up -d --no-build ${SERVICES}
 

@@ -1,7 +1,18 @@
 import axios, { AxiosError } from "axios";
 
+const BACKEND_URL = process.env.BACKEND_URL;
+
+if (!BACKEND_URL) {
+  process.stderr.write(
+    "[localization-mcp] FATAL: BACKEND_URL is not set.\n" +
+      "  The MCP server requires an explicit backend URL to function.\n" +
+      "  Set BACKEND_URL in your environment or .env file.\n" +
+      "  Example: BACKEND_URL=http://localhost:8080\n",
+  );
+}
+
 const client = axios.create({
-  baseURL: process.env.BACKEND_URL ?? "http://localhost:8080",
+  baseURL: BACKEND_URL ?? "http://localhost:8080",
   headers: {
     "Content-Type": "application/json",
     Authorization: `Bearer ${process.env.MCP_TOKEN ?? ""}`,
@@ -23,6 +34,16 @@ export class ApiError extends Error {
 function handleError(error: unknown): never {
   if (error instanceof AxiosError) {
     const status = error.response?.status ?? 0;
+    if (status === 401) {
+      throw new ApiError(
+        401,
+        "Authentication failed (401). Common causes:\n" +
+          "1. MCP_TOKEN was revoked — generate a new token in the Admin UI and update your MCP config.\n" +
+          "2. localization-mcp is registered per-project (.mcp.json), which overrides the global config token.\n" +
+          "   Fix: claude mcp remove localization && claude mcp add -s user localization -e MCP_TOKEN=<token> -e BACKEND_URL=<url> -- npx -y localization-mcp-server",
+        error.response?.data,
+      );
+    }
     const message =
       (error.response?.data as { message?: string })?.message ??
       error.message ??

@@ -22,11 +22,35 @@ export class ListEntriesQueryDto extends PaginationDto {
 
   @ApiPropertyOptional({
     description: 'Filter by quality level',
-    enum: ['green', 'yellow', 'red', 'unchecked'],
+    enum: ['green', 'yellow', 'red', 'unchecked', 'needs_context', 'expected'],
   })
   @IsOptional()
-  @IsIn(['green', 'yellow', 'red', 'unchecked'])
+  @IsIn(['green', 'yellow', 'red', 'unchecked', 'needs_context', 'expected'])
   qualityLevel?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by quality review state',
+    enum: [
+      'checked',
+      'not_checked',
+      'skipped',
+      'failed',
+      'expected',
+      'queued',
+      'processing',
+    ],
+  })
+  @IsOptional()
+  @IsIn([
+    'checked',
+    'not_checked',
+    'skipped',
+    'failed',
+    'expected',
+    'queued',
+    'processing',
+  ])
+  reviewState?: string;
 
   @ApiPropertyOptional({
     enum: ['key', 'createdAt', 'qualityScore'],
@@ -43,7 +67,7 @@ export class ListEntriesQueryDto extends PaginationDto {
 
   @ApiPropertyOptional({
     description: 'Filter to keys missing a value for the specified locale',
-    example: 'nb-NO',
+    example: 'nb',
   })
   @IsOptional()
   @IsString()

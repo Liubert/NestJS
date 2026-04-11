@@ -87,5 +87,31 @@ export class SandboxValueEntity {
     | 'processing'
     | 'checked'
     | 'failed'
-    | 'expected';
+    | 'expected'
+    | 'skipped';
+
+  @Column({ type: 'varchar', length: 1000, nullable: true })
+  context!: string | null;
+
+  @Column({ name: 'context_need', type: 'varchar', length: 10, nullable: true })
+  contextNeed!: 'required' | 'useful' | 'none' | null;
+
+  @Column({
+    name: 'context_reason',
+    type: 'varchar',
+    length: 300,
+    nullable: true,
+  })
+  contextReason!: string | null;
+
+  @Column({
+    name: 'quality_content_hash',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  qualityContentHash!: string | null;
+
+  @Column({ name: 'pending_auto_translate', type: 'boolean', default: false })
+  pendingAutoTranslate!: boolean;
 }

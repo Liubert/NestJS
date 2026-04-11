@@ -18,7 +18,9 @@ The following actions are **irreversible or high-impact**. Never call them unles
 | `bulk_import` with overwrite | Can silently overwrite existing translations |
 | `check_entry_quality` | Writes quality scores to DB — may overwrite manual "expected" overrides |
 
-AI read-like operations (`ai_translate`, `ai_quality_check`) are safe — they generate data but do not mutate anything.
+AI read-like operations (`ai_translate`, `bulk_ai_translate`, `ai_quality_check`) are safe — they generate data but do not mutate anything.
+
+`bulk_translate_and_save` **writes to sandbox** — it is an autonomous save action. Only call it when the user has asked to populate or fill translations.
 
 **Investigating a problem ≠ permission to fix it.** If the user asks "why does X show Y", that is a diagnostic question — answer it, do not take action. Only act when the user says to.
 
@@ -52,7 +54,7 @@ This single call returns locale codes (required for every write) **and** full sa
 
 | `get_project_details` sandbox line | What to do |
 |------------------------------------|------------|
-| `NOT initialized` | Call `init_sandbox({ projectSlug })` before any write |
+| `NOT initialized` | Sandbox auto-initializes on project creation. Use `reset_sandbox({ projectSlug, confirmed: true })` to re-sync |
 | `initialized — no pending changes` | Safe to write |
 | `initialized — HAS PENDING CHANGES` | Call `get_translation_diff` first to understand existing changes. Do not discard without explicit user instruction. |
 
@@ -232,7 +234,7 @@ assess_integration_state({ projectSlug: "travis" })
 ### `create_project`
 Creates a new translation project. **Only call after explicit user confirmation.** The slug must be unique.
 
-After creating a project you must also call `create_namespace`, `create_locale`, and `init_sandbox` before the project can be used.
+After creating a project you must also call `create_namespace` and `create_locale` (sandbox auto-initializes on project creation).
 
 **Params:**
 - `slug` (required) — lowercase, hyphens allowed, e.g. `my-app`, `travis-v2`
@@ -272,15 +274,6 @@ Project: travis — "TRAVIS"
 Locales (5): en, da-DK (default), nb-NO, sv, uk
 Namespaces (2): backoffice-translations, mobile
 ```
-
----
-
-### `init_sandbox`
-Copies current production into sandbox. Safe to call if already initialized (returns early unless `force: true`).
-
-**Params:** `projectSlug`, `force` (optional, default false)
-
-⚠️ `force: true` wipes existing sandbox changes. Do not use unless intentional.
 
 ---
 
@@ -349,7 +342,7 @@ Creates a new namespace in a project. Required before using `set_translation` or
 create_namespace({ projectSlug: "travis", namespace: "expenses" })
 ```
 
-Returns an error if the namespace already exists. After creating, call `init_sandbox` if you plan to use the sandbox workflow.
+Returns an error if the namespace already exists. Sandbox auto-initializes on project creation — no manual init needed.
 
 ---
 
@@ -452,35 +445,76 @@ Read-only preview of what would happen if sandbox were promoted to production ri
 ---
 
 ### `ai_translate`
-Translate English text to all project locales using AI (Gemini). Does not persist results — use `set_translation` or `bulk_import` to save.
+Translate English text to project locales using AI (Gemini). Does not persist results — use `bulk_translate_and_save`, `set_translation`, or `bulk_import` to save.
 
 **Params:**
 - `projectSlug` (required) — project slug for usage tracking
 - `text` (required) — English text to translate
+- `context` (optional) — where/how this text is used in the UI (helps for ambiguous strings)
+- `targetLocales` (optional) — restrict to specific locale codes; defaults to all non-default project locales
 
 ```
-ai_translate({ projectSlug: "travis", text: "Save changes" })
+ai_translate({ projectSlug: "travis", text: "Save changes", context: "Primary action button on form" })
 ```
 
-**Returns:** translations for each configured locale. Use the output with `set_translation` or `bulk_import`.
+**Returns:** `{ "uk": "Зберегти зміни", "de": "Änderungen speichern", ... }` — feed directly into `ai_quality_check` or `bulk_import`.
+
+---
+
+### `bulk_ai_translate`
+Translate multiple English texts to project locales in one call. Processes in batches of 10 per Gemini call. Does not save results.
+
+**Params:**
+- `projectSlug` (required)
+- `entries` (required) — `[{ key, text, context? }]`, max 200
+- `targetLocales` (optional) — restrict to specific locale codes
+
+```
+bulk_ai_translate({ projectSlug: "travis", entries: [{ key: "button.save", text: "Save" }, { key: "button.cancel", text: "Cancel" }] })
+```
+
+**Returns:** `{ "button.save": { "uk": "Зберегти", ... }, "button.cancel": { "uk": "Скасувати", ... } }`. Save via `bulk_import` with `{ locale: { key: value } }` format.
+
+---
+
+### `bulk_translate_and_save`
+Translate N keys, save to sandbox, and run quality check — all in one step. Replaces the 3-step flow: `bulk_ai_translate` → `bulk_import` → `check_entry_quality`.
+
+**Params:**
+- `projectSlug` (required)
+- `namespace` (required) — target namespace slug
+- `entries` (required) — `[{ key, text, context? }]`, max 200
+- `targetLocales` (optional) — restrict to specific locale codes
+- `skipQuality` (optional, default `false`) — when `true`, skips inline quality check and queues background processing instead
+
+```
+bulk_translate_and_save({ projectSlug: "travis", namespace: "common", entries: [{ key: "button.save", text: "Save" }] })
+```
+
+**Returns (skipQuality=false):** `{ translations, quality: { key: { locale: { score, level, comment } } }, saved: { created, updated } }`
+**Returns (skipQuality=true):** `{ translations, saved: { created, updated }, qualityStatus: "queued" }`
+
+**Agent guidance on quality results:**
+- `green` (85+) — no action needed
+- `yellow` (60-84) — review optional; consider improving if context is available
+- `red` (<60) — must fix: use `set_translation` to correct, then `check_entry_quality` to re-check
 
 ---
 
 ### `ai_quality_check`
-Stateless AI quality check. Compares source English text against a translation for a specific locale. Does NOT persist results.
+Stateless multi-locale quality check. Accepts source text and a map of locale→translation. Does NOT persist results.
 
 **Params:**
 - `projectSlug` (required) — project slug for usage tracking
 - `source` (required) — source English text
-- `translation` (required) — translation to evaluate
-- `locale` (required) — target locale code (e.g. `nb-NO`, `uk`)
-- `mode` (optional, default `translation_quality`) — `translation_quality` compares to source, `language_quality` evaluates standalone
+- `translations` (required) — `{ locale: translation }` map, e.g. `{ "uk": "Зберегти", "de": "Speichern" }`
+- `context` (optional) — where/how this text is used in the UI
 
 ```
-ai_quality_check({ projectSlug: "travis", source: "Save", translation: "Lagre", locale: "nb-NO" })
+ai_quality_check({ projectSlug: "travis", source: "Save", translations: { "uk": "Зберегти", "de": "Speichern" } })
 ```
 
-**Returns:** score (1-100), level (green/yellow/red), comment.
+**Returns:** `{ "uk": { score: 95, level: "green", comment: "" }, "de": { score: 72, level: "yellow", comment: "..." } }`. Output of `ai_translate` feeds directly into `translations` param without parsing.
 
 ---
 
@@ -519,7 +553,45 @@ The new key must not already exist. This is a sandbox operation reflected in dif
 
 ### Context field
 
-`set_translation` and `bulk_import` support an optional `context` parameter (max 200 chars) describing where/how a key is used. This helps translators and AI produce better translations.
+Translation keys support a `context` field (max 500 chars) describing where/how a key is used. Context directly impacts translation quality scoring and AI evaluation confidence.
+
+#### When to add context
+
+**Always add context for:**
+- Ambiguous words with multiple meanings ("Save", "Train", "Set", "Light", "Run")
+- Short/generic labels where business intent matters ("Process", "Review", "Apply", "Status")
+- Domain-specific terms ("Approve", "Submit", "Escalate", "Assign")
+- Labels that could refer to an action, a status, or a concept ("Active", "Complete", "Open")
+
+**Skip context for:**
+- Universally obvious terms ("Cancel", "OK", "Delete", "Email", "Password", "Settings")
+- Keys where the key name itself provides enough context ("login.email_placeholder")
+- Long, self-explanatory sentences
+
+#### Good context examples
+- "Save button in expense approval form" — disambiguates "Save"
+- "Status label: whether a report has been reviewed by a manager"
+- "Navigation tab for the user's pending applications"
+- "Column header in invoice list table"
+
+#### Bad context examples
+- "A button" — too vague, adds nothing
+- "This is the cancel button on the settings page that cancels..." — too verbose
+- "Translation key" — restates the obvious
+
+#### Impact on quality scoring
+
+The AI evaluates context need at three levels:
+- **required**: key is genuinely ambiguous — quality score capped at 89 without context
+- **useful**: context would improve clarity — quality score capped at 94 without context
+- **none**: meaning is clear without context — no penalty
+
+When `list_translations` or `get_translations_needing_attention` shows "Context required" or "Context suggested", proactively add context using `set_translation` with the `context` parameter.
+
+Use `qualityLevel: "needs_context"` to find all keys where context is required or useful but missing.
+Use `qualityLevel: "context_required"` or `qualityLevel: "context_useful"` to filter separately.
+
+#### Usage examples
 
 **set_translation:**
 ```
@@ -562,15 +634,7 @@ create_namespace({ projectSlug: "travis", namespace: "expenses" })
 
 Use the module name as the namespace slug (lowercase, dashes only).
 
-### Step 2 — Initialize sandbox
-
-```
-init_sandbox({ projectSlug: "travis" })
-```
-
-Safe to call if already initialized.
-
-### Step 3 — Dry-run the import
+### Step 2 — Dry-run the import
 
 ```
 bulk_import({
@@ -583,13 +647,13 @@ bulk_import({
 
 Verify key counts look correct before writing.
 
-### Step 4 — Run the real import
+### Step 3 — Run the real import
 
 ```
 bulk_import({ projectSlug: "travis", namespace: "expenses", translations: { ... } })
 ```
 
-### Step 5 — Verify and review
+### Step 4 — Verify and review
 
 ```
 list_translations({ projectSlug: "travis", namespace: "expenses", env: "sandbox" })
@@ -599,7 +663,7 @@ validate_translations({ projectSlug: "travis", namespace: "expenses" })
 
 Fix any partial translations before handing off to the developer.
 
-### Step 6 — Developer tests against sandbox HTTP endpoint
+### Step 5 — Developer tests against sandbox HTTP endpoint
 
 The developer can test their code against the sandbox without promoting to production:
 
@@ -609,7 +673,7 @@ GET http://localhost:8080/translations/travis/expenses/en?env=sandbox
 
 This returns sandbox values (production base + sandbox overrides). No caching. Safe for local dev.
 
-### Step 7 — Human promotes via Admin UI
+### Step 6 — Human promotes via Admin UI
 
 Admin UI → Translations → Sandbox tab → Push to Production.
 
@@ -629,7 +693,7 @@ Note the exact locale codes. You will use them in every `set_translation` call.
 
 `get_project_details` already includes sandbox state — no separate call needed.
 
-- `NOT initialized` → call `init_sandbox({ projectSlug: "travis" })` before writing
+- `NOT initialized` → sandbox auto-initializes on project creation; use `reset_sandbox` to re-sync if needed
 - `HAS PENDING CHANGES` → call `get_translation_diff` to review existing changes before adding more
 
 ### Step 3 — Add or edit keys
@@ -739,7 +803,6 @@ Translation keys are **decoupled from code deployments**. They are fetched at ru
 | `create_project` | ✅ | Requires user confirmation first |
 | `list_projects` | ✅ | |
 | `get_project_details` | ✅ | Returns locale objects `{ code, isDefault }` + full sandbox state |
-| `init_sandbox` | ✅ | |
 | `list_translations` (sandbox) | ✅ | Default env |
 | `list_translations` (production) | ✅ | Pass `env: "production"` |
 | `set_translation` (create) | ✅ | |
@@ -755,7 +818,9 @@ Translation keys are **decoupled from code deployments**. They are fetched at ru
 | `export_namespace` | ✅ | Auto-paginates |
 | `bulk_import` | ✅ | PATCH→POST upsert; locale validation; batch endpoint support; contexts |
 | `ai_translate` | ✅ | Stateless — does not persist |
-| `ai_quality_check` | ✅ | Stateless — does not persist |
+| `bulk_ai_translate` | ✅ | Stateless — does not persist |
+| `bulk_translate_and_save` | ✅ | Writes to sandbox + persists quality |
+| `ai_quality_check` | ✅ | Stateless multi-locale — does not persist |
 | `check_entry_quality` | ✅ | Persists results to DB |
 | `rename_key` | ✅ | Sandbox only |
 

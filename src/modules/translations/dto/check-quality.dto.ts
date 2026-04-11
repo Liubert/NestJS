@@ -37,4 +37,21 @@ export class CheckQualityDto {
   @IsOptional()
   @IsIn([...QUALITY_MODES])
   mode?: QualityMode;
+
+  @ApiPropertyOptional({
+    example: 'my-project',
+    description: 'Project slug for AI usage tracking',
+  })
+  @IsOptional()
+  @IsString()
+  projectSlug?: string;
+
+  @ApiPropertyOptional({
+    example: 'Button label in expense form footer',
+    description:
+      'Optional context about where/how this key is used. Helps AI evaluate accuracy for ambiguous terms.',
+  })
+  @IsOptional()
+  @IsString()
+  context?: string;
 }

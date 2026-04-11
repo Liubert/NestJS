@@ -9,6 +9,7 @@ import { registerProductionTools } from "./tools/production.js";
 import { registerAiTools } from "./tools/ai.js";
 import { registerPrompts } from "./prompts.js";
 import { registerWebhookTools } from "./tools/webhooks.js";
+import { registerFeedbackTools } from "./tools/feedback.js";
 
 export function createServer(): McpServer {
   const server = new McpServer({
@@ -24,6 +25,7 @@ export function createServer(): McpServer {
   registerSnapshotTools(server);
   registerProductionTools(server);
   registerWebhookTools(server);
+  registerFeedbackTools(server);
   registerAiTools(server);
   registerPrompts(server);
 

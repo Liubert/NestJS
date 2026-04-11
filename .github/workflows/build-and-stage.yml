@@ -140,50 +140,78 @@ jobs:
           COMPOSE_FILE: ${{ secrets.STAGE_COMPOSE_FILE }}
           SERVICES: ${{ secrets.STAGE_SERVICES }}
           GEMINI_API_KEY: ${{ secrets.STAGE_GEMINI_API_KEY }}
+          STAGE_ADMIN_UI_URL: ${{ secrets.STAGE_ADMIN_UI_URL }}
         with:
           host: ${{ secrets.STAGE_SSH_HOST }}
           username: ${{ secrets.STAGE_SSH_USER }}
           key: ${{ secrets.STAGE_SSH_PRIVATE_KEY }}
           port: ${{ secrets.STAGE_SSH_PORT || '22' }}
-          envs: IMAGE_REF,ADMIN_UI_IMAGE_REF,DEPLOY_PATH,STAGE_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES,GEMINI_API_KEY
+          envs: IMAGE_REF,ADMIN_UI_IMAGE_REF,DEPLOY_PATH,STAGE_HEALTHCHECK_URL,COMPOSE_FILE,SERVICES,GEMINI_API_KEY,STAGE_ADMIN_UI_URL
           command_timeout: 30m
           script_stop: true
           script: |
             set -euo pipefail
             cd "${DEPLOY_PATH}"
             COMPOSE_FILE="${COMPOSE_FILE:-compose.yml}"
-            SERVICES="${SERVICES:-api worker admin-ui}"
+            SERVICES="${SERVICES:-api admin-ui}"
             STAGE_HEALTHCHECK_URL="${STAGE_HEALTHCHECK_URL:-http://localhost:8080/health}"
 
             printf 'APP_IMAGE=%s\nADMIN_UI_IMAGE=%s\nGEMINI_API_KEY=%s\n' \
               "${IMAGE_REF}" "${ADMIN_UI_IMAGE_REF}" "${GEMINI_API_KEY}" > .env.cicd
 
+            echo "[0/4] Pruning unused Docker images to free disk space..."
+            docker image prune -af --filter "until=24h" || true
+            echo "[0/4] Prune done ($(df -h / | awk 'NR==2{print $4}') free)"
+
             echo "[1/4] Pulling images: ${SERVICES} migrate"
-            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd pull ${SERVICES} migrate
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd --profile tools pull ${SERVICES} migrate
             echo "[1/4] Pull done"
 
             echo "[2/4] Running database migrations..."
-            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd run --rm migrate
+            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd --profile tools run --rm migrate
             echo "[2/4] Migrations done"
 
             echo "[3/4] Starting services: ${SERVICES}"
             docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd up -d --no-build ${SERVICES}
             echo "[3/4] Services started"
 
-            echo "[4/4] Waiting for API health at ${STAGE_HEALTHCHECK_URL} (max 3 min)..."
+            # --- Helper: dump diagnostics for all services ---
+            dump_diagnostics() {
+              echo "--- docker compose ps ---"
+              docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd ps
+              for svc in api admin-ui postgres; do
+                echo "--- ${svc} logs (last 30 lines) ---"
+                docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd logs --tail=30 "${svc}" || true
+              done
+            }
+
+            echo "[4/5] Waiting for API health at ${STAGE_HEALTHCHECK_URL} (max 3 min)..."
+            API_HEALTHY=false
             for i in $(seq 1 36); do
               STATUS=$(curl -o /dev/null -s -w "%{http_code}" "${STAGE_HEALTHCHECK_URL}" 2>/dev/null || echo "000")
               echo "  attempt ${i}/36 — HTTP ${STATUS}"
               if [ "${STATUS}" = "200" ]; then
-                echo "[4/4] Smoke check passed"
-                exit 0
+                echo "[4/5] API health passed"
+                API_HEALTHY=true
+                break
               fi
               sleep 5
             done
 
-            echo "[4/4] Smoke check failed after 3 min"
-            echo "--- api logs ---"
-            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd logs --tail=30 api
-            echo "--- worker logs ---"
-            docker compose -f "${COMPOSE_FILE}" --env-file .env --env-file .env.cicd logs --tail=10 worker
-            exit 1
+            if [ "${API_HEALTHY}" = "false" ]; then
+              echo "[4/5] API health check failed after 3 min"
+              dump_diagnostics
+              exit 1
+            fi
+
+            echo "[5/5] Checking admin-ui..."
+            ADMIN_UI_URL="${STAGE_ADMIN_UI_URL:-http://localhost:3010}"
+            ADMIN_STATUS=$(curl -o /dev/null -s -w "%{http_code}" "${ADMIN_UI_URL}" 2>/dev/null || echo "000")
+            echo "  admin-ui HTTP ${ADMIN_STATUS}"
+            if [ "${ADMIN_STATUS}" = "200" ]; then
+              echo "[5/5] Admin-UI check passed"
+            else
+              echo "[5/5] Admin-UI check failed — HTTP ${ADMIN_STATUS}"
+              dump_diagnostics
+              exit 1
+            fi

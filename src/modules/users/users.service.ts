@@ -15,7 +15,6 @@ import { UserEntity } from './user.entity.js';
 import { UserRole } from './types/user-role.enum.js';
 import { FilesService } from '../files/files.service.js';
 import { FileRecordEntity } from '../files/file-record.entity.js';
-import { PaginationInput } from '../../graphql/common/pagination.input.js';
 
 @Injectable()
 export class UsersService {
@@ -29,14 +28,6 @@ export class UsersService {
 
   async getAll(): Promise<UserEntity[]> {
     return this.usersRepo.find({ order: { createdAt: 'DESC' } });
-  }
-
-  async getPaginatedUsers({ limit, offset }: PaginationInput) {
-    const [items, total] = await this.usersRepo.findAndCount({
-      take: limit,
-      skip: offset,
-    });
-    return { items, total };
   }
 
   async getMe(userId: string) {

@@ -28,11 +28,11 @@ export class BaseEntryContextDto {
   @ApiPropertyOptional({
     example: 'Button label on the settings page',
     description:
-      'Short context describing where/how the key is used (max 200 chars)',
+      'Short context describing where/how the key is used (max 1000 chars)',
   })
   @IsOptional()
   @IsString()
-  @MaxLength(200)
+  @MaxLength(1000)
   context?: string;
 }
 

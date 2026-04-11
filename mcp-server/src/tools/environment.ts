@@ -1,8 +1,8 @@
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
-import { apiGet } from "../api-client.js";
-import { fetchPromptContent } from "../prompt-loader.js";
-import { errorResult, textResult } from "../utils.js";
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { z } from 'zod';
+import { apiGet } from '../api-client.js';
+import { fetchPromptContent } from '../prompt-loader.js';
+import { errorResult, textResult } from '../utils.js';
 
 interface ProjectListItem {
   id: string;
@@ -24,7 +24,7 @@ interface ProjectDetails {
   name: string | null;
   ownerId: string;
   locales: LocaleInfo[];
-  namespaces: string[];
+  namespaces: { slug: string; avgScore: number | null }[];
 }
 
 interface SandboxStatus {
@@ -36,26 +36,28 @@ interface SandboxStatus {
 
 export function registerEnvironmentTools(server: McpServer): void {
   server.tool(
-    "list_projects",
-    "List all translation projects accessible to the service account. Returns slugs, names, and sandbox state.",
+    'list_projects',
+    'List all translation projects accessible to the service account. Returns slugs, names, and sandbox state.',
     {},
     async () => {
       try {
-        const data = await apiGet<{ data: ProjectListItem[]; meta: { total: number } }>(
-          "/translations/projects",
-          { page: 1, limit: 100 },
-        );
+        const data = await apiGet<{
+          data: ProjectListItem[];
+          meta: { total: number };
+        }>('/translations/projects', { page: 1, limit: 100 });
 
         const rows = data.data.map((p) => {
           const sandboxState = p.sandboxInitializedAt
             ? p.sandboxHasChanges
-              ? "initialized, HAS PENDING CHANGES"
-              : "initialized, no changes"
-            : "not initialized";
-          return `• ${p.slug}${p.name ? ` (${p.name})` : ""} — sandbox: ${sandboxState}`;
+              ? 'initialized, HAS PENDING CHANGES'
+              : 'initialized, no changes'
+            : 'not initialized';
+          return `• ${p.slug}${p.name ? ` (${p.name})` : ''} — sandbox: ${sandboxState}`;
         });
 
-        return textResult(`Found ${data.meta.total} project(s):\n\n${rows.join("\n")}`);
+        return textResult(
+          `Found ${data.meta.total} project(s):\n\n${rows.join('\n')}`,
+        );
       } catch (error) {
         return errorResult(error);
       }
@@ -63,20 +65,23 @@ export function registerEnvironmentTools(server: McpServer): void {
   );
 
   server.tool(
-    "get_project_details",
+    'get_project_details',
     [
-      "Get full details of a translation project: namespaces, locales, and sandbox state.",
-      "ALWAYS call this before writing to a project — you need the exact locale codes and namespace list.",
-      "Locale codes returned here are the only valid codes for set_translation, bulk_import, bulk_set_locale, and create_locale.",
-      "Use the namespace list to decide whether to reuse an existing namespace or justify creating a new one.",
-    ].join(" "),
+      'Get full details of a translation project: namespaces, locales, and sandbox state.',
+      'ALWAYS call this before writing to a project — you need the exact locale codes and namespace list.',
+      'Locale codes returned here are the only valid codes for set_translation, bulk_import, bulk_set_locale, and create_locale.',
+      'Use the namespace list to decide whether to reuse an existing namespace or justify creating a new one.',
+      'Client apps fetch translations via REST GET /translations/{slug}/{namespace}/{locale} — MCP is for AI agents only.',
+    ].join(' '),
     { projectSlug: z.string().describe("Project slug (e.g. 'my-app')") },
     async ({ projectSlug }) => {
       try {
         // Fetch project details and sandbox status in parallel.
         const [project, sandboxStatus] = await Promise.all([
           apiGet<ProjectDetails>(`/translations/projects/${projectSlug}`),
-          apiGet<SandboxStatus>(`/translations/projects/${projectSlug}/sandbox/status`).catch(() => null),
+          apiGet<SandboxStatus>(
+            `/translations/projects/${projectSlug}/sandbox/status`,
+          ).catch(() => null),
         ]);
 
         const locales = project.locales;
@@ -87,26 +92,24 @@ export function registerEnvironmentTools(server: McpServer): void {
         );
 
         const sandboxLine = sandboxStatus
-          ? sandboxStatus.initialized
-            ? sandboxStatus.hasChanges
-              ? `initialized — HAS PENDING CHANGES (${sandboxStatus.snapshotCount} snapshot(s) available)`
-              : `initialized — no pending changes`
-            : `NOT initialized — call init_sandbox before writing`
+          ? sandboxStatus.hasChanges
+            ? `HAS PENDING CHANGES (${sandboxStatus.snapshotCount} snapshot(s) available)`
+            : `no pending changes`
           : `(sandbox status unavailable)`;
 
         const lines = [
-          `Project: ${project.slug}${project.name ? ` — "${project.name}"` : ""}`,
+          `Project: ${project.slug}${project.name ? ` — "${project.name}"` : ''}`,
           ``,
-          `Locales (${locales.length}): ${localeLines.join(", ")}`,
+          `Locales (${locales.length}): ${localeLines.join(', ')}`,
           ``,
           namespaces.length === 0
             ? `Namespaces: none — project has no namespaces yet`
-            : `Namespaces (${namespaces.length}): ${namespaces.join(", ")}`,
+            : `Namespaces (${namespaces.length}): ${namespaces.map((n) => n.slug).join(', ')}`,
           ``,
           `Sandbox: ${sandboxLine}`,
         ];
 
-        return textResult(lines.join("\n"));
+        return textResult(lines.join('\n'));
       } catch (error) {
         return errorResult(error);
       }
@@ -114,40 +117,89 @@ export function registerEnvironmentTools(server: McpServer): void {
   );
 
   server.tool(
-    "assess_integration_state",
+    'list_namespaces',
     [
-      "Starting point for localization integration assessment.",
-      "Fetches the remote project list with sandbox state, returns the correct client URL patterns for both production and non-production environments,",
-      "and provides a full classification guide so the agent can determine whether the local project is correctly integrated.",
-      "Use this as the first tool call when running /assess or whenever you need to evaluate how (or whether) a consumer app is connected to this localization backend.",
-      "If projectSlug is provided, also fetches full project details (locales, namespaces, sandbox state) for that specific project.",
-    ].join(" "),
-    { projectSlug: z.string().optional().describe("Optional: the project slug to fetch full details for") },
+      'List all namespaces in a translation project.',
+      'Returns namespace slugs and average quality scores.',
+      'Use this to see available namespaces before calling list_translations or bulk operations.',
+    ].join(' '),
+    { projectSlug: z.string().describe("Project slug (e.g. 'my-app')") },
     async ({ projectSlug }) => {
       try {
-        const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8080";
-        const adminUiUrl = process.env.ADMIN_UI_URL ?? "http://localhost:3010";
+        const project = await apiGet<ProjectDetails>(
+          `/translations/projects/${projectSlug}`,
+        );
+        const namespaces = project.namespaces;
+
+        if (namespaces.length === 0) {
+          return textResult(
+            `Project "${projectSlug}" has no namespaces yet.\nCreate one with create_namespace.`,
+          );
+        }
+
+        const rows = namespaces.map((ns) => {
+          const scoreStr =
+            ns.avgScore !== null
+              ? ` — avg quality: ${ns.avgScore}/100`
+              : ' — no quality data';
+          return `• ${ns.slug}${scoreStr}`;
+        });
+
+        return textResult(
+          [
+            `Namespaces in "${projectSlug}" (${namespaces.length}):`,
+            '',
+            ...rows,
+          ].join('\n'),
+        );
+      } catch (error) {
+        return errorResult(error);
+      }
+    },
+  );
+
+  server.tool(
+    'assess_integration_state',
+    [
+      'Starting point for localization integration assessment.',
+      'Fetches the remote project list with sandbox state, returns the correct client URL patterns for both production and non-production environments,',
+      'and provides a full classification guide so the agent can determine whether the local project is correctly integrated.',
+      'Use this as the first tool call when running /assess or whenever you need to evaluate how (or whether) a consumer app is connected to this localization backend.',
+      'If projectSlug is provided, also fetches full project details (locales, namespaces, sandbox state) for that specific project.',
+    ].join(' '),
+    {
+      projectSlug: z
+        .string()
+        .optional()
+        .describe('Optional: the project slug to fetch full details for'),
+    },
+    async ({ projectSlug }) => {
+      try {
+        const backendUrl =
+          process.env.BACKEND_URL ?? '(NOT SET — configure BACKEND_URL)';
+        const adminUiUrl =
+          process.env.ADMIN_UI_URL ?? '(NOT SET — configure ADMIN_UI_URL)';
 
         // Fetch projects, optional project details, and agent guide in parallel.
         // The project list already includes sandboxHasChanges + sandboxInitializedAt — no extra status calls needed.
         const [projectsData, projectDetails, agentGuide] = await Promise.all([
           apiGet<{ data: ProjectListItem[]; meta: { total: number } }>(
-            "/translations/projects",
+            '/translations/projects',
             { page: 1, limit: 100 },
           ),
           projectSlug
-            ? apiGet<ProjectDetails>(`/translations/projects/${projectSlug}`).catch(() => null)
+            ? apiGet<ProjectDetails>(
+                `/translations/projects/${projectSlug}`,
+              ).catch(() => null)
             : Promise.resolve(null),
-          fetchPromptContent("agent-guide", AGENT_GUIDE_FALLBACK),
+          fetchPromptContent('agent-guide', AGENT_GUIDE_FALLBACK),
         ]);
 
         const projectRows = projectsData.data.map((p) => {
-          const sandboxState = p.sandboxInitializedAt
-            ? p.sandboxHasChanges
-              ? "initialized, HAS PENDING CHANGES"
-              : "initialized, no changes"
-            : "not initialized";
-          return `• ${p.slug}${p.name ? ` (${p.name})` : ""} — sandbox: ${sandboxState}`;
+          const sandboxState = p.sandboxHasChanges
+            ? 'HAS PENDING CHANGES'
+            : 'no changes';
+          return `• ${p.slug}${p.name ? ` (${p.name})` : ''} — sandbox: ${sandboxState}`;
         });
 
         const lines: string[] = [
@@ -179,29 +231,58 @@ export function registerEnvironmentTools(server: McpServer): void {
         if (projectSlug) {
           lines.push(``, `### Project Details: ${projectSlug}`);
           if (!projectDetails) {
-            lines.push(`Error: project "${projectSlug}" not found or not accessible.`);
+            lines.push(
+              `Error: project "${projectSlug}" not found or not accessible.`,
+            );
           } else {
             const localeCount = projectDetails.locales.length;
             const nsCount = projectDetails.namespaces.length;
             const isEmpty = nsCount === 0 || localeCount === 0;
-            const projectInList = projectsData.data.find((p) => p.slug === projectSlug);
+            const projectInList = projectsData.data.find(
+              (p) => p.slug === projectSlug,
+            );
             const sandboxState = projectInList
-              ? projectInList.sandboxInitializedAt
-                ? projectInList.sandboxHasChanges
-                  ? "initialized, HAS PENDING CHANGES"
-                  : "initialized, no changes"
-                : "not initialized"
-              : "unknown";
+              ? projectInList.sandboxHasChanges
+                ? 'HAS PENDING CHANGES'
+                : 'no changes'
+              : 'unknown';
 
-            lines.push(`Locales (${localeCount}): ${localeCount > 0 ? projectDetails.locales.map((l) => l.code).join(", ") : "none yet"}`);
-            lines.push(`Namespaces (${nsCount}): ${nsCount > 0 ? projectDetails.namespaces.join(", ") : "none yet"}`);
+            lines.push(
+              `Locales (${localeCount}): ${localeCount > 0 ? projectDetails.locales.map((l) => l.code).join(', ') : 'none yet'}`,
+            );
+            lines.push(
+              `Namespaces (${nsCount}): ${nsCount > 0 ? projectDetails.namespaces.map((n) => n.slug).join(', ') : 'none yet'}`,
+            );
             lines.push(`Sandbox: ${sandboxState}`);
             lines.push(`Is empty: ${isEmpty}`);
             lines.push(`Admin UI: ${adminUiUrl} (Projects → ${projectSlug})`);
           }
         }
 
-        return textResult(lines.join("\n"));
+        lines.push(
+          ``,
+          `### Important: MCP is for AI agents only`,
+          `MCP tools manage translations on the server. The client app (React/Vue/etc.) must NOT use MCP at runtime — it fetches translations via the client URL pattern above using a standard i18n library.`,
+          `Before writing any client code, ask the user which i18n library they want to use, or confirm they are OK with a minimal implementation.`,
+          ``,
+          `### Client-side integration`,
+          `If no i18n library is detected in the local project, use a well-known library for the target platform — do NOT write a custom fetch implementation:`,
+          `  • React / React Native — i18next + react-i18next + i18next-http-backend`,
+          `  • Vue — i18next + i18next-vue, or vue-i18n`,
+          `  • Angular — i18next + angular-i18next, or @ngx-translate/core`,
+          `  • Svelte — i18next + i18next-http-backend`,
+          `  • Node.js / server-side — i18next + i18next-http-backend`,
+          `  • Flutter — flutter_localizations + intl (ARB format, adapt URL fetch)`,
+          `  • Other — prefer i18next where possible (widest ecosystem); always load translations from the client URL pattern above.`,
+          `Ask the user to confirm the library choice before writing any integration code.`,
+        );
+
+        lines.push(
+          '',
+          'If you encounter issues or have suggestions, use submit_feedback to report them.',
+        );
+
+        return textResult(lines.join('\n'));
       } catch (error) {
         return errorResult(error);
       }
@@ -220,21 +301,24 @@ The following actions are **irreversible or high-impact**. Never call them unles
 | \`reset_sandbox\` | Wipes all pending sandbox changes — irreversible |
 | \`push_changes_to_production\` | Overwrites production data |
 | \`delete_translation\` | Permanently removes a key and all its values |
+| \`delete_locale\` | Removes a locale and ALL its values across namespaces |
+| \`delete_namespace\` | Removes a namespace and ALL its keys and values |
 | \`bulk_import\` with overwrite | Can silently overwrite existing translations |
 
 **Investigating a problem ≠ permission to fix it.** If the user asks "why does X show Y", that is a diagnostic question — answer it, do not take action. Only act when the user says to.
 
 ## ⚠️ MANDATORY PRE-FLIGHT — Do This Before Every Write Session
 
-Before calling \`set_translation\`, \`bulk_set_locale\`, \`bulk_import\`, or \`delete_translation\`:
+**Step 1 (new session or unknown project):** Call \`assess_integration_state\` first.
+This establishes the correct backend URL, client REST URL patterns, and project list in one call.
 
-\`\`\`
-get_project_details({ projectSlug: "travis" })
-\`\`\`
+**Step 2 (before any write):** Call \`get_project_details({ projectSlug: "..." })\` to confirm locale codes and sandbox state.
+
+Skip Step 1 only if \`assess_integration_state\` was already called earlier in this same session.
 
 | \`get_project_details\` sandbox line | What to do |
 |------------------------------------|------------|
-| \`NOT initialized\` | Call \`init_sandbox({ projectSlug })\` before any write |
+| \`NOT initialized\` | Sandbox auto-initializes on project creation. Use \`reset_sandbox\` to re-sync if needed |
 | \`initialized — no pending changes\` | Safe to write |
 | \`initialized — HAS PENDING CHANGES\` | Call \`get_translation_diff\` first. Do not discard without explicit user instruction. |
 
@@ -257,6 +341,14 @@ get_project_details({ projectSlug: "travis" })
 | **Non-production (dev/staging)** | \`{BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}?env=sandbox\` |
 
 Non-production environments MUST use \`?env=sandbox\`. Without it, dev/staging tests run against live production data.
+
+## REST URL for client apps (READ-ONLY, not MCP)
+
+The client app fetches translations at runtime via HTTP GET — never via MCP:
+  GET {BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}          ← production
+  GET {BACKEND_URL}/translations/{projectSlug}/{namespace}/{locale}?env=sandbox  ← non-production
+
+MCP tools are for AI agents only. Client apps (React/Vue/Flutter/etc.) use the REST URL above with their i18n library.
 
 ## BACKEND_URL is the only source of truth for client config
 
@@ -291,4 +383,3 @@ Invalid: \`button/save\`, \`button save\`, \`button:save\`
 | Promote changes | ❌ manual only | via Admin UI |
 
 **There is no MCP tool that writes to production.** Production push is manual via Admin UI only.`;
-

@@ -118,7 +118,7 @@ If the local project is missing this separation, it is classified as **S2 — ou
 
 **You must:**
 1. Stop and warn: "This is targeting production directly. Production data will be visible to all users immediately."
-2. Suggest the correct flow: "Use the sandbox workflow — call `init_sandbox`, make changes there, review with `get_translation_diff`, and promote via Admin UI."
+2. Suggest the correct flow: "Use the sandbox workflow — make changes there, review with `get_translation_diff`, and promote via Admin UI."
 3. Do not proceed with production writes.
 
 ---

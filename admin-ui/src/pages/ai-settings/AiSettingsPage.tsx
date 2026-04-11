@@ -1,9 +1,10 @@
 import React from 'react';
 import { Tabs, Typography } from 'antd';
-import { RobotOutlined, MessageOutlined } from '@ant-design/icons';
+import { RobotOutlined, MessageOutlined, EyeOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'react-router-dom';
 import AiConfigPage from '../ai-config/AiConfigPage';
 import { McpPromptsPage } from '../mcp-prompts/McpPromptsPage';
+import PromptPreview from './PromptPreview';
 
 const AiSettingsPage: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -39,6 +40,15 @@ const AiSettingsPage: React.FC = () => {
               </span>
             ),
             children: <McpPromptsPage />,
+          },
+          {
+            key: 'prompt-preview',
+            label: (
+              <span>
+                <EyeOutlined /> Prompt Preview
+              </span>
+            ),
+            children: <PromptPreview />,
           },
         ]}
       />

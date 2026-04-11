@@ -12,7 +12,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { IsBoolean, IsOptional, IsUUID } from 'class-validator';
+import { IsUUID } from 'class-validator';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
@@ -26,14 +26,14 @@ import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
 import { BulkImportDto } from './dto/bulk-import.dto.js';
+import { BulkDeleteDto } from './dto/bulk-delete.dto.js';
+
+import { BulkRevertDto } from './dto/bulk-revert.dto.js';
+import { BulkQualityCheckDto } from './dto/bulk-quality-check.dto.js';
 import { RenameKeyDto } from './dto/rename-key.dto.js';
 import { SelectivePromoteDto } from './dto/selective-promote.dto.js';
-
-class InitSandboxDto {
-  @IsOptional()
-  @IsBoolean()
-  force?: boolean;
-}
+import { AnalyzeEntriesDto } from './dto/analyze-entries.dto.js';
+import { DiffQueryDto } from './dto/diff-query.dto.js';
 
 class RevertDto {
   @IsUUID()
@@ -58,28 +58,25 @@ export class SandboxController {
     return this.lifecycleService.getSandboxStatus(slug);
   }
 
-  @Post('init')
-  @ApiOperation({
-    summary:
-      'Initialize sandbox (copy production to sandbox). force=true resets.',
-  })
-  init(
+  @Get('diff')
+  @ApiOperation({ summary: 'Get diff between sandbox and production' })
+  diff(
     @Param('slug') slug: string,
-    @Body() dto: InitSandboxDto,
+    @Query() query: DiffQueryDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.lifecycleService.initSandbox(
+    return this.sandboxService.getDiff(
       slug,
       user.userId,
       user.role,
-      dto.force ?? false,
+      query.page,
+      query.limit,
+      {
+        namespace: query.namespace,
+        locale: query.locale,
+        status: query.status,
+      },
     );
-  }
-
-  @Get('diff')
-  @ApiOperation({ summary: 'Get diff between sandbox and production' })
-  diff(@Param('slug') slug: string, @CurrentUser() user: CurrentUserType) {
-    return this.promotionService.getDiff(slug, user.userId, user.role);
   }
 
   @Post('promote')
@@ -165,6 +162,28 @@ export class SandboxController {
     );
   }
 
+  @Post('namespaces/:ns/entries/analyze')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary:
+      'Analyze a batch of planned entries for conflicts and duplicates before creation (preflight)',
+  })
+  analyzeEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: AnalyzeEntriesDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.analyzeEntries(
+      slug,
+      ns,
+      dto.entries,
+      user.userId,
+      user.role,
+      dto.sourceLocale,
+    );
+  }
+
   @Post('namespaces/:ns/entries')
   @ApiOperation({
     summary:
@@ -201,6 +220,68 @@ export class SandboxController {
       dto,
       user.userId,
       user.role,
+    );
+  }
+
+  @Post('namespaces/:ns/entries/:key/check-quality')
+  @ApiOperation({
+    summary:
+      'Run AI quality check for all locales of a key in sandbox and persist results to sandbox',
+  })
+  checkEntryQuality(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Param('key') key: string,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.runSandboxQualityCheck(
+      slug,
+      ns,
+      decodeURIComponent(key),
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Post('namespaces/:ns/entries/bulk-quality-check')
+  @ApiOperation({ summary: 'Run AI quality check on multiple keys in sandbox' })
+  bulkQualityCheck(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkQualityCheckDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.bulkSandboxQualityCheck(
+      slug,
+      ns,
+      dto.keys,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Get('namespaces/:ns/attention')
+  @ApiOperation({
+    summary: 'Get sandbox translations needing quality attention',
+  })
+  getAttentionItems(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Query('limit') limit?: string,
+    @Query('qualityLevels') qualityLevels?: string,
+    @Query('includeUnchecked') includeUnchecked?: string,
+    @CurrentUser() user?: CurrentUserType,
+  ) {
+    return this.sandboxService.getSandboxAttentionItems(
+      slug,
+      ns,
+      {
+        limit: limit ? parseInt(limit, 10) : 50,
+        qualityLevels: qualityLevels?.split(',') ?? ['yellow', 'red'],
+        includeUnchecked: includeUnchecked === 'true',
+      },
+      user!.userId,
+      user!.role,
     );
   }
 
@@ -245,11 +326,11 @@ export class SandboxController {
     );
   }
 
-  @Post('namespaces/:ns/entries/batch')
+  @Post('namespaces/:ns/entries/bulk')
   @ApiOperation({
-    summary: 'Batch upsert multiple translation keys in sandbox',
+    summary: 'Bulk upsert multiple translation keys in sandbox',
   })
-  async batchUpsertEntries(
+  async bulkUpsertEntries(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
     @Body() dto: BulkImportDto,
@@ -260,7 +341,45 @@ export class SandboxController {
       project.id,
       ns,
     );
-    return this.sandboxService.batchUpsert(project, namespace, dto.entries);
+    return this.sandboxService.bulkUpsert(project, namespace, dto.entries);
+  }
+
+  @Post('namespaces/:ns/entries/bulk-delete')
+  @ApiOperation({
+    summary: 'Bulk delete multiple translation keys in sandbox',
+  })
+  async bulkDeleteEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkDeleteDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.bulkDelete(
+      slug,
+      ns,
+      dto.keys,
+      user.userId,
+      user.role,
+    );
+  }
+
+  @Post('namespaces/:ns/entries/bulk-revert')
+  @ApiOperation({
+    summary: 'Revert multiple sandbox keys to their production values',
+  })
+  async bulkRevertEntries(
+    @Param('slug') slug: string,
+    @Param('ns') ns: string,
+    @Body() dto: BulkRevertDto,
+    @CurrentUser() user: CurrentUserType,
+  ) {
+    return this.sandboxService.bulkRevert(
+      slug,
+      ns,
+      dto.keys,
+      user.userId,
+      user.role,
+    );
   }
 
   @Post('namespaces/:ns/entries/:key/rename')
@@ -331,18 +450,14 @@ export class SandboxController {
 
   @Patch('settings')
   @ApiOperation({
-    summary: 'Update project sandbox settings (auto-translate toggle)',
+    summary:
+      'Update project sandbox settings (auto-translate toggle, daily token limit)',
   })
   updateSettings(
     @Param('slug') slug: string,
-    @Body() body: { autoTranslateEnabled?: boolean },
+    @Body()
+    body: { autoTranslateEnabled?: boolean; aiTokenDailyLimit?: number | null },
   ) {
-    if (body.autoTranslateEnabled !== undefined) {
-      return this.lifecycleService.updateAutoTranslate(
-        slug,
-        body.autoTranslateEnabled,
-      );
-    }
-    return {};
+    return this.sandboxService.updateProjectSettings(slug, body);
   }
 }

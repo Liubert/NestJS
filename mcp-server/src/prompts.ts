@@ -16,7 +16,7 @@ const DEFAULT_SETUP_CONTENT = [
   "",
   "### ⚠️ Pre-flight (mandatory before any write)",
   "`get_project_details <slug>` — returns locale codes + sandbox state in one call",
-  "- `NOT initialized` → call `init_sandbox` first",
+  "- `NOT initialized` → sandbox auto-initializes on project creation; use `reset_sandbox` if re-sync needed",
   "- `HAS PENDING CHANGES` → call `get_translation_diff` to review before adding more",
   "",
   "### 1. Discover",
@@ -26,11 +26,16 @@ const DEFAULT_SETUP_CONTENT = [
   "### 2. Read translations",
   "- `list_translations <slug> <namespace>` — browse keys; filter with `missingLocale`, `search`",
   "- `get_translation_diff <slug>` — see what changed in sandbox vs production",
+  "- `check_keys_exist` — verify that a list of t() keys exist on the server (found vs missing)",
   "",
   "### 3. Write to sandbox",
-  "- `set_translation` — upsert one key (pass only the locales you want to update)",
-  "- `bulk_set_locale` — fill many keys for a single locale at once",
+  "- `analyze_entries` — **preflight before bulk create**: read-only analysis of planned keys — checks for batch duplicates, conflicts with existing keys, and source-text overlap (signals reuse opportunity, not a hard rule). Call before bulk_translate_and_save or set_translation when adding many new keys.",
+  "- `set_translation` — upsert one key (source/default locale value MUST always be included in values)",
+  "- `bulk_set_locale` — fill many keys for a single locale at once (for existing keys)",
   "- `bulk_import` — import multiple locales from a JSON map",
+  "- `bulk_check_quality` — run AI quality check on many keys at once (persisted)",
+  "- `reset_namespace_translations` — clear non-default translations to trigger re-translate",
+  "- `reset_namespace_quality` — clear quality scores to trigger re-evaluation",
   "- `delete_translation` — soft-delete a key in sandbox",
   "",
   "### 4. Review & push",
@@ -41,7 +46,15 @@ const DEFAULT_SETUP_CONTENT = [
   "### Rules",
   "- All writes go to **sandbox only** — production is never touched directly",
   "- Locale codes must match exactly what `get_project_details` returns — never guess",
+  "- Source locale value is required on every set_translation call (create or update) — always include the default locale",
   "- Prefer existing namespaces — only create a new one with a clear justification",
+  "",
+  "### Key naming",
+  "- **Match existing style** — look at keys already in the namespace (camelCase vs snake_case) and stay consistent",
+  "- **Keep names short** — describe the meaning, not the location; avoid filler words",
+  "- **Reuse before creating** — run `analyze_entries` preflight: checks key conflicts AND source text overlap across the namespace in one call",
+  "- **No location suffixes** — `submit_button` not `page_header_submit_button`; location-encoded names block reuse",
+  "- **Source text overlap is a signal, not a rule** — if the same English text exists under another key, consider reusing it, but identical words can differ by context (e.g. \"Close\" on a dialog vs a date range)",
 ].join("\n");
 
 const DEFAULT_ASSESS_CONTENT = [
@@ -96,7 +109,7 @@ const DEFAULT_ASSESS_CONTENT = [
   "→ Ask: \"Should I update these files for you, or would you prefer to do it manually?\"",
   "→ If user approves: propose specific file edits, apply with approval per file",
   "→ If user prefers manual: show exactly what to change and where",
-  "→ After fixing: call init_sandbox if sandbox is not initialized",
+  "→ After fixing: sandbox auto-initializes; use `reset_sandbox` to re-sync if needed",
   "",
   "**S3 — Not integrated, remote project available:**",
   "→ Tell the user which remote projects exist",
@@ -109,7 +122,7 @@ const DEFAULT_ASSESS_CONTENT = [
   "→ Ask: \"Would you like to create a new localization project?\"",
   "→ Suggest a project name based on: package.json name field, git remote URL, or directory name",
   "→ Present options: create now / I'll create manually in Admin UI",
-  "→ If create now: ask for slug confirmation, then call create_project, create_namespace, create_locale, init_sandbox",
+  "→ If create now: ask for slug confirmation, then call create_project, create_namespace, create_locale",
   "→ Then help configure local integration",
   "",
   "**S5 — Project exists but empty/incomplete:**",
@@ -137,7 +150,7 @@ const DEFAULT_ASSESS_CONTENT = [
   "### Rules for all paths",
   "",
   "- All writes go to sandbox only — never to production",
-  "- init_sandbox must be called before any sandbox writes",
+  "- Sandbox is auto-initialized on project creation; no manual init needed",
   "- Never create a project, namespace, or locale without user confirmation",
   "- Always show what you're about to do before doing it",
   "- If uncertain about the local project structure, ask rather than assume",
@@ -200,7 +213,7 @@ export function registerPrompts(server: McpServer): void {
       const lines: string[] = ["## Localization MCP — Diagnostic", ""];
 
       // 1. Config
-      const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8080 (default)";
+      const backendUrl = process.env.BACKEND_URL ?? "(NOT SET — configure BACKEND_URL)";
       const tokenSet = !!process.env.MCP_TOKEN;
       lines.push("### Config");
       lines.push(`- BACKEND_URL: \`${backendUrl}\``);
@@ -243,7 +256,7 @@ export function registerPrompts(server: McpServer): void {
               snapshotCount: number;
             }>(`/translations/projects/${projectSlug}/sandbox/status`);
 
-            lines.push(`- Initialized: ${status.initialized ? `✅ yes (since ${status.initializedAt})` : "❌ NO — call init_sandbox before writing"}`);
+            lines.push(`- Initialized: ${status.initialized ? `✅ yes (since ${status.initializedAt})` : "❌ NO — use reset_sandbox to re-sync from production"}`);
             lines.push(`- Has pending changes: ${status.hasChanges ? "⚠️  YES" : "✅ no"}`);
             lines.push(`- Snapshots available: ${status.snapshotCount}`);
           } catch (err) {
