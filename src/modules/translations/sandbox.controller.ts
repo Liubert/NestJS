@@ -18,7 +18,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { BlockMcpGuard } from '../auth/block-mcp.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
-import { TranslationsService } from './translations.service.js';
+import { TranslationProjectsService } from './translation-projects.service.js';
 import { SandboxService } from './sandbox.service.js';
 import { SandboxPromotionService } from './sandbox-promotion.service.js';
 import { SandboxLifecycleService } from './sandbox-lifecycle.service.js';
@@ -49,7 +49,7 @@ export class SandboxController {
     private readonly sandboxService: SandboxService,
     private readonly promotionService: SandboxPromotionService,
     private readonly lifecycleService: SandboxLifecycleService,
-    private readonly translationsService: TranslationsService,
+    private readonly projectsService: TranslationProjectsService,
   ) {}
 
   @Get('status')
@@ -336,8 +336,8 @@ export class SandboxController {
     @Body() dto: BulkImportDto,
     @CurrentUser() _user: CurrentUserType,
   ) {
-    const project = await this.translationsService.getProjectBySlug(slug);
-    const namespace = await this.translationsService.requireNamespace(
+    const project = await this.projectsService.getProjectBySlug(slug);
+    const namespace = await this.projectsService.requireNamespace(
       project.id,
       ns,
     );
@@ -391,8 +391,8 @@ export class SandboxController {
     @Body() dto: RenameKeyDto,
     @CurrentUser() _user: CurrentUserType,
   ) {
-    const project = await this.translationsService.getProjectBySlug(slug);
-    const namespace = await this.translationsService.requireNamespace(
+    const project = await this.projectsService.getProjectBySlug(slug);
+    const namespace = await this.projectsService.requireNamespace(
       project.id,
       ns,
     );

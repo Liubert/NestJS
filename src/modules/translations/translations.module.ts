@@ -68,6 +68,7 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
   ],
   exports: [
     ProjectAccessHelper,
+    TranslationProjectsService,
     TranslationsService,
     SandboxService,
     SandboxPromotionService,

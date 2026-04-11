@@ -14,7 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
-import { TranslationsService } from '../translations/translations.service.js';
+import { TranslationProjectsService } from '../translations/translation-projects.service.js';
 import { WebhooksService } from './webhooks.service.js';
 import { CreateWebhookDto } from './dto/create-webhook.dto.js';
 import { UpdateWebhookDto } from './dto/update-webhook.dto.js';
@@ -26,7 +26,7 @@ import { UpdateWebhookDto } from './dto/update-webhook.dto.js';
 export class WebhooksController {
   constructor(
     private readonly webhooksService: WebhooksService,
-    private readonly translationsService: TranslationsService,
+    private readonly projectsService: TranslationProjectsService,
   ) {}
 
   @Get()
@@ -35,7 +35,7 @@ export class WebhooksController {
     @Param('slug') slug: string,
     @CurrentUser() user: CurrentUserType,
   ) {
-    const project = await this.translationsService.getProjectDetails(
+    const project = await this.projectsService.getProjectDetails(
       slug,
       user.userId,
       user.role,
@@ -50,7 +50,7 @@ export class WebhooksController {
     @Body() dto: CreateWebhookDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    const project = await this.translationsService.getProjectDetails(
+    const project = await this.projectsService.getProjectDetails(
       slug,
       user.userId,
       user.role,
@@ -66,7 +66,7 @@ export class WebhooksController {
     @Body() dto: UpdateWebhookDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    const project = await this.translationsService.getProjectDetails(
+    const project = await this.projectsService.getProjectDetails(
       slug,
       user.userId,
       user.role,
@@ -82,7 +82,7 @@ export class WebhooksController {
     @Param('id') id: string,
     @CurrentUser() user: CurrentUserType,
   ) {
-    const project = await this.translationsService.getProjectDetails(
+    const project = await this.projectsService.getProjectDetails(
       slug,
       user.userId,
       user.role,

@@ -18,7 +18,9 @@ export interface EntryRow {
   key: string;
   createdAt: Date;
   context: string | null;
-  values: Record<string, string>;
+  contextNeed: 'required' | 'useful' | 'none' | null;
+  contextReason: string | null;
+  values: Record<string, string | null>;
   quality: Record<string, QualityInfo | null>;
 }
 

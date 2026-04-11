@@ -140,6 +140,7 @@ export class TranslationProjectsService {
         slug: dto.slug,
         name: dto.name ?? dto.slug,
         ownerId: userId,
+        aiTokenDailyLimit: 2_000_000,
       }),
     );
 
@@ -151,6 +152,33 @@ export class TranslationProjectsService {
         role: 'owner',
       }),
     );
+
+    // Auto-create default source locale (English)
+    await this.localeRepo.save(
+      this.localeRepo.create({
+        projectId: project.id,
+        code: 'en',
+        isDefault: true,
+      }),
+    );
+
+    // Create namespaces provided by the user
+    await this.namespaceRepo.save(
+      dto.namespaces.map((slug) =>
+        this.namespaceRepo.create({
+          projectId: project.id,
+          slug,
+        }),
+      ),
+    );
+
+    // Auto-initialize sandbox (empty — no production data to copy yet)
+    await this.projectRepo.update(project.id, {
+      sandboxInitializedAt: new Date(),
+      sandboxHasChanges: false,
+    });
+    project.sandboxInitializedAt = new Date();
+    project.sandboxHasChanges = false;
 
     return project;
   }

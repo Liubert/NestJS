@@ -26,6 +26,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
+import { TranslationProjectsService } from './translation-projects.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 import { AiUsageService } from './ai-usage.service.js';
 import { SandboxService } from './sandbox.service.js';
@@ -52,6 +53,7 @@ import { RetranslateDto } from './dto/retranslate.dto.js';
 export class TranslationsController {
   constructor(
     private readonly translationsService: TranslationsService,
+    private readonly projectsService: TranslationProjectsService,
     private readonly aiTranslateService: AiTranslateService,
     private readonly aiUsageService: AiUsageService,
     private readonly sandboxService: SandboxService,
@@ -68,7 +70,7 @@ export class TranslationsController {
     @Param('slug') slug: string,
     @CurrentUser() _user: CurrentUserType,
   ) {
-    const project = await this.translationsService.getProjectBySlug(slug);
+    const project = await this.projectsService.getProjectBySlug(slug);
     return this.aiUsageService.getProjectUsage(project.id);
   }
 
@@ -115,11 +117,11 @@ export class TranslationsController {
     let projectId: string | undefined;
     let localeGuidance: Record<string, string> | undefined;
     if (dto.projectSlug) {
-      const project = await this.translationsService.getProjectBySlug(
+      const project = await this.projectsService.getProjectBySlug(
         dto.projectSlug,
       );
       projectId = project.id;
-      const locales = await this.translationsService.getProjectLocales(
+      const locales = await this.projectsService.getProjectLocales(
         dto.projectSlug,
       );
       const guidance = locales.reduce<Record<string, string>>((acc, l) => {
@@ -149,11 +151,11 @@ export class TranslationsController {
     let targetLocales: string[] | undefined = dto.targetLocales;
 
     if (dto.projectSlug) {
-      const project = await this.translationsService.getProjectBySlug(
+      const project = await this.projectsService.getProjectBySlug(
         dto.projectSlug,
       );
       projectId = project.id;
-      const locales = await this.translationsService.getProjectLocales(
+      const locales = await this.projectsService.getProjectLocales(
         dto.projectSlug,
       );
       const guidance = locales.reduce<Record<string, string>>((acc, l) => {
@@ -196,15 +198,15 @@ export class TranslationsController {
       'Translate multiple keys, save to sandbox, and optionally run quality check — all in one step',
   })
   async bulkTranslateAndSave(@Body() dto: BulkTranslateAndSaveDto) {
-    const project = await this.translationsService.getProjectBySlug(
+    const project = await this.projectsService.getProjectBySlug(
       dto.projectSlug,
     );
-    const namespace = await this.translationsService.requireNamespace(
+    const namespace = await this.projectsService.requireNamespace(
       project.id,
       dto.namespace,
     );
 
-    const locales = await this.translationsService.getProjectLocales(
+    const locales = await this.projectsService.getProjectLocales(
       dto.projectSlug,
     );
     const localeGuidance = locales.reduce<Record<string, string>>((acc, l) => {
@@ -313,11 +315,11 @@ export class TranslationsController {
     let projectId: string | undefined;
     let localeGuidanceStr: string | undefined;
     if (dto.projectSlug) {
-      const project = await this.translationsService.getProjectBySlug(
+      const project = await this.projectsService.getProjectBySlug(
         dto.projectSlug,
       );
       projectId = project.id;
-      const locales = await this.translationsService.getProjectLocales(
+      const locales = await this.projectsService.getProjectLocales(
         dto.projectSlug,
       );
       const matched = locales.find(
@@ -348,11 +350,11 @@ export class TranslationsController {
     let projectId: string | undefined;
     let localeGuidance: Record<string, string> | undefined;
     if (dto.projectSlug) {
-      const project = await this.translationsService.getProjectBySlug(
+      const project = await this.projectsService.getProjectBySlug(
         dto.projectSlug,
       );
       projectId = project.id;
-      const locales = await this.translationsService.getProjectLocales(
+      const locales = await this.projectsService.getProjectLocales(
         dto.projectSlug,
       );
       const guidance = locales.reduce<Record<string, string>>((acc, l) => {
@@ -423,7 +425,7 @@ export class TranslationsController {
     @Query() query: PaginationDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.listProjects(
+    return this.projectsService.listProjects(
       query.page,
       query.limit,
       user.userId,
@@ -439,7 +441,7 @@ export class TranslationsController {
     @Body() dto: CreateProjectDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.createProject(dto, user.userId);
+    return this.projectsService.createProject(dto, user.userId);
   }
 
   @Get('projects/:slug')
@@ -450,11 +452,7 @@ export class TranslationsController {
     @Param('slug') slug: string,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.getProjectDetails(
-      slug,
-      user.userId,
-      user.role,
-    );
+    return this.projectsService.getProjectDetails(slug, user.userId, user.role);
   }
 
   @Delete('projects/:slug')
@@ -466,7 +464,7 @@ export class TranslationsController {
     @Param('slug') slug: string,
     @CurrentUser() user: CurrentUserType,
   ): Promise<void> {
-    return this.translationsService.deleteProject(slug, user.userId, user.role);
+    return this.projectsService.deleteProject(slug, user.userId, user.role);
   }
 
   // ─── Members (protected) ──────────────────────────────────────────────────
@@ -479,7 +477,7 @@ export class TranslationsController {
     @Param('slug') slug: string,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.listMembers(slug, user.userId, user.role);
+    return this.projectsService.listMembers(slug, user.userId, user.role);
   }
 
   @Post('projects/:slug/members')
@@ -492,12 +490,7 @@ export class TranslationsController {
     @Body() dto: AddMemberDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.addMember(
-      slug,
-      dto,
-      user.userId,
-      user.role,
-    );
+    return this.projectsService.addMember(slug, dto, user.userId, user.role);
   }
 
   @Delete('projects/:slug/members/:userId')
@@ -510,7 +503,7 @@ export class TranslationsController {
     @Param('userId') targetUserId: string,
     @CurrentUser() user: CurrentUserType,
   ): Promise<void> {
-    return this.translationsService.removeMember(
+    return this.projectsService.removeMember(
       slug,
       targetUserId,
       user.userId,
@@ -529,7 +522,7 @@ export class TranslationsController {
     @Body() dto: CreateNamespaceDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.createNamespace(
+    return this.projectsService.createNamespace(
       slug,
       dto,
       user.userId,
@@ -546,7 +539,7 @@ export class TranslationsController {
     @Body() dto: CreateLocaleDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.createLocale(
+    return this.projectsService.createLocale(
       slug,
       dto.code,
       dto.isDefault,
@@ -568,7 +561,7 @@ export class TranslationsController {
     @Body() dto: UpdateLocaleDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.updateLocale(
+    return this.projectsService.updateLocale(
       slug,
       code,
       dto.aliases ?? [],
@@ -588,7 +581,7 @@ export class TranslationsController {
     @Param('code') code: string,
     @CurrentUser() user: CurrentUserType,
   ): Promise<void> {
-    return this.translationsService.deleteLocale(
+    return this.projectsService.deleteLocale(
       slug,
       code,
       user.userId,
@@ -606,7 +599,7 @@ export class TranslationsController {
     @Body() dto: UpdateNamespaceDto,
     @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.updateNamespace(
+    return this.projectsService.updateNamespace(
       slug,
       ns,
       dto.slug,
@@ -627,7 +620,7 @@ export class TranslationsController {
     @Param('ns') ns: string,
     @CurrentUser() user: CurrentUserType,
   ): Promise<void> {
-    return this.translationsService.deleteNamespace(
+    return this.projectsService.deleteNamespace(
       slug,
       ns,
       user.userId,
