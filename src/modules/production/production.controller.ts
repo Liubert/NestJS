@@ -68,19 +68,9 @@ export class ProductionController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(BlockMcpGuard)
   @ApiOperation({
-    summary: 'Promote sandbox to production (takes snapshot before replacing)',
+    summary: 'Promote selected keys from sandbox to production',
   })
-  promote(@Param('slug') slug: string, @CurrentUser() user: CurrentUserType) {
-    return this.promotionService.promote(slug, user.userId, user.role);
-  }
-
-  @Post('promote-selective')
-  @HttpCode(HttpStatus.OK)
-  @UseGuards(BlockMcpGuard)
-  @ApiOperation({
-    summary: 'Promote only selected keys from sandbox to production',
-  })
-  promoteSelective(
+  promote(
     @Param('slug') slug: string,
     @Body() dto: SelectivePromoteDto,
     @CurrentUser() user: CurrentUserType,

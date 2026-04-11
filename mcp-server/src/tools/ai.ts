@@ -9,10 +9,10 @@ export function registerAiTools(server: McpServer): void {
   server.tool(
     'ai_translate',
     [
-      'Translate English text to all project locales using AI (Gemini).',
-      'Returns translations for each configured locale.',
-      'Usage is tracked per project. Requires a project slug for accounting.',
-      'Use this to quickly generate translations for new keys.',
+      'Alternative translation method: translate English text to project locales using backend AI (Gemini).',
+      'Prefer agent-local translation (translate yourself, then set_translation + check_entry_quality) for better quality.',
+      'Use this tool for bulk-filling new locales (100+ keys) or when the user explicitly requests backend translation.',
+      'Returns translations for each configured locale. Usage is tracked per project.',
       'Optionally accepts context (where the text appears in UI) to improve translation quality for short or ambiguous strings.',
       'Optionally accepts targetLocales array to restrict translation to specific locales instead of all project locales.',
     ].join(' '),
@@ -107,10 +107,10 @@ export function registerAiTools(server: McpServer): void {
   server.tool(
     'bulk_ai_translate',
     [
-      'Translate multiple English texts to all project locales in one call using AI (Gemini).',
+      'Alternative bulk translation: translate multiple English texts to all project locales using backend AI (Gemini).',
+      'Prefer agent-local translation for batches under 100 keys (better quality with context awareness).',
+      'Use this for large bulk operations (100+ keys) where speed matters more than per-key attention.',
       'Processes in batches of 10 keys per AI call. Max 200 entries.',
-      'Use for bulk new-namespace translation or filling a new locale.',
-      'Replaces N separate ai_translate calls with one bulk operation.',
     ].join(' '),
     {
       projectSlug: z
@@ -206,8 +206,9 @@ export function registerAiTools(server: McpServer): void {
     'bulk_translate_and_save',
     [
       'ALWAYS call assess_integration_state at the start of a new session before writing.',
-      'Translate, save to sandbox, and quality-check in one step.',
-      'Replaces the 3-step flow: bulk_ai_translate -> bulk_import -> check_entry_quality.',
+      'Alternative all-in-one: translate via backend AI (Gemini), save to sandbox, and quality-check in one step.',
+      'Prefer agent-local translation for batches under 100 keys (translate yourself → set_translation → check_entry_quality).',
+      'Use this for large bulk operations (100+ keys) or when the user explicitly requests backend translation.',
       'Saves translations directly to sandbox (not production).',
       'With skipQuality=false (default): returns per-key per-locale quality scores inline.',
       'With skipQuality=true: saves translations, queues quality check, returns immediately.',
