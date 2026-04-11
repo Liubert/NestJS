@@ -9,7 +9,6 @@ import appConfig, { AppConfig } from './config/app.config';
 
 import { UsersModule } from './modules/users/users.module';
 import { AuthModule } from './modules/auth/auth.module';
-import { FilesModule } from './modules/files/files.module';
 import { TranslationsModule } from './modules/translations/translations.module';
 import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
@@ -36,7 +35,6 @@ import { QualityWorkerModule } from './modules/translations/quality-worker.modul
     TerminusModule,
     AuthModule,
     UsersModule,
-    FilesModule,
     WebhooksModule,
     FeedbackModule,
     TranslationsModule,

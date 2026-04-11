@@ -84,42 +84,44 @@ export class SandboxLifecycleService {
 
     this.access.assertOwnerOrAdmin(project, userId, role, 'reset sandbox');
 
-    await this.sandboxRepo.delete({ projectId: project.id });
+    return this.dataSource.transaction(async (manager) => {
+      await manager.delete(SandboxValueEntity, { projectId: project.id });
 
-    let copiedRows = 0;
-    try {
-      const result = await this.dataSource.query<{ id: string }[]>(
-        `
-        INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
-          context, context_need, context_reason,
-          quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
-        SELECT
-          ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(),
-          tk.context, tk.context_need, tk.context_reason,
-          tv.quality_score, tv.quality_level, tv.quality_comment, tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
-        FROM translation_values tv
-        JOIN translation_keys tk ON tk.id = tv.key_id
-        JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-        WHERE ns.project_id = $1
-        RETURNING id
-        `,
-        [project.id],
-      );
-      copiedRows = Array.isArray(result) ? result.length : 0;
-    } catch (err) {
-      this.logger.error(
-        `resetSandbox SQL failed for project ${projectSlug}: ${err instanceof Error ? err.message : String(err)}`,
-        err instanceof Error ? err.stack : undefined,
-      );
-      throw err;
-    }
+      let copiedRows = 0;
+      try {
+        const result = await manager.query<{ id: string }[]>(
+          `
+          INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at,
+            context, context_need, context_reason,
+            quality_score, quality_level, quality_comment, quality_checked_at, quality_review_state, quality_content_hash)
+          SELECT
+            ns.project_id, tv.key_id, tv.locale_id, tv.value, false, now(),
+            tk.context, tk.context_need, tk.context_reason,
+            tv.quality_score, tv.quality_level, tv.quality_comment, tv.quality_checked_at, tv.quality_review_state, tv.quality_content_hash
+          FROM translation_values tv
+          JOIN translation_keys tk ON tk.id = tv.key_id
+          JOIN translation_namespaces ns ON ns.id = tk.namespace_id
+          WHERE ns.project_id = $1
+          RETURNING id
+          `,
+          [project.id],
+        );
+        copiedRows = Array.isArray(result) ? result.length : 0;
+      } catch (err) {
+        this.logger.error(
+          `resetSandbox SQL failed for project ${projectSlug}: ${err instanceof Error ? err.message : String(err)}`,
+          err instanceof Error ? err.stack : undefined,
+        );
+        throw err;
+      }
 
-    await this.projectRepo.update(project.id, {
-      sandboxInitializedAt: new Date(),
-      sandboxHasChanges: false,
+      await manager.update(ProjectEntity, project.id, {
+        sandboxInitializedAt: new Date(),
+        sandboxHasChanges: false,
+      });
+
+      return { copiedRows };
     });
-
-    return { copiedRows };
   }
 
   // ─── List snapshots ───────────────────────────────────────────────────────
@@ -149,9 +151,16 @@ export class SandboxLifecycleService {
   async updateAutoTranslate(
     slug: string,
     enabled: boolean,
+    userId: string,
+    role: UserRole,
   ): Promise<{ autoTranslateEnabled: boolean }> {
-    const project = await this.projectRepo.findOneBy({ slug });
-    if (!project) throw new NotFoundException('Project not found');
+    const project = await this.access.requireProject(slug);
+    this.access.assertOwnerOrAdmin(
+      project,
+      userId,
+      role,
+      'update auto-translate',
+    );
     project.autoTranslateEnabled = enabled;
     await this.projectRepo.save(project);
     return { autoTranslateEnabled: enabled };
@@ -165,12 +174,19 @@ export class SandboxLifecycleService {
       autoTranslateEnabled?: boolean;
       aiTokenDailyLimit?: number | null;
     },
+    userId: string,
+    role: UserRole,
   ): Promise<{
     autoTranslateEnabled: boolean;
     aiTokenDailyLimit: number | null;
   }> {
-    const project = await this.projectRepo.findOneBy({ slug });
-    if (!project) throw new NotFoundException('Project not found');
+    const project = await this.access.requireProject(slug);
+    this.access.assertOwnerOrAdmin(
+      project,
+      userId,
+      role,
+      'update project settings',
+    );
     if (settings.autoTranslateEnabled !== undefined) {
       project.autoTranslateEnabled = settings.autoTranslateEnabled;
     }

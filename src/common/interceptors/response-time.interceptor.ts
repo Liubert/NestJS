@@ -18,7 +18,6 @@ export class ResponseTimeInterceptor implements NestInterceptor<
     context: ExecutionContext,
     next: CallHandler<unknown>,
   ): Observable<unknown> {
-    // Skip GraphQL requests (no standard HTTP response object here)
     if (context.getType<'http' | 'rpc' | 'ws'>() !== 'http') {
       return next.handle();
     }

@@ -457,7 +457,13 @@ export class SandboxController {
     @Param('slug') slug: string,
     @Body()
     body: { autoTranslateEnabled?: boolean; aiTokenDailyLimit?: number | null },
+    @CurrentUser() user: CurrentUserType,
   ) {
-    return this.lifecycleService.updateProjectSettings(slug, body);
+    return this.lifecycleService.updateProjectSettings(
+      slug,
+      body,
+      user.userId,
+      user.role,
+    );
   }
 }

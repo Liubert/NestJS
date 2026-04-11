@@ -13,17 +13,11 @@ import { UpdateUserDto } from './dto/create-user.dto/update-user.dto.js';
 import { UserResponseDto } from './dto/create-user.dto/response-user.dto.js';
 import { UserEntity } from './user.entity.js';
 import { UserRole } from './types/user-role.enum.js';
-import { FilesService } from '../files/files.service.js';
-import { FileRecordEntity } from '../files/file-record.entity.js';
-
 @Injectable()
 export class UsersService {
   constructor(
     @InjectRepository(UserEntity)
     private readonly usersRepo: Repository<UserEntity>,
-    private readonly filesService: FilesService,
-    @InjectRepository(FileRecordEntity)
-    private readonly fileRepo: Repository<FileRecordEntity>,
   ) {}
 
   async getAll(): Promise<UserEntity[]> {
@@ -34,14 +28,6 @@ export class UsersService {
     const user = await this.usersRepo.findOne({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    let avatarUrl: string | null = null;
-    if (user.avatarFileId) {
-      const file = await this.fileRepo.findOne({
-        where: { id: user.avatarFileId },
-      });
-      avatarUrl = file ? await this.filesService.getViewUrl(file) : null;
-    }
-
     return {
       id: user.id,
       email: user.email,
@@ -49,8 +35,6 @@ export class UsersService {
       lastName: user.lastName,
       phone: user.phone,
       role: user.role,
-      avatarFileId: user.avatarFileId ?? null,
-      avatarUrl,
       mustChangePassword: user.mustChangePassword,
       createdAt: user.createdAt,
     };
@@ -80,10 +64,6 @@ export class UsersService {
       .addSelect('u.passwordHash')
       .where('u.id = :id', { id })
       .getOne();
-  }
-
-  async updateAvatarFileId(userId: string, fileId: string) {
-    await this.usersRepo.update(userId, { avatarFileId: fileId });
   }
 
   // ─── Admin: create user ──────────────────────────────────────────────────

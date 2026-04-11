@@ -557,18 +557,26 @@ export class SandboxPromotionService {
       }
 
       // Check if sandbox still has remaining changes
+      // Must compare values + is_deleted, not just key_id/locale_id pairs
       const remaining = await manager.query<{ cnt: string }[]>(
-        `SELECT COUNT(*) AS cnt FROM (
-           SELECT sv.key_id, sv.locale_id
-           FROM sandbox_values sv
-           WHERE sv.project_id = $1
-           EXCEPT
-           SELECT tv.key_id, tv.locale_id
-           FROM translation_values tv
-           JOIN translation_keys tk ON tk.id = tv.key_id
-           JOIN translation_namespaces ns ON ns.id = tk.namespace_id
-           WHERE ns.project_id = $1
-         ) diff`,
+        `SELECT COUNT(*) AS cnt
+         FROM sandbox_values sv
+         WHERE sv.project_id = $1
+           AND (
+             -- deleted in sandbox (production key marked for removal)
+             sv.is_deleted = true
+             -- or added (exists in sandbox but not in production)
+             OR NOT EXISTS (
+               SELECT 1 FROM translation_values tv
+               WHERE tv.key_id = sv.key_id AND tv.locale_id = sv.locale_id
+             )
+             -- or changed (value differs from production)
+             OR EXISTS (
+               SELECT 1 FROM translation_values tv
+               WHERE tv.key_id = sv.key_id AND tv.locale_id = sv.locale_id
+                 AND tv.value IS DISTINCT FROM sv.value
+             )
+           )`,
         [project.id],
       );
       const hasChanges = Number(remaining[0]?.cnt ?? 0) > 0;
