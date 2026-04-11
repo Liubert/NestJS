@@ -8,8 +8,8 @@ import { ProductionSnapshotEntity } from '../translations/entities/production-sn
 import { UserRole } from '../users/types/user-role.enum.js';
 
 @Injectable()
-export class SandboxLifecycleService {
-  private readonly logger = new Logger(SandboxLifecycleService.name);
+export class LifecycleService {
+  private readonly logger = new Logger(LifecycleService.name);
 
   constructor(
     @InjectRepository(ProjectEntity)

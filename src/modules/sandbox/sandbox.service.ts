@@ -13,7 +13,7 @@ import { DataSource, Repository } from 'typeorm';
 import { hashSha256 } from '../../common/utils/hash.util.js';
 import { resolveLocaleAlias } from '../translations/constants/locale-aliases.const.js';
 import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
-import { SandboxPromotionService } from './sandbox-promotion.service.js';
+import { PromotionService } from '../production/promotion.service.js';
 import { ProjectEntity } from '../translations/entities/project.entity.js';
 import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
 import { TranslationValueEntity } from '../translations/entities/translation-value.entity.js';
@@ -86,7 +86,7 @@ export class SandboxService {
     private readonly localeRepo: Repository<LocaleEntity>,
     private readonly dataSource: DataSource,
     private readonly access: ProjectAccessHelper,
-    private readonly promotionService: SandboxPromotionService,
+    private readonly promotionService: PromotionService,
     @Inject(forwardRef(() => AiTranslateService))
     private readonly aiTranslateService: AiTranslateService,
     private readonly autoTranslateWorkerService: AutoTranslateWorkerService,

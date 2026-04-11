@@ -16,6 +16,7 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
 import { QualityWorkerModule } from './modules/translations/quality-worker.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { AiModule } from './modules/ai/ai.module';
+import { ProductionModule } from './modules/production/production.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AiModule } from './modules/ai/ai.module';
     FeedbackModule,
     ProjectsModule,
     AiModule,
+    ProductionModule,
     TranslationsModule,
     McpPromptsModule,
     QualityWorkerModule,

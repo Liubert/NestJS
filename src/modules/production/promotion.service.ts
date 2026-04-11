@@ -35,7 +35,7 @@ export interface DiffEntry {
 }
 
 @Injectable()
-export class SandboxPromotionService {
+export class PromotionService {
   constructor(
     @InjectRepository(ProjectEntity)
     private readonly projectRepo: Repository<ProjectEntity>,
