@@ -76,6 +76,7 @@ services:
     command: ["node", "dist/quality-worker.main.js"]
     networks:
       - internal
+      - public
     restart: unless-stopped
 
   admin-ui:

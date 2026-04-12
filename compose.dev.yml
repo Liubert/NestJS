@@ -82,6 +82,7 @@ services:
       - /usr/src/app/node_modules
     networks:
       - internal
+      - public
 
   admin-ui:
     profiles: ["disabled"]
