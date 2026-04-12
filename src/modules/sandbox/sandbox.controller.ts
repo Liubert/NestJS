@@ -17,6 +17,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
 import { CurrentUser } from '../auth/current-user.decorator.js';
 import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { ProjectsService } from '../projects/projects.service.js';
+import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
 import { SandboxService } from './sandbox.service.js';
 import { ListEntriesQueryDto } from '../translations/dto/list-entries-query.dto.js';
 import { CreateEntryDto } from '../translations/dto/create-entry.dto.js';
@@ -36,6 +37,7 @@ export class SandboxController {
   constructor(
     private readonly sandboxService: SandboxService,
     private readonly projectsService: ProjectsService,
+    private readonly access: ProjectAccessHelper,
   ) {}
 
   // ─── Sandbox entry management ──────────────────────────────────────────────
@@ -232,9 +234,10 @@ export class SandboxController {
     @Param('slug') slug: string,
     @Param('ns') ns: string,
     @Body() dto: BulkImportDto,
-    @CurrentUser() _user: CurrentUserType,
+    @CurrentUser() user: CurrentUserType,
   ) {
     const project = await this.projectsService.getProjectBySlug(slug);
+    await this.access.assertAccess(project, user.userId, user.role);
     const namespace = await this.projectsService.requireNamespace(
       project.id,
       ns,
@@ -268,9 +271,10 @@ export class SandboxController {
     @Param('ns') ns: string,
     @Param('key') key: string,
     @Body() dto: RenameKeyDto,
-    @CurrentUser() _user: CurrentUserType,
+    @CurrentUser() user: CurrentUserType,
   ) {
     const project = await this.projectsService.getProjectBySlug(slug);
+    await this.access.assertAccess(project, user.userId, user.role);
     const namespace = await this.projectsService.requireNamespace(
       project.id,
       ns,

@@ -489,10 +489,10 @@ export class AutoTranslateWorkerService
 
     if (values.length) {
       await this.dataSource.query(
-        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, pending_auto_translate)
-         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[], $7::boolean[])
+        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, pending_auto_translate, quality_review_state)
+         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[], $7::boolean[], $8::varchar[])
          ON CONFLICT (project_id, key_id, locale_id)
-           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at, pending_auto_translate = false`,
+           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at, pending_auto_translate = false, quality_review_state = 'not_checked'`,
         [
           values.map((v) => v.projectId),
           values.map((v) => v.keyId),
@@ -501,6 +501,7 @@ export class AutoTranslateWorkerService
           values.map(() => false),
           values.map(() => new Date()),
           values.map(() => false),
+          values.map(() => 'not_checked'),
         ],
       );
 
@@ -644,10 +645,10 @@ export class AutoTranslateWorkerService
 
     if (values.length) {
       await this.dataSource.query(
-        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, pending_auto_translate)
-         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[], $7::boolean[])
+        `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, is_deleted, updated_at, pending_auto_translate, quality_review_state)
+         SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::timestamptz[], $7::boolean[], $8::varchar[])
          ON CONFLICT (project_id, key_id, locale_id)
-           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at, pending_auto_translate = false`,
+           DO UPDATE SET value = EXCLUDED.value, is_deleted = false, updated_at = EXCLUDED.updated_at, pending_auto_translate = false, quality_review_state = 'not_checked'`,
         [
           values.map((v) => v.projectId),
           values.map((v) => v.keyId),
@@ -656,6 +657,7 @@ export class AutoTranslateWorkerService
           values.map(() => false),
           values.map(() => new Date()),
           values.map(() => false),
+          values.map(() => 'not_checked'),
         ],
       );
       await this.projectRepo.update(projectId, { sandboxHasChanges: true });

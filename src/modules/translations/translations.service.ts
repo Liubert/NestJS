@@ -9,7 +9,7 @@ import { DataSource, Repository } from 'typeorm';
 import { createHash } from 'crypto';
 import AdmZip from 'adm-zip';
 import { flattenJson, unflattenJson } from '../../common/utils/json.util.js';
-import { resolveLocaleAlias } from './constants/locale-aliases.const.js';
+import { resolveLocaleCandidates } from './constants/locale-aliases.const.js';
 import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
 import { ProjectEntity } from './entities/project.entity.js';
 import { NamespaceEntity } from './entities/namespace.entity.js';
@@ -442,7 +442,7 @@ export class TranslationsService {
     namespace: string,
     locale: string,
   ): Promise<Record<string, unknown>> {
-    const resolvedLocale = resolveLocaleAlias(locale);
+    const candidates = resolveLocaleCandidates(locale);
 
     const rows = await this.valueRepo
       .createQueryBuilder('tv')
@@ -452,7 +452,10 @@ export class TranslationsService {
       .innerJoin('tv.locale', 'l')
       .where('p.slug = :projectSlug', { projectSlug })
       .andWhere('ns.slug = :namespace', { namespace })
-      .andWhere('l.code = :locale', { locale: resolvedLocale })
+      .andWhere(
+        '(l.code IN (:...candidates) OR l.aliases && ARRAY[:...candidates]::text[])',
+        { candidates },
+      )
       .select(['tk.key AS key', 'tv.value AS value'])
       .getRawMany<{ key: string; value: string | null }>();
 

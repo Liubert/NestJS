@@ -100,8 +100,9 @@ export class QualityWorkerService
 
       // Atomically claim keys by setting state to 'processing' and returning them.
       // This prevents race conditions when multiple worker processes run concurrently.
-      const rows = await this.dataSource.query<
-        { project_id: string; key_id: string }[]
+      // TypeORM returns [rows, rowCount] for UPDATE — destructure to get actual rows.
+      const [rows] = await this.dataSource.query<
+        [{ project_id: string; key_id: string }[], number]
       >(
         `UPDATE sandbox_values
          SET quality_review_state = 'processing'
@@ -113,7 +114,7 @@ export class QualityWorkerService
              AND is_deleted = false
            LIMIT $1
          )
-         RETURNING DISTINCT project_id, key_id`,
+         RETURNING project_id, key_id`,
         [MAX_KEYS_PER_CYCLE],
       );
 
@@ -124,16 +125,18 @@ export class QualityWorkerService
 
       this.logger.log(`Found ${rows.length} sandbox keys to check`);
 
-      // Group by project
-      const byProject = new Map<string, string[]>();
+      // Group by project (deduplicate key_id — UPDATE may return multiple rows per key)
+      const byProject = new Map<string, Set<string>>();
       for (const row of rows) {
-        if (!byProject.has(row.project_id)) byProject.set(row.project_id, []);
-        byProject.get(row.project_id)!.push(row.key_id);
+        if (!byProject.has(row.project_id))
+          byProject.set(row.project_id, new Set());
+        byProject.get(row.project_id)!.add(row.key_id);
       }
 
       let totalProcessed = 0;
 
-      for (const [projectId, projectKeyIds] of byProject) {
+      for (const [projectId, projectKeyIdSet] of byProject) {
+        const projectKeyIds = [...projectKeyIdSet];
         for (let i = 0; i < projectKeyIds.length; i += BATCH_SIZE) {
           const batch = projectKeyIds.slice(i, i + BATCH_SIZE);
           try {

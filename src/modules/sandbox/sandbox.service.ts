@@ -9,7 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { hashSha256 } from '../../common/utils/hash.util.js';
-import { resolveLocaleAlias } from '../translations/constants/locale-aliases.const.js';
+import { resolveLocaleCandidates } from '../translations/constants/locale-aliases.const.js';
 import { ProjectAccessHelper } from '../projects/helpers/project-access.helper.js';
 import { PromotionService } from '../production/promotion.service.js';
 import { ProjectEntity } from '../translations/entities/project.entity.js';
@@ -506,7 +506,7 @@ export class SandboxService {
     namespace: string,
     locale: string,
   ): Promise<Record<string, string>> {
-    const resolvedLocale = resolveLocaleAlias(locale);
+    const candidates = resolveLocaleCandidates(locale);
 
     const project = await this.access.requireProject(projectSlug);
 
@@ -528,10 +528,10 @@ export class SandboxService {
       JOIN translation_locales l ON l.id = sv.locale_id
       WHERE sv.project_id = $1
         AND ns.slug = $2
-        AND l.code = $3
+        AND (l.code = ANY($3) OR l.aliases && $3::text[])
         AND sv.is_deleted = false
     `,
-      [project.id, namespace, resolvedLocale],
+      [project.id, namespace, candidates],
     );
 
     return Object.fromEntries(
@@ -553,10 +553,11 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     query: ListEntriesQueryDto,
-    _userId: string,
-    _role: UserRole,
+    userId: string,
+    role: UserRole,
   ): Promise<PaginatedResponse<SandboxEntryRow>> {
     const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
 
     this.access.assertSandboxInitialized(project);
 
@@ -819,10 +820,11 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     dto: CreateEntryDto,
-    _userId: string,
-    _role: UserRole,
+    userId: string,
+    role: UserRole,
   ): Promise<SandboxEntryRow> {
     const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
 
     this.access.assertSandboxInitialized(project);
 
@@ -897,10 +899,11 @@ export class SandboxService {
     nsSlug: string,
     key: string,
     dto: UpdateEntryDto,
-    _userId: string,
-    _role: UserRole,
+    userId: string,
+    role: UserRole,
   ): Promise<SandboxEntryRow> {
     const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
 
     this.access.assertSandboxInitialized(project);
 
@@ -1008,6 +1011,7 @@ export class SandboxService {
     role: UserRole,
   ): Promise<void> {
     const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
 
     this.access.assertSandboxInitialized(project);
 
@@ -1063,10 +1067,11 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     key: string,
-    _userId: string,
-    _role: UserRole,
+    userId: string,
+    role: UserRole,
   ): Promise<Record<string, QualityInfo | null>> {
     const project = await this.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
 
     if (!project.sandboxInitializedAt) {
       throw new BadRequestException('Sandbox is not initialized');
@@ -1220,6 +1225,7 @@ export class SandboxService {
     >;
   }> {
     const project = await this.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, userRole);
 
     if (!project.sandboxInitializedAt) {
       throw new BadRequestException('Sandbox is not initialized');
@@ -1283,10 +1289,11 @@ export class SandboxService {
       qualityLevels: string[];
       includeUnchecked: boolean;
     },
-    _userId: string,
-    _role: UserRole,
+    userId: string,
+    role: UserRole,
   ): Promise<PaginatedResponse<SandboxEntryRow>> {
     const project = await this.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
 
     if (!project.sandboxInitializedAt) {
       throw new BadRequestException('Sandbox is not initialized');
@@ -1486,10 +1493,11 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     key: string,
-    _userId: string,
-    _role: UserRole,
+    userId: string,
+    role: UserRole,
   ): Promise<void> {
     const project = await this.access.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
 
     this.access.assertSandboxInitialized(project);
 
@@ -1582,10 +1590,11 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     keys: string[],
-    _userId: string,
-    _role: UserRole,
+    userId: string,
+    role: UserRole,
   ): Promise<{ deleted: number }> {
     const project = await this.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
 
     if (!project.sandboxInitializedAt) {
       throw new BadRequestException('Sandbox is not initialized');
@@ -1684,10 +1693,11 @@ export class SandboxService {
     ns: string,
     key: string,
     locale: string,
-    _userId: string,
-    _userRole: UserRole,
+    userId: string,
+    userRole: UserRole,
   ): Promise<QualityInfo> {
     const project = await this.requireProject(slug);
+    await this.access.assertAccess(project, userId, userRole);
 
     const sv = await this.findSandboxValue(project.id, ns, key, locale);
     if (!sv) throw new NotFoundException('Sandbox value not found');
@@ -1710,10 +1720,11 @@ export class SandboxService {
     ns: string,
     key: string,
     locale: string,
-    _userId: string,
-    _userRole: UserRole,
+    userId: string,
+    userRole: UserRole,
   ): Promise<void> {
     const project = await this.requireProject(slug);
+    await this.access.assertAccess(project, userId, userRole);
 
     const sv = await this.findSandboxValue(project.id, ns, key, locale);
     if (!sv) throw new NotFoundException('Sandbox value not found');
@@ -1821,12 +1832,13 @@ export class SandboxService {
     projectSlug: string,
     nsSlug: string,
     entries: { key: string; text: string; context?: string }[],
-    _userId: string,
-    _role: UserRole,
+    userId: string,
+    role: UserRole,
     sourceLocaleOverride?: string,
   ): Promise<AnalyzeEntriesResponse> {
     // 1. Resolve project and check sandbox is initialized
     const project = await this.requireProject(projectSlug);
+    await this.access.assertAccess(project, userId, role);
     if (!project.sandboxInitializedAt) {
       throw new BadRequestException(
         'Sandbox is not initialized for this project',
