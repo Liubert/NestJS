@@ -360,8 +360,9 @@ export class QualityWorkerService
       if (need && need !== 'none' && !effectiveContext && keyResult) {
         const factor =
           need === 'required' ? CONTEXT_REQUIRED_FACTOR : CONTEXT_USEFUL_FACTOR;
-        const note =
-          need === 'required'
+        const note = info?.reason
+          ? `Context ${need}: ${info.reason}`
+          : need === 'required'
             ? 'Context is required but missing — confidence reduced.'
             : 'Context would improve this evaluation — consider adding it.';
         for (const [, r] of Object.entries(keyResult)) {
