@@ -1,13 +1,19 @@
+import { join } from 'path';
 import { NestFactory } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { Module } from '@nestjs/common';
 import appConfig, { AppConfig } from './config/app.config';
-import { QualityWorkerModule } from './modules/quality/quality.module';
+import { AiModule } from './modules/ai/ai.module';
+import { QualityWorkerQueries } from './modules/quality/quality-worker.queries';
+import { QualityWorkerService } from './modules/quality/quality-worker.service';
 
 /**
- * Standalone module for the quality worker process.
- * No HTTP server, no controllers — only DB + AI dependencies.
+ * Standalone worker process — no HTTP server, no controllers.
+ * Only DB + AI + QualityWorkerService polling.
+ *
+ * Uses glob entity loading instead of autoLoadEntities to avoid
+ * manually tracking the full chain of TypeORM entity relations.
  */
 @Module({
   imports: [
@@ -21,18 +27,17 @@ import { QualityWorkerModule } from './modules/quality/quality.module';
         const { db } = configService.getOrThrow<AppConfig>('app');
         return {
           ...db,
-          autoLoadEntities: true,
+          entities: [join(__dirname, '**', '*.entity.{ts,js}')],
         };
       },
     }),
-    QualityWorkerModule,
+    AiModule,
   ],
+  providers: [QualityWorkerQueries, QualityWorkerService],
 })
 class QualityWorkerAppModule {}
 
 async function bootstrap() {
-  process.env.QUALITY_WORKER_STANDALONE = 'true';
-
   const app = await NestFactory.createApplicationContext(
     QualityWorkerAppModule,
   );
@@ -41,7 +46,6 @@ async function bootstrap() {
 
   console.log('Quality worker process started');
 
-  // Keep process alive — shutdown hooks handle SIGINT/SIGTERM
   await new Promise(() => {});
 }
 

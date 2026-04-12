@@ -71,7 +71,6 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: development
-      QUALITY_WORKER_STANDALONE: "true"
       DB_HOST: postgres
       DB_PORT: "5432"
       DB_NAME: ${DB_NAME}

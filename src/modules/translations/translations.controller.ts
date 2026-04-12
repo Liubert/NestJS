@@ -17,7 +17,6 @@ import { ProjectsService } from '../projects/projects.service.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { AiUsageService } from '../ai/ai-usage.service.js';
 import { SandboxService } from '../sandbox/sandbox.service.js';
-import { QualityWorkerService } from '../quality/quality-worker.service.js';
 import { AiTranslateDto } from '../ai/dto/ai-translate.dto.js';
 import { BulkAiTranslateDto } from '../ai/dto/bulk-ai-translate.dto.js';
 import { BulkTranslateAndSaveDto } from '../ai/dto/bulk-translate-and-save.dto.js';
@@ -36,7 +35,6 @@ export class TranslationsController {
     private readonly aiTranslateService: AiTranslateService,
     private readonly aiUsageService: AiUsageService,
     private readonly sandboxService: SandboxService,
-    private readonly qualityWorkerService: QualityWorkerService,
   ) {}
 
   // ─── AI Usage (must be before wildcard routes) ────────────────────────────
@@ -223,7 +221,7 @@ export class TranslationsController {
     );
 
     if (dto.skipQuality === true) {
-      void this.qualityWorkerService.triggerNow();
+      // Quality worker (standalone process) will pick these up on next poll cycle
       return {
         translations,
         saved,

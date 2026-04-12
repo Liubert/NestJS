@@ -3,7 +3,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { TranslationsController } from './translations.controller.js';
 import { PublicTranslationsController } from './public-translations.controller.js';
 import { TranslationsService } from './translations.service.js';
-import { QualityWorkerModule } from '../quality/quality.module.js';
+import { QualityModule } from '../quality/quality.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
 import { AiModule } from '../ai/ai.module.js';
 import { SandboxModule } from '../sandbox/sandbox.module.js';
@@ -30,7 +30,7 @@ import { WebhooksModule } from '../webhooks/webhooks.module.js';
       ProductionSnapshotEntity,
     ]),
     WebhooksModule,
-    QualityWorkerModule,
+    QualityModule,
     ProjectsModule,
     AiModule,
     SandboxModule,

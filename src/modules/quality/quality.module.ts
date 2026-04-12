@@ -7,10 +7,16 @@ import { TranslationKeyEntity } from '../translations/entities/translation-key.e
 import { TranslationValueEntity } from '../translations/entities/translation-value.entity.js';
 import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { ProjectEntity } from '../translations/entities/project.entity.js';
-import { QualityWorkerService } from './quality-worker.service.js';
 import { AutoTranslateWorkerService } from './auto-translate-worker.service.js';
 import { TranslationQualityService } from './translation-quality.service.js';
 
+/**
+ * Core quality module for API process.
+ * Contains TranslationQualityService (sync API quality checks)
+ * and AutoTranslateWorkerService (still used by sandbox triggers — to be decoupled later).
+ *
+ * QualityWorkerService is NOT here — it runs only in the standalone worker process.
+ */
 @Module({
   imports: [
     AiModule,
@@ -23,15 +29,7 @@ import { TranslationQualityService } from './translation-quality.service.js';
       ProjectEntity,
     ]),
   ],
-  providers: [
-    QualityWorkerService,
-    AutoTranslateWorkerService,
-    TranslationQualityService,
-  ],
-  exports: [
-    QualityWorkerService,
-    AutoTranslateWorkerService,
-    TranslationQualityService,
-  ],
+  providers: [AutoTranslateWorkerService, TranslationQualityService],
+  exports: [AutoTranslateWorkerService, TranslationQualityService],
 })
-export class QualityWorkerModule {}
+export class QualityModule {}

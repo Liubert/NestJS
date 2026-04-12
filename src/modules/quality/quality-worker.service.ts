@@ -4,501 +4,284 @@ import {
   OnApplicationBootstrap,
   OnModuleDestroy,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, In, Repository } from 'typeorm';
 import { hashSha256 } from '../../common/utils/hash.util.js';
-import { checkedQualityFields } from '../translations/helpers/quality-state.helper.js';
-import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
-import { TranslationKeyEntity } from '../translations/entities/translation-key.entity.js';
-import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
 import {
   CONTEXT_REQUIRED_FACTOR,
   CONTEXT_USEFUL_FACTOR,
   scoreToLevel,
 } from './quality-constants.js';
+import {
+  CheckedResult,
+  ContextNeedUpdate,
+  QualityRow,
+  QualityWorkerQueries,
+} from './quality-worker.queries.js';
 
-const POLL_INTERVAL_MS = Number(process.env.QUALITY_POLL_INTERVAL_MS ?? 10_000);
-const BATCH_SIZE = 5;
-const MAX_KEYS_PER_CYCLE = 50;
-
-/**
- * Runs as a standalone process (quality-worker.main.ts) OR inside the API.
- * When QUALITY_WORKER_STANDALONE=true (set by the standalone entry point),
- * the in-API polling is disabled — the standalone process handles it.
- */
-const IS_STANDALONE = process.env.QUALITY_WORKER_STANDALONE === 'true';
+// Worker polls DB every 15s, sends unchecked translations to Gemini,
+// and persists quality scores back to sandbox_values.
+const POLL_MS = 15_000;
+const AI_CHUNK_SIZE = 5; // items per single Gemini request
 
 @Injectable()
 export class QualityWorkerService
   implements OnApplicationBootstrap, OnModuleDestroy
 {
   private readonly logger = new Logger(QualityWorkerService.name);
-  private timer: NodeJS.Timeout | null = null;
-  private processing = false;
+  private stopped = false;
 
   constructor(
-    @InjectRepository(SandboxValueEntity)
-    private readonly sandboxRepo: Repository<SandboxValueEntity>,
-    @InjectRepository(TranslationKeyEntity)
-    private readonly keyRepo: Repository<TranslationKeyEntity>,
-    @InjectRepository(LocaleEntity)
-    private readonly localeRepo: Repository<LocaleEntity>,
-    private readonly aiTranslateService: AiTranslateService,
-    private readonly dataSource: DataSource,
+    private readonly ai: AiTranslateService,
+    private readonly queries: QualityWorkerQueries,
   ) {}
 
+  // ─── Lifecycle ──────────────────────────────────────────────────────────────
+
   onApplicationBootstrap(): void {
-    if (IS_STANDALONE) {
-      // Standalone process — always poll
-      this.startPolling();
-    } else if (!process.env.QUALITY_WORKER_DISABLED) {
-      // API process — poll only if standalone worker is not deployed separately
-      this.startPolling();
-    } else {
-      this.logger.log(
-        'Quality worker polling disabled (handled by standalone process)',
-      );
-    }
+    void this.run();
+    this.logger.log('Quality worker started');
   }
 
   onModuleDestroy(): void {
-    if (this.timer) clearInterval(this.timer);
+    this.stopped = true;
   }
 
-  private startPolling(): void {
-    this.timer = setInterval(() => {
-      void this.pollAndProcess();
-    }, POLL_INTERVAL_MS);
-    const mode = IS_STANDALONE ? 'standalone' : 'in-process';
-    this.logger.log(
-      `Quality worker polling started (${mode}, every ${POLL_INTERVAL_MS / 1000}s)`,
-    );
-  }
+  // ─── Main loop ──────────────────────────────────────────────────────────────
+  // Simple while-loop: process one batch → sleep → repeat.
+  // Single-instance worker, no concurrency guard needed.
 
-  /**
-   * Immediately trigger a quality check cycle, bypassing the poll interval.
-   * If a cycle is already in progress, returns without waiting.
-   * Fire-and-forget safe — callers need not await.
-   */
-  triggerNow(): void {
-    void this.pollAndProcess();
-  }
-
-  private async pollAndProcess(): Promise<void> {
-    if (this.processing) return;
-    this.processing = true;
-
-    try {
-      // Fix stuck: null/empty values should never be processing or not_checked
-      await this.dataSource.query(
-        `UPDATE sandbox_values
-         SET quality_review_state = 'checked'
-         WHERE (value IS NULL OR value = '')
-           AND quality_review_state IN ('not_checked', 'processing', 'failed', 'skipped')`,
-      );
-
-      // Atomically claim keys by setting state to 'processing' and returning them.
-      // This prevents race conditions when multiple worker processes run concurrently.
-      // TypeORM returns [rows, rowCount] for UPDATE — destructure to get actual rows.
-      const [rows] = await this.dataSource.query<
-        [{ project_id: string; key_id: string }[], number]
-      >(
-        `UPDATE sandbox_values
-         SET quality_review_state = 'processing'
-         WHERE id IN (
-           SELECT DISTINCT ON (project_id, key_id) id
-           FROM sandbox_values
-           WHERE quality_review_state IN ('not_checked', 'failed', 'skipped')
-             AND value IS NOT NULL
-             AND is_deleted = false
-           LIMIT $1
-         )
-         RETURNING project_id, key_id`,
-        [MAX_KEYS_PER_CYCLE],
-      );
-
-      if (!rows.length) {
-        this.logger.debug('No sandbox keys need quality check');
-        return;
-      }
-
-      this.logger.log(`Found ${rows.length} sandbox keys to check`);
-
-      // Group by project (deduplicate key_id — UPDATE may return multiple rows per key)
-      const byProject = new Map<string, Set<string>>();
-      for (const row of rows) {
-        if (!byProject.has(row.project_id))
-          byProject.set(row.project_id, new Set());
-        byProject.get(row.project_id)!.add(row.key_id);
-      }
-
-      let totalProcessed = 0;
-
-      for (const [projectId, projectKeyIdSet] of byProject) {
-        const projectKeyIds = [...projectKeyIdSet];
-        for (let i = 0; i < projectKeyIds.length; i += BATCH_SIZE) {
-          const batch = projectKeyIds.slice(i, i + BATCH_SIZE);
-          try {
-            await this.processBatch(projectId, batch);
-            totalProcessed += batch.length;
-          } catch (e: unknown) {
-            this.logger.error(
-              `Batch failed for project ${projectId}: ${e instanceof Error ? e.message : String(e)}`,
-            );
-          }
-        }
-      }
-
-      if (totalProcessed > 0) {
-        this.logger.log(
-          `Quality check: processed ${totalProcessed} sandbox keys`,
+  private async run(): Promise<void> {
+    while (!this.stopped) {
+      try {
+        await this.tick();
+      } catch (e) {
+        this.logger.error(
+          `Poll error: ${e instanceof Error ? e.message : String(e)}`,
         );
       }
-    } catch (e: unknown) {
-      this.logger.error(
-        `Quality poll error: ${e instanceof Error ? e.message : String(e)}`,
-      );
-    } finally {
-      this.processing = false;
+      await sleep(POLL_MS);
     }
   }
 
-  private async processBatch(
+  // ─── Single iteration ──────────────────────────────────────────────────────
+
+  private async tick(): Promise<void> {
+    const rows = await this.queries.getRowsNeedingReview();
+    if (!rows.length) return;
+
+    // Group by project — AI usage accounting is per-project
+    const byProject = groupBy(rows, (r) => r.project_id);
+
+    for (const [projectId, projectRows] of byProject) {
+      try {
+        await this.checkProject(projectId, projectRows);
+      } catch (e) {
+        this.logger.error(
+          `Project ${projectId}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        const keyIds = uniqueIds(projectRows, (r) => r.key_id);
+        await this.queries.setKeysState(projectId, keyIds, 'failed');
+      }
+    }
+  }
+
+  // ─── Process one project ───────────────────────────────────────────────────
+  private async checkProject(
     projectId: string,
-    keyIds: string[],
+    rows: QualityRow[],
   ): Promise<void> {
-    if (!keyIds.length) return;
+    // Group by key — AI expects: source + all target locales per key
+    const byKey = groupBy(rows, (r) => r.key_id);
 
-    // Keys already claimed as 'processing' by pollAndProcess() atomic UPDATE RETURNING.
-    // Mark remaining locales of the same keys as processing too.
-    await this.sandboxRepo
-      .createQueryBuilder()
-      .update()
-      .set({ qualityReviewState: 'processing' })
-      .where(
-        'project_id = :projectId AND key_id IN (:...keyIds) AND quality_review_state IN (:...states) AND value IS NOT NULL',
-        {
-          projectId,
-          keyIds,
-          states: ['not_checked', 'failed', 'skipped'],
-        },
-      )
-      .execute();
+    // Build AI payload
+    const { items, localeGuidance } = buildAiPayload(byKey);
+    if (!items.length) return;
 
-    // Load project locales
-    const projectLocales = await this.localeRepo.findBy({ projectId });
-    if (!projectLocales.length) {
-      await this.setStateForKeys(projectId, keyIds, 'failed');
-      return;
-    }
-    const defaultLocale = projectLocales.find((l) => l.isDefault);
-    const localeById = new Map(projectLocales.map((l) => [l.id, l]));
-
-    // Build locale guidance map for AI quality checks
-    const localeGuidance = projectLocales.reduce<Record<string, string>>(
-      (acc, l) => {
-        if (l.localeSkill) acc[l.code] = l.localeSkill;
-        return acc;
-      },
-      {},
-    );
-    const guidanceParam = Object.keys(localeGuidance).length
-      ? localeGuidance
-      : undefined;
-
-    // Load key entities (including context and contextNeed)
-    const keys = await this.keyRepo.findBy({ id: In(keyIds) });
-    const keyById = new Map(keys.map((k) => [k.id, k]));
-
-    // Load sandbox values (include reviewState to skip already-checked locales)
-    const values = await this.sandboxRepo
-      .createQueryBuilder('sv')
-      .where(
-        'sv.project_id = :projectId AND sv.key_id IN (:...keyIds) AND sv.is_deleted = false',
-        {
-          projectId,
-          keyIds,
-        },
-      )
-      .select([
-        'sv.key_id AS key_id',
-        'sv.locale_id AS locale_id',
-        'sv.value AS value',
-        'sv.quality_comment AS quality_comment',
-        'sv.context AS context',
-        'sv.quality_review_state AS quality_review_state',
-      ])
-      .getRawMany<{
-        key_id: string;
-        locale_id: string;
-        value: string | null;
-        quality_comment: string | null;
-        context: string | null;
-        quality_review_state: string | null;
-      }>();
-
-    const NEEDS_CHECK = new Set([
-      'not_checked',
-      'failed',
-      'skipped',
-      'processing',
-    ]);
-
-    // Group values by key; also collect previous quality comments and sandbox context per key
-    // Track which locales actually need quality check (skip already-checked ones)
-    const valuesByKey = new Map<string, Map<string, string>>();
-    const needsCheckByKey = new Map<string, Set<string>>();
-    const commentsByKey = new Map<string, string[]>();
-    const sandboxContextByKey = new Map<string, string>();
-    for (const v of values) {
-      if (!v.value) continue;
-      if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, new Map());
-      valuesByKey.get(v.key_id)!.set(v.locale_id, v.value);
-      if (NEEDS_CHECK.has(v.quality_review_state ?? 'not_checked')) {
-        if (!needsCheckByKey.has(v.key_id))
-          needsCheckByKey.set(v.key_id, new Set());
-        needsCheckByKey.get(v.key_id)!.add(v.locale_id);
-      }
-      if (v.quality_comment) {
-        if (!commentsByKey.has(v.key_id)) commentsByKey.set(v.key_id, []);
-        commentsByKey.get(v.key_id)!.push(v.quality_comment);
-      }
-      // Collect sandbox context — prefer first non-null value found
-      if (v.context && !sandboxContextByKey.has(v.key_id)) {
-        sandboxContextByKey.set(v.key_id, v.context);
-      }
-    }
-
-    // Build items for bulk quality check (non-default locales only)
-    const items: Array<{
-      key: string;
-      source: string | null;
-      context: string | null;
-      translations: Record<string, string>;
-      previousComment?: string | null;
-    }> = [];
-
-    for (const keyId of keyIds) {
-      const keyEntity = keyById.get(keyId);
-      const valMap = valuesByKey.get(keyId);
-      if (!keyEntity || !valMap) continue;
-
-      const source = defaultLocale
-        ? (valMap.get(defaultLocale.id) ?? null)
-        : null;
-      const context = sandboxContextByKey.get(keyId) ?? null;
-      const localesNeedingCheck = needsCheckByKey.get(keyId);
-      const translations: Record<string, string> = {};
-      for (const [localeId, value] of valMap.entries()) {
-        const locale = localeById.get(localeId);
-        if (!locale || locale.isDefault) continue;
-        // Only include locales that actually need quality check
-        if (localesNeedingCheck && !localesNeedingCheck.has(localeId)) continue;
-        translations[locale.code] = value;
-      }
-
-      const comments = commentsByKey.get(keyId) ?? [];
-      const previousComment = comments.length ? comments.join('; ') : null;
-
-      if (Object.keys(translations).length) {
-        items.push({
-          key: keyEntity.key,
-          source,
-          context,
-          translations,
-          previousComment,
-        });
-      }
-    }
-
-    if (!items.length) {
-      await this.setStateForKeys(projectId, keyIds, 'checked');
-      return;
-    }
-
-    let results: Record<
-      string,
-      Record<
-        string,
-        { score: number; level: 'green' | 'yellow' | 'red'; comment: string }
-      >
-    >;
-    let contextInfo: Record<
-      string,
-      { need: 'required' | 'useful' | 'none'; reason: string | null }
-    >;
-    let allSkippedKeys = new Set<string>();
-
-    try {
-      // Standalone worker: no timeout (separate process, can wait as long as needed)
-      // In-process: 90s per chunk to avoid blocking the API event loop
-      const chunkTimeout = IS_STANDALONE ? 0 : 90_000;
-      const mainResult = await this.aiTranslateService.bulkCheckQuality(
+    // Call Gemini
+    const { results, contextInfo, skippedKeys } =
+      await this.ai.bulkCheckQuality(
         items,
-        5,
-        chunkTimeout,
+        AI_CHUNK_SIZE,
+        0,
         projectId,
-        guidanceParam,
+        Object.keys(localeGuidance).length ? localeGuidance : undefined,
       );
-      results = { ...mainResult.results };
-      contextInfo = { ...mainResult.contextInfo };
-      allSkippedKeys = new Set(mainResult.skippedKeys);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      const stack = e instanceof Error ? e.stack : undefined;
-      this.logger.error(
-        `Gemini failed for batch [keys: ${keyIds.join(', ')}]: ${msg}`,
-        stack,
-      );
-      await this.setStateForKeys(projectId, keyIds, 'failed');
-      return;
-    }
 
-    // Persist contextNeed/contextReason to sandbox_values only
-    for (const keyId of keyIds) {
-      const keyEntity = keyById.get(keyId);
-      if (!keyEntity) continue;
+    // Reduce scores where context is needed but missing
+    applyContextPenalty(byKey, results, contextInfo);
 
-      const info = contextInfo[keyEntity.key];
-      if (info) {
-        // Only fill contextNeed when translate worker has not already set it —
-        // translate-time signal is more reliable (no existing translations to bias Gemini)
-        await this.dataSource.query(
-          `UPDATE sandbox_values
-           SET context_need = $1, context_reason = $2
-           WHERE project_id = $3 AND key_id = $4 AND context_need IS NULL`,
-          [info.need, info.reason, projectId, keyId],
-        );
-      }
-
-      // Apply context penalty when context is missing — proportional reduction, min 1
-      const keyResult = results[keyEntity.key];
-      const need = info?.need ?? null;
-      const effectiveContext = sandboxContextByKey.get(keyId) ?? null;
-      if (need && need !== 'none' && !effectiveContext && keyResult) {
-        const factor =
-          need === 'required' ? CONTEXT_REQUIRED_FACTOR : CONTEXT_USEFUL_FACTOR;
-        const note = info?.reason
-          ? `Context ${need}: ${info.reason}`
-          : need === 'required'
-            ? 'Context is required but missing — confidence reduced.'
-            : 'Context would improve this evaluation — consider adding it.';
-        for (const [, r] of Object.entries(keyResult)) {
-          r.score = Math.max(1, Math.round(r.score * factor));
-          r.level = scoreToLevel(r.score);
-          r.comment = r.comment ? `${r.comment} ${note}` : note;
-        }
-      }
-    }
-
-    // Persist results per key×locale in sandbox
+    // Persist everything back to DB
     const now = new Date();
-    for (const keyId of keyIds) {
-      const keyEntity = keyById.get(keyId);
-      const valMap = valuesByKey.get(keyId);
-      const keyResult = keyEntity ? results[keyEntity.key] : undefined;
+    const { checked, skippedIds } = collectResults(
+      byKey,
+      results,
+      new Set(skippedKeys),
+    );
 
-      // Mark skipped keys (chunk timed out — not evaluated by AI)
-      if (keyEntity && allSkippedKeys.has(keyEntity.key)) {
-        if (valMap) {
-          for (const [localeId] of valMap.entries()) {
-            await this.sandboxRepo
-              .createQueryBuilder()
-              .update()
-              .set({
-                qualityReviewState: 'skipped',
-                qualityScore: 100,
-                qualityLevel: null,
-                qualityComment:
-                  'Quality check skipped — AI timed out on this chunk',
-                qualityCheckedAt: now,
-              })
-              .where(
-                'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
-                { projectId, keyId, localeId },
-              )
-              .execute();
-          }
-        }
-        continue;
-      }
+    await this.queries.saveCheckedScores(projectId, checked, now);
+    await this.queries.markKeysSkipped(projectId, skippedIds, now);
+    await this.queries.saveContextNeed(
+      projectId,
+      collectContextNeedUpdates(byKey, contextInfo),
+    );
+  }
+}
 
-      if (!keyResult) {
-        if (valMap) {
-          for (const [localeId] of valMap.entries()) {
-            await this.sandboxRepo
-              .createQueryBuilder()
-              .update()
-              .set({ qualityReviewState: 'failed' })
-              .where(
-                'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
-                { projectId, keyId, localeId },
-              )
-              .execute();
-          }
-        }
-        continue;
-      }
+// ─── Pure helpers (no DB, no side effects) ──────────────────────────────────
 
-      const checkedLocaleIds = new Set<string>();
-      for (const [localeCode, r] of Object.entries(keyResult)) {
-        const locale = projectLocales.find((l) => l.code === localeCode);
-        if (!locale || !valMap) continue;
-        checkedLocaleIds.add(locale.id);
-        const value = valMap.get(locale.id);
-        const hash = value ? hashSha256(value) : null;
+function buildAiPayload(byKey: Map<string, QualityRow[]>): {
+  items: Array<{
+    key: string;
+    source: string | null;
+    context: string | null;
+    translations: Record<string, string>;
+  }>;
+  localeGuidance: Record<string, string>;
+} {
+  const items: Array<{
+    key: string;
+    source: string | null;
+    context: string | null;
+    translations: Record<string, string>;
+  }> = [];
+  const localeGuidance: Record<string, string> = {};
 
-        await this.sandboxRepo
-          .createQueryBuilder()
-          .update()
-          .set({
-            ...checkedQualityFields(r),
-            qualityContentHash: hash,
-          })
-          .where(
-            'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
-            { projectId, keyId, localeId: locale.id },
-          )
-          .execute();
-      }
+  for (const [, keyRows] of byKey) {
+    const source = keyRows.find((r) => r.is_default)?.value ?? null;
+    const toCheck = keyRows.filter(
+      (r) => !r.is_default && needsReview(r.quality_review_state),
+    );
+    if (!toCheck.length) continue;
 
-      // Mark any locales missing from results as failed
-      if (valMap) {
-        for (const [localeId] of valMap.entries()) {
-          if (!checkedLocaleIds.has(localeId)) {
-            await this.sandboxRepo
-              .createQueryBuilder()
-              .update()
-              .set({ qualityReviewState: 'failed' })
-              .where(
-                'project_id = :projectId AND key_id = :keyId AND locale_id = :localeId',
-                { projectId, keyId, localeId },
-              )
-              .execute();
-          }
-        }
-      }
+    const translations: Record<string, string> = {};
+    for (const r of toCheck) {
+      translations[r.locale_code] = r.value;
+      if (r.locale_skill) localeGuidance[r.locale_code] = r.locale_skill;
+    }
+
+    items.push({
+      key: keyRows[0].key_name,
+      source,
+      context: keyRows.find((r) => r.context)?.context ?? null,
+      translations,
+    });
+  }
+
+  return { items, localeGuidance };
+}
+
+/** Reduce scores when AI says context is needed but key has none. */
+function applyContextPenalty(
+  byKey: Map<string, QualityRow[]>,
+  results: Record<
+    string,
+    Record<string, { score: number; level: string; comment: string }>
+  >,
+  contextInfo: Record<string, { need: string; reason: string | null }>,
+): void {
+  for (const [, keyRows] of byKey) {
+    const name = keyRows[0].key_name;
+    const info = contextInfo[name];
+    const keyResult = results[name];
+    if (!info || !keyResult || info.need === 'none') continue;
+    if (keyRows.some((r) => r.context)) continue;
+
+    const factor =
+      info.need === 'required'
+        ? CONTEXT_REQUIRED_FACTOR
+        : CONTEXT_USEFUL_FACTOR;
+    const note = info.reason
+      ? `Context ${info.need}: ${info.reason}`
+      : info.need === 'required'
+        ? 'Context is required but missing — confidence reduced.'
+        : 'Context would improve this evaluation — consider adding it.';
+
+    for (const r of Object.values(keyResult)) {
+      r.score = Math.max(1, Math.round(r.score * factor));
+      r.level = scoreToLevel(r.score);
+      r.comment = r.comment ? `${r.comment} ${note}` : note;
+    }
+  }
+}
+
+/** Map AI results → flat arrays ready for DB persist. */
+function collectResults(
+  byKey: Map<string, QualityRow[]>,
+  results: Record<
+    string,
+    Record<string, { score: number; level: string; comment: string }>
+  >,
+  skippedKeys: Set<string>,
+): { checked: CheckedResult[]; skippedIds: string[] } {
+  const checked: CheckedResult[] = [];
+  const skippedIds: string[] = [];
+
+  for (const [keyId, keyRows] of byKey) {
+    const name = keyRows[0].key_name;
+
+    if (skippedKeys.has(name)) {
+      skippedIds.push(keyId);
+      continue;
+    }
+
+    const keyResult = results[name];
+    if (!keyResult) continue;
+
+    for (const [code, r] of Object.entries(keyResult)) {
+      const match = keyRows.find((kr) => kr.locale_code === code);
+      if (!match) continue;
+      checked.push({
+        keyId,
+        localeId: match.locale_id,
+        score: r.score,
+        level: r.level,
+        comment: r.comment,
+        hash: hashSha256(match.value),
+      });
     }
   }
 
-  private async setStateForKeys(
-    projectId: string,
-    keyIds: string[],
-    state: 'checked' | 'failed',
-  ): Promise<void> {
-    await this.sandboxRepo
-      .createQueryBuilder()
-      .update()
-      .set({ qualityReviewState: state })
-      .where(
-        'project_id = :projectId AND key_id IN (:...keyIds) AND quality_review_state != :protected',
-        {
-          projectId,
-          keyIds,
-          protected: 'expected',
-        },
-      )
-      .execute();
+  return { checked, skippedIds };
+}
+
+/** Collect keys that need context_need metadata saved. */
+function collectContextNeedUpdates(
+  byKey: Map<string, QualityRow[]>,
+  contextInfo: Record<string, { need: string; reason: string | null }>,
+): ContextNeedUpdate[] {
+  const updates: ContextNeedUpdate[] = [];
+  for (const [keyId, keyRows] of byKey) {
+    const info = contextInfo[keyRows[0].key_name];
+    if (!info?.need || info.need === 'none') continue;
+    updates.push({ keyId, need: info.need, reason: info.reason });
   }
+  return updates;
+}
+
+// ─── Utilities ──────────────────────────────────────────────────────────────
+
+function needsReview(state: string): boolean {
+  return state === 'not_checked' || state === 'failed' || state === 'skipped';
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function groupBy<T>(items: T[], key: (item: T) => string): Map<string, T[]> {
+  const map = new Map<string, T[]>();
+  for (const item of items) {
+    const k = key(item);
+    let arr = map.get(k);
+    if (!arr) {
+      arr = [];
+      map.set(k, arr);
+    }
+    arr.push(item);
+  }
+  return map;
+}
+
+function uniqueIds<T>(items: T[], key: (item: T) => string): string[] {
+  return [...new Set(items.map(key))];
 }

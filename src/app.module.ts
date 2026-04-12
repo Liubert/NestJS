@@ -13,7 +13,7 @@ import { TranslationsModule } from './modules/translations/translations.module';
 import { McpPromptsModule } from './modules/mcp-prompts/mcp-prompts.module';
 import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
-import { QualityWorkerModule } from './modules/quality/quality.module';
+import { QualityModule } from './modules/quality/quality.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ProductionModule } from './modules/production/production.module';
@@ -45,7 +45,7 @@ import { ProductionModule } from './modules/production/production.module';
     ProductionModule,
     TranslationsModule,
     McpPromptsModule,
-    QualityWorkerModule,
+    QualityModule,
   ],
   controllers: [AppController],
   providers: [],
