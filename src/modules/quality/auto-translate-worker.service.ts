@@ -296,8 +296,8 @@ export class AutoTranslateWorkerService
   private async pollAndProcess(): Promise<void> {
     try {
       // Find keys where the default locale has a sandbox value and either:
-      //   (a) auto_translate_enabled=true and a non-default locale is entirely missing, OR
-      //   (b) a sandbox_value row exists with pending_auto_translate=true (explicitly requested)
+      //   (a) auto_translate_enabled=true and a non-default locale has no value (missing row, NULL, or empty), OR
+      //   (b) pending_auto_translate=true — translate regardless of existing value or autoTranslate setting
       const rows = await this.dataSource.query<MissingRow[]>(
         `SELECT DISTINCT ON (tk.id)
            ns.project_id,
@@ -327,8 +327,8 @@ export class AutoTranslateWorkerService
            AND sv_tgt.is_deleted = false
          WHERE sv_def.value IS NOT NULL
            AND (
-             (p.auto_translate_enabled = true AND sv_tgt.id IS NULL)
-             OR (sv_tgt.pending_auto_translate = true AND (sv_tgt.value IS NULL OR sv_tgt.value = ''))
+             (p.auto_translate_enabled = true AND (sv_tgt.id IS NULL OR sv_tgt.value IS NULL OR sv_tgt.value = ''))
+             OR sv_tgt.pending_auto_translate = true
            )
          LIMIT $1`,
         [MAX_KEYS_PER_CYCLE],
@@ -413,9 +413,11 @@ export class AutoTranslateWorkerService
     // Also load qualityComment and pendingAutoTranslate to pass as previousComment to Gemini
     const existingSandbox = await this.sandboxRepo.find({
       where: { projectId, keyId, isDeleted: false },
-      select: ['localeId', 'qualityComment', 'pendingAutoTranslate'],
+      select: ['localeId', 'value', 'qualityComment', 'pendingAutoTranslate'],
     });
-    const existingLocaleIds = new Set(existingSandbox.map((s) => s.localeId));
+    const existingByLocale = new Map(
+      existingSandbox.map((s) => [s.localeId, s]),
+    );
     const pendingLocaleIds = new Set(
       existingSandbox
         .filter((s) => s.pendingAutoTranslate)
@@ -429,10 +431,14 @@ export class AutoTranslateWorkerService
     const previousComment = qualityComments.length
       ? qualityComments[0]
       : undefined;
-    // A locale needs translation if: it has no row, OR its row has pending_auto_translate=true
-    const missingLocales = nonDefaultLocales.filter(
-      (l) => !existingLocaleIds.has(l.id) || pendingLocaleIds.has(l.id),
-    );
+    // A locale needs translation if: it has no row, OR value is null/empty, OR pending_auto_translate=true
+    const missingLocales = nonDefaultLocales.filter((l) => {
+      const existing = existingByLocale.get(l.id);
+      if (!existing) return true; // no row
+      if (pendingLocaleIds.has(l.id)) return true; // explicitly requested
+      if (!existing.value) return true; // value is null or empty
+      return false;
+    });
 
     if (!missingLocales.length) {
       this.logger.debug(
@@ -550,17 +556,22 @@ export class AutoTranslateWorkerService
     const allKeyIds = keys.map((k) => k.keyId);
     const existingSandbox = await this.sandboxRepo.find({
       where: { projectId, keyId: In(allKeyIds), isDeleted: false },
-      select: ['keyId', 'localeId', 'qualityComment', 'pendingAutoTranslate'],
+      select: [
+        'keyId',
+        'localeId',
+        'value',
+        'qualityComment',
+        'pendingAutoTranslate',
+      ],
     });
 
-    // Group by keyId for fast lookup (existing locales + first non-null quality comment)
+    // Group by keyId+localeId for fast lookup
     // pendingByKeyLocale tracks key+locale combos that need (re-)translation even if row exists
-    const existingByKey = new Map<string, Set<string>>();
+    const existingByKeyLocale = new Map<string, (typeof existingSandbox)[0]>();
     const qualityCommentByKey = new Map<string, string>();
     const pendingByKeyLocale = new Set<string>();
     for (const sv of existingSandbox) {
-      if (!existingByKey.has(sv.keyId)) existingByKey.set(sv.keyId, new Set());
-      existingByKey.get(sv.keyId)!.add(sv.localeId);
+      existingByKeyLocale.set(`${sv.keyId}::${sv.localeId}`, sv);
       if (sv.qualityComment && !qualityCommentByKey.has(sv.keyId)) {
         qualityCommentByKey.set(sv.keyId, sv.qualityComment);
       }
@@ -570,7 +581,7 @@ export class AutoTranslateWorkerService
     }
 
     // Build entries array for bulkTranslate, filtering out keys where all locales already exist
-    // A locale "needs translation" if: it has no row, OR its row has pending_auto_translate=true
+    // A locale "needs translation" if: it has no row, OR value is null/empty, OR pending_auto_translate=true
     const entries: Array<{
       key: string;
       text: string;
@@ -581,12 +592,14 @@ export class AutoTranslateWorkerService
     const keyIdByName = new Map<string, string>(); // key name -> keyId for result mapping
 
     for (const k of keys) {
-      const existingLocaleIds = existingByKey.get(k.keyId) ?? new Set();
-      const missingLocales = nonDefaultLocales.filter(
-        (l) =>
-          !existingLocaleIds.has(l.id) ||
-          pendingByKeyLocale.has(`${k.keyId}::${l.id}`),
-      );
+      const missingLocales = nonDefaultLocales.filter((l) => {
+        const key = `${k.keyId}::${l.id}`;
+        const existing = existingByKeyLocale.get(key);
+        if (!existing) return true; // no row
+        if (pendingByKeyLocale.has(key)) return true; // explicitly requested
+        if (!existing.value) return true; // value is null or empty
+        return false;
+      });
       if (!missingLocales.length) continue;
       const previousComment = qualityCommentByKey.get(k.keyId);
       entries.push({
