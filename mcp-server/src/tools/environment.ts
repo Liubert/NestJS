@@ -9,7 +9,6 @@ interface ProjectListItem {
   slug: string;
   name: string | null;
   ownerId: string;
-  sandboxInitializedAt: string | null;
   sandboxHasChanges: boolean;
 }
 
@@ -47,11 +46,9 @@ export function registerEnvironmentTools(server: McpServer): void {
         }>('/translations/projects', { page: 1, limit: 100 });
 
         const rows = data.data.map((p) => {
-          const sandboxState = p.sandboxInitializedAt
-            ? p.sandboxHasChanges
-              ? 'initialized, HAS PENDING CHANGES'
-              : 'initialized, no changes'
-            : 'not initialized';
+          const sandboxState = p.sandboxHasChanges
+            ? 'HAS PENDING CHANGES'
+            : 'no changes';
           return `• ${p.slug}${p.name ? ` (${p.name})` : ''} — sandbox: ${sandboxState}`;
         });
 
@@ -181,7 +178,7 @@ export function registerEnvironmentTools(server: McpServer): void {
           process.env.ADMIN_UI_URL ?? '(NOT SET — configure ADMIN_UI_URL)';
 
         // Fetch projects, optional project details, and agent guide in parallel.
-        // The project list already includes sandboxHasChanges + sandboxInitializedAt — no extra status calls needed.
+        // The project list already includes sandboxHasChanges — no extra status calls needed.
         const [projectsData, projectDetails, agentGuide] = await Promise.all([
           apiGet<{ data: ProjectListItem[]; meta: { total: number } }>(
             '/translations/projects',

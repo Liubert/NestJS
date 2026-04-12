@@ -7,7 +7,6 @@ interface ProjectListItem {
   id: string;
   slug: string;
   name: string | null;
-  sandboxInitializedAt: string | null;
   sandboxHasChanges: boolean;
 }
 
@@ -263,11 +262,9 @@ export function registerPrompts(server: McpServer): void {
         if (data.data.length > 0) {
           lines.push("### Projects");
           for (const p of data.data) {
-            const sandboxState = p.sandboxInitializedAt
-              ? p.sandboxHasChanges
-                ? "sandbox: ⚠️  HAS PENDING CHANGES"
-                : "sandbox: ✅ no changes"
-              : "sandbox: not initialized";
+            const sandboxState = p.sandboxHasChanges
+              ? "sandbox: ⚠️  HAS PENDING CHANGES"
+              : "sandbox: ✅ no changes";
             lines.push(`- \`${p.slug}\`${p.name ? ` (${p.name})` : ""} — ${sandboxState}`);
           }
           lines.push("");

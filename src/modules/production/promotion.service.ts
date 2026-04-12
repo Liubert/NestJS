@@ -74,8 +74,6 @@ export class PromotionService {
   }> {
     const project = await this.access.requireProject(projectSlug);
 
-    this.access.assertSandboxInitialized(project);
-
     const offset = (page - 1) * limit;
     const params: unknown[] = [
       project.id,
@@ -252,8 +250,6 @@ export class PromotionService {
   ): Promise<{ snapshotId: string; promoted: number }> {
     const project = await this.access.requireProject(projectSlug);
 
-    this.access.assertSandboxInitialized(project);
-
     this.access.assertOwnerOrAdmin(
       project,
       userId,
@@ -397,7 +393,6 @@ export class PromotionService {
       );
 
       await manager.update(ProjectEntity, project.id, {
-        sandboxInitializedAt: new Date(),
         sandboxHasChanges: false,
       });
 
@@ -414,8 +409,6 @@ export class PromotionService {
     role: UserRole,
   ): Promise<{ snapshotId: string; promoted: number }> {
     const project = await this.access.requireProject(projectSlug);
-
-    this.access.assertSandboxInitialized(project);
 
     this.access.assertOwnerOrAdmin(
       project,

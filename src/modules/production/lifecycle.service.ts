@@ -22,37 +22,9 @@ export class LifecycleService {
     private readonly access: ProjectAccessHelper,
   ) {}
 
-  // ─── Initialize sandbox ───────────────────────────────────────────────────
-
-  /**
-   * Marks the sandbox as initialized (empty start — no production copy).
-   * All changes flow: sandbox → promote → production.
-   * To reset sandbox to production state, use resetSandbox().
-   */
-  async initSandbox(
-    projectSlug: string,
-    _userId: string,
-    _role: UserRole,
-  ): Promise<{ initialized: boolean }> {
-    const project = await this.access.requireProject(projectSlug);
-
-    if (project.sandboxInitializedAt) {
-      return { initialized: false };
-    }
-
-    await this.projectRepo.update(project.id, {
-      sandboxInitializedAt: new Date(),
-      sandboxHasChanges: false,
-    });
-
-    return { initialized: true };
-  }
-
   // ─── Get sandbox status ───────────────────────────────────────────────────
 
   async getSandboxStatus(projectSlug: string): Promise<{
-    initialized: boolean;
-    initializedAt: Date | null;
     hasChanges: boolean;
     snapshotCount: number;
   }> {
@@ -62,8 +34,6 @@ export class LifecycleService {
     });
 
     return {
-      initialized: !!project.sandboxInitializedAt,
-      initializedAt: project.sandboxInitializedAt,
       hasChanges: project.sandboxHasChanges,
       snapshotCount,
     };
@@ -116,7 +86,6 @@ export class LifecycleService {
       }
 
       await manager.update(ProjectEntity, project.id, {
-        sandboxInitializedAt: new Date(),
         sandboxHasChanges: false,
       });
 

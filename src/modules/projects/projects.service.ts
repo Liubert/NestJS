@@ -141,6 +141,7 @@ export class ProjectsService {
         name: dto.name ?? dto.slug,
         ownerId: userId,
         aiTokenDailyLimit: 2_000_000,
+        autoTranslateEnabled: true,
       }),
     );
 
@@ -186,14 +187,6 @@ export class ProjectsService {
         }),
       ),
     );
-
-    // Auto-initialize sandbox (empty — no production data to copy yet)
-    await this.projectRepo.update(project.id, {
-      sandboxInitializedAt: new Date(),
-      sandboxHasChanges: false,
-    });
-    project.sandboxInitializedAt = new Date();
-    project.sandboxHasChanges = false;
 
     return project;
   }
@@ -474,7 +467,7 @@ export class ProjectsService {
     // pending sandbox_value placeholders for all keys that have a default-locale
     // sandbox value. The auto-translate worker picks up rows with
     // pending_auto_translate=true regardless of the project's auto_translate_enabled flag.
-    if (initTranslate && !isDefault && project.sandboxInitializedAt) {
+    if (initTranslate && !isDefault) {
       const defaultLocale = await this.localeRepo.findOneBy({
         projectId: project.id,
         isDefault: true,

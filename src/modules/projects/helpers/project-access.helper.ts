@@ -1,5 +1,4 @@
 import {
-  BadRequestException,
   ForbiddenException,
   Injectable,
   NotFoundException,
@@ -36,18 +35,6 @@ export class ProjectAccessHelper {
     const project = await this.projectRepo.findOne({ where: { slug } });
     if (!project) throw new NotFoundException(`Project "${slug}" not found`);
     return project;
-  }
-
-  async requireInitializedProject(slug: string): Promise<ProjectEntity> {
-    const project = await this.requireProject(slug);
-    this.assertSandboxInitialized(project);
-    return project;
-  }
-
-  assertSandboxInitialized(project: ProjectEntity): void {
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
   }
 
   async assertAccess(

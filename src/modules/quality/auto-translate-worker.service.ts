@@ -325,8 +325,7 @@ export class AutoTranslateWorkerService
            AND sv_tgt.locale_id = tl.id
            AND sv_tgt.project_id = p.id
            AND sv_tgt.is_deleted = false
-         WHERE p.sandbox_initialized_at IS NOT NULL
-           AND sv_def.value IS NOT NULL
+         WHERE sv_def.value IS NOT NULL
            AND (
              (p.auto_translate_enabled = true AND sv_tgt.id IS NULL)
              OR (sv_tgt.pending_auto_translate = true AND (sv_tgt.value IS NULL OR sv_tgt.value = ''))

@@ -622,17 +622,9 @@ export class TranslationsService {
         }
       }
 
-      // Auto-init sandbox if not yet initialized
-      if (!project.sandboxInitializedAt) {
-        await manager.update(ProjectEntity, project.id, {
-          sandboxInitializedAt: new Date(),
-          sandboxHasChanges: true,
-        });
-      } else {
-        await manager.update(ProjectEntity, project.id, {
-          sandboxHasChanges: true,
-        });
-      }
+      await manager.update(ProjectEntity, project.id, {
+        sandboxHasChanges: true,
+      });
 
       return {
         imported,

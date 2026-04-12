@@ -510,10 +510,6 @@ export class SandboxService {
 
     const project = await this.access.requireProject(projectSlug);
 
-    if (!project.sandboxInitializedAt) {
-      return {};
-    }
-
     const rows = await this.dataSource.query<
       {
         key: string;
@@ -558,8 +554,6 @@ export class SandboxService {
   ): Promise<PaginatedResponse<SandboxEntryRow>> {
     const project = await this.access.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
-
-    this.access.assertSandboxInitialized(project);
 
     const ns = await this.access.requireNamespace(project.id, nsSlug);
 
@@ -826,8 +820,6 @@ export class SandboxService {
     const project = await this.access.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
 
-    this.access.assertSandboxInitialized(project);
-
     const ns = await this.access.requireNamespace(project.id, nsSlug);
 
     const exists = await this.keyRepo.existsBy({
@@ -904,8 +896,6 @@ export class SandboxService {
   ): Promise<SandboxEntryRow> {
     const project = await this.access.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
-
-    this.access.assertSandboxInitialized(project);
 
     const ns = await this.access.requireNamespace(project.id, nsSlug);
 
@@ -1013,8 +1003,6 @@ export class SandboxService {
     const project = await this.access.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
 
-    this.access.assertSandboxInitialized(project);
-
     const ns = await this.access.requireNamespace(project.id, nsSlug);
 
     const keyEntity = await this.access.requireKey(ns.id, key);
@@ -1072,10 +1060,6 @@ export class SandboxService {
   ): Promise<Record<string, QualityInfo | null>> {
     const project = await this.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
-
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
 
     const ns = await this.namespaceRepo.findOne({
       where: { projectId: project.id, slug: nsSlug },
@@ -1227,10 +1211,6 @@ export class SandboxService {
     const project = await this.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, userRole);
 
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
-
     const ns = await this.namespaceRepo.findOne({
       where: { projectId: project.id, slug: nsSlug },
     });
@@ -1294,10 +1274,6 @@ export class SandboxService {
   ): Promise<PaginatedResponse<SandboxEntryRow>> {
     const project = await this.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
-
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
 
     const ns = await this.namespaceRepo.findOne({
       where: { projectId: project.id, slug: nsSlug },
@@ -1499,8 +1475,6 @@ export class SandboxService {
     const project = await this.access.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
 
-    this.access.assertSandboxInitialized(project);
-
     const ns = await this.access.requireNamespace(project.id, nsSlug);
 
     const keyEntity = await this.access.requireKey(ns.id, key);
@@ -1527,8 +1501,6 @@ export class SandboxService {
       context?: string;
     }[],
   ): Promise<{ created: number; updated: number }> {
-    this.access.assertSandboxInitialized(project);
-
     const locales = await this.localeRepo.findBy({ projectId: project.id });
     const localeByCode = new Map(locales.map((l) => [l.code, l]));
 
@@ -1595,10 +1567,6 @@ export class SandboxService {
   ): Promise<{ deleted: number }> {
     const project = await this.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
-
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException('Sandbox is not initialized');
-    }
 
     const ns = await this.namespaceRepo.findOne({
       where: { projectId: project.id, slug: nsSlug },
@@ -1836,14 +1804,9 @@ export class SandboxService {
     role: UserRole,
     sourceLocaleOverride?: string,
   ): Promise<AnalyzeEntriesResponse> {
-    // 1. Resolve project and check sandbox is initialized
+    // 1. Resolve project and access
     const project = await this.requireProject(projectSlug);
     await this.access.assertAccess(project, userId, role);
-    if (!project.sandboxInitializedAt) {
-      throw new BadRequestException(
-        'Sandbox is not initialized for this project',
-      );
-    }
 
     // 2. Resolve namespace
     const ns = await this.namespaceRepo.findOne({

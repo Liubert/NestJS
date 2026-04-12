@@ -53,20 +53,18 @@ describe('Translations CRUD (e2e)', () => {
     await teardownTestApp();
   });
 
-  it('should auto-initialize sandbox on project creation', async () => {
+  it('should return sandbox status for a project', async () => {
     const res = await request(app.getHttpServer())
       .get(`/translations/projects/${TEST_PROJECT_SLUG}/sandbox/status`)
       .set('Authorization', `Bearer ${token}`)
       .expect(200);
 
     const body = res.body as {
-      initialized: boolean;
-      initializedAt: string;
       hasChanges: boolean;
+      snapshotCount: number;
     };
-    expect(body.initialized).toBe(true);
-    expect(body.initializedAt).toBeTruthy();
     expect(body.hasChanges).toBe(false);
+    expect(typeof body.snapshotCount).toBe('number');
   });
 
   it('should allow creating sandbox entry without manual init', async () => {

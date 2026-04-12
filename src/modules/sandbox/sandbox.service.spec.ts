@@ -39,7 +39,7 @@ function buildSandboxService(
   const defaultDataSource = {};
   const defaultAccess = {
     requireProject: jest.fn(),
-    assertSandboxInitialized: jest.fn(),
+    assertAccess: jest.fn(),
     assertOwnerOrAdmin: jest.fn(),
     isAdmin: jest.fn(),
   };
@@ -135,7 +135,6 @@ describe('runSandboxQualityCheck', () => {
       projectRepo: {
         findOne: jest.fn().mockResolvedValue({
           id: PROJECT_ID,
-          sandboxInitializedAt: new Date(),
         }),
       },
       sandboxRepo,
@@ -273,7 +272,6 @@ describe('analyzeEntries', () => {
     const projectRepo = {
       findOne: jest.fn().mockResolvedValue({
         id: PROJECT_ID,
-        sandboxInitializedAt: new Date(),
       }),
     };
     const namespaceRepo = {
