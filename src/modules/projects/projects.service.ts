@@ -162,6 +162,21 @@ export class ProjectsService {
       }),
     );
 
+    // Create target locales provided by the user
+    if (dto.locales?.length) {
+      await this.localeRepo.save(
+        dto.locales
+          .filter((code) => code !== 'en')
+          .map((code) =>
+            this.localeRepo.create({
+              projectId: project.id,
+              code,
+              isDefault: false,
+            }),
+          ),
+      );
+    }
+
     // Create namespaces provided by the user
     await this.namespaceRepo.save(
       dto.namespaces.map((slug) =>

@@ -35,4 +35,18 @@ export class CreateProjectDto {
     message: 'namespace slugs must be lowercase alphanumeric with dashes',
   })
   namespaces!: string[];
+
+  @ApiProperty({
+    example: ['uk', 'de'],
+    description:
+      'Target locales to create (besides the default "en"). At least one is required.',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one target locale is required' })
+  @IsString({ each: true })
+  @Matches(/^[a-z]{2,3}(-[A-Z]{2})?$/, {
+    each: true,
+    message: 'locale codes must be ISO 639 (e.g. uk, de, nb-NO)',
+  })
+  locales!: string[];
 }

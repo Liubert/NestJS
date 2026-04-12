@@ -14,6 +14,7 @@ import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import apiClient from '../../api/client';
+import { useSupportedLocales } from '../../hooks/useSupportedLocales';
 
 const { Title } = Typography;
 
@@ -33,6 +34,7 @@ const createProject = async (dto: {
   slug: string;
   name: string;
   namespaces: string[];
+  locales: string[];
 }): Promise<Project> => {
   const res = await apiClient.post('/translations/projects', dto);
   return res.data;
@@ -47,6 +49,8 @@ const ProjectsPage: React.FC = () => {
   const navigate = useNavigate();
   const [form] = Form.useForm();
   const [modalOpen, setModalOpen] = useState(false);
+
+  const { data: supportedLocales = [] } = useSupportedLocales();
 
   const { data: projects = [], isLoading } = useQuery({
     queryKey: ['projects'],
@@ -81,6 +85,7 @@ const ProjectsPage: React.FC = () => {
         slug: vals.slug,
         name: vals.name || vals.slug,
         namespaces: vals.namespaces,
+        locales: vals.locales,
       });
     });
   };
@@ -203,9 +208,33 @@ const ProjectsPage: React.FC = () => {
             <Input placeholder="my-project" />
           </Form.Item>
           <Form.Item
+            name="locales"
+            label="Translation languages"
+            extra="Select languages for translation. English (en) is always the source."
+            rules={[
+              {
+                required: true,
+                message: 'At least one target language is required',
+              },
+            ]}
+          >
+            <Select
+              mode="multiple"
+              placeholder="Select languages..."
+              optionFilterProp="label"
+              options={supportedLocales
+                .filter((l) => l.code !== 'en')
+                .map((l) => ({
+                  value: l.code,
+                  label: `${l.flag} ${l.name} (${l.code})`,
+                }))}
+            />
+          </Form.Item>
+          <Form.Item
             name="namespaces"
             label="Namespaces"
-            extra="Type a namespace slug and press Enter. At least one is required."
+            extra="Pre-filled with common defaults. You can add or remove."
+            initialValue={['frontend', 'backend']}
             rules={[
               {
                 required: true,
