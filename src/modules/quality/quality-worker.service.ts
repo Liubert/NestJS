@@ -211,7 +211,7 @@ export class QualityWorkerService
     const keys = await this.keyRepo.findBy({ id: In(keyIds) });
     const keyById = new Map(keys.map((k) => [k.id, k]));
 
-    // Load sandbox values
+    // Load sandbox values (include reviewState to skip already-checked locales)
     const values = await this.sandboxRepo
       .createQueryBuilder('sv')
       .where(
@@ -227,6 +227,7 @@ export class QualityWorkerService
         'sv.value AS value',
         'sv.quality_comment AS quality_comment',
         'sv.context AS context',
+        'sv.quality_review_state AS quality_review_state',
       ])
       .getRawMany<{
         key_id: string;
@@ -234,16 +235,31 @@ export class QualityWorkerService
         value: string | null;
         quality_comment: string | null;
         context: string | null;
+        quality_review_state: string | null;
       }>();
 
+    const NEEDS_CHECK = new Set([
+      'not_checked',
+      'failed',
+      'skipped',
+      'processing',
+    ]);
+
     // Group values by key; also collect previous quality comments and sandbox context per key
+    // Track which locales actually need quality check (skip already-checked ones)
     const valuesByKey = new Map<string, Map<string, string>>();
+    const needsCheckByKey = new Map<string, Set<string>>();
     const commentsByKey = new Map<string, string[]>();
     const sandboxContextByKey = new Map<string, string>();
     for (const v of values) {
       if (!v.value) continue;
       if (!valuesByKey.has(v.key_id)) valuesByKey.set(v.key_id, new Map());
       valuesByKey.get(v.key_id)!.set(v.locale_id, v.value);
+      if (NEEDS_CHECK.has(v.quality_review_state ?? 'not_checked')) {
+        if (!needsCheckByKey.has(v.key_id))
+          needsCheckByKey.set(v.key_id, new Set());
+        needsCheckByKey.get(v.key_id)!.add(v.locale_id);
+      }
       if (v.quality_comment) {
         if (!commentsByKey.has(v.key_id)) commentsByKey.set(v.key_id, []);
         commentsByKey.get(v.key_id)!.push(v.quality_comment);
@@ -272,10 +288,13 @@ export class QualityWorkerService
         ? (valMap.get(defaultLocale.id) ?? null)
         : null;
       const context = sandboxContextByKey.get(keyId) ?? null;
+      const localesNeedingCheck = needsCheckByKey.get(keyId);
       const translations: Record<string, string> = {};
       for (const [localeId, value] of valMap.entries()) {
         const locale = localeById.get(localeId);
         if (!locale || locale.isDefault) continue;
+        // Only include locales that actually need quality check
+        if (localesNeedingCheck && !localesNeedingCheck.has(localeId)) continue;
         translations[locale.code] = value;
       }
 
