@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Logger,
   Param,
   Post,
   Query,
@@ -28,6 +29,7 @@ import { PreviewPromptDto } from '../ai/dto/preview-prompt.dto.js';
 @ApiTags('translations')
 @Controller('translations')
 export class TranslationsController {
+  private readonly logger = new Logger(TranslationsController.name);
   constructor(
     private readonly translationsService: TranslationsService,
     private readonly projectsService: ProjectsService,
@@ -62,29 +64,42 @@ export class TranslationsController {
     contextNeed: string;
     contextReason: string | null;
   }> {
+    const t0 = Date.now();
     let projectId: string | undefined;
     let localeGuidance: Record<string, string> | undefined;
     if (dto.projectSlug) {
       const project = await this.projectsService.getProjectBySlug(
         dto.projectSlug,
       );
+      this.logger.log(`[ai-translate] getProjectBySlug: ${Date.now() - t0}ms`);
       projectId = project.id;
+      const t1 = Date.now();
       const locales = await this.projectsService.getProjectLocales(
         dto.projectSlug,
       );
+      this.logger.log(`[ai-translate] getProjectLocales: ${Date.now() - t1}ms`);
       const guidance = locales.reduce<Record<string, string>>((acc, l) => {
         if (l.localeSkill) acc[l.code] = l.localeSkill;
         return acc;
       }, {});
       if (Object.keys(guidance).length) localeGuidance = guidance;
     }
-    return this.aiTranslateService.translate(
+    this.logger.log(
+      `[ai-translate] pre-translate setup: ${Date.now() - t0}ms, targetLocales: ${dto.targetLocales?.join(',') ?? 'all'}`,
+    );
+    const t2 = Date.now();
+    const result = await this.aiTranslateService.translate(
       dto.text,
       projectId,
       dto.context,
       dto.targetLocales,
       localeGuidance,
     );
+    this.logger.log(
+      `[ai-translate] Gemini translate call: ${Date.now() - t2}ms`,
+    );
+    this.logger.log(`[ai-translate] TOTAL: ${Date.now() - t0}ms`);
+    return result;
   }
 
   @Post('ai-translate/bulk')

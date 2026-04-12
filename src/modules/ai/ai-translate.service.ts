@@ -85,6 +85,7 @@ export class AiTranslateService {
       { need: 'required' | 'useful' | 'none'; reason: string | null }
     >;
   }> {
+    const bt0 = Date.now();
     const apiKey = this.config.get<string>('GEMINI_API_KEY');
     if (!apiKey) {
       throw new ServiceUnavailableException(
@@ -93,13 +94,22 @@ export class AiTranslateService {
     }
 
     const aiCfg = await this.aiConfig.getConfig();
+    this.logger.log(
+      `[bulkTranslate] getConfig: ${Date.now() - bt0}ms, model: ${aiCfg.model}`,
+    );
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({
       model: aiCfg.model,
       generationConfig: { temperature: 1.0 },
     });
 
-    if (projectId) await this.aiUsageService.assertDailyLimit(projectId);
+    if (projectId) {
+      const bt1 = Date.now();
+      await this.aiUsageService.assertDailyLimit(projectId);
+      this.logger.log(
+        `[bulkTranslate] assertDailyLimit: ${Date.now() - bt1}ms`,
+      );
+    }
 
     const results: Record<string, Record<string, string>> = {};
     const contextInfo: Record<
@@ -133,6 +143,9 @@ export class AiTranslateService {
     }
 
     const translateRules = extractTranslateRules(aiCfg.translatePrompt);
+    this.logger.log(
+      `[bulkTranslate] setup done: ${Date.now() - bt0}ms, entries: ${entries.length}, locales: ${allLocaleCodes.size} (${[...allLocaleCodes].join(',')})`,
+    );
 
     for (let i = 0; i < entries.length; i += BULK_CHUNK_SIZE) {
       const chunk = entries.slice(i, i + BULK_CHUNK_SIZE);
@@ -147,10 +160,18 @@ export class AiTranslateService {
         localeGuidanceSection,
       );
 
+      this.logger.log(
+        `[bulkTranslate] prompt built: ${prompt.length} chars, chunk ${Math.floor(i / BULK_CHUNK_SIZE) + 1}`,
+      );
+
       let raw: string;
       try {
+        const btGemini = Date.now();
         const result = await model.generateContent(prompt);
         raw = result.response.text().trim();
+        this.logger.log(
+          `[bulkTranslate] Gemini generateContent: ${Date.now() - btGemini}ms, response: ${raw.length} chars`,
+        );
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
         throw new BadGatewayException(`Gemini API error: ${msg}`);
