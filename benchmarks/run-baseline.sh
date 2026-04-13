@@ -5,9 +5,14 @@
 #   1. Docker containers running (docker compose up -d)
 #   2. Benchmark seed data populated (npx ts-node src/database/seed/benchmark-seed.ts)
 #   3. autocannon installed (npx autocannon --help)
+#   4. Rate limiting disabled on the public endpoint:
+#      In src/modules/translations/public-translations.controller.ts,
+#      temporarily replace @Throttle(...) with @SkipThrottle().
+#      The default 3000/min limit will throttle sustained load after ~15s.
 #
 # Usage:
 #   ./benchmarks/run-baseline.sh [before|after]
+#   SKIP_WARMUP=1 ./benchmarks/run-baseline.sh cold   # no cache priming
 #
 # Saves results to benchmarks/results/<label>-<timestamp>.json
 # ──────────────────────────────────────────────────────────────────────────
@@ -21,6 +26,7 @@ ENDPOINT="/translations/perf-bench/common/en"
 DURATION=30        # seconds
 CONNECTIONS=10     # concurrent connections
 PIPELINING=1       # requests per connection before waiting
+SKIP_WARMUP="${SKIP_WARMUP:-0}"
 
 RESULTS_DIR="$(dirname "$0")/results"
 mkdir -p "$RESULTS_DIR"
@@ -33,11 +39,15 @@ echo "║  Duration: ${DURATION}s  Connections: ${CONNECTIONS}  Pipelining: ${PI
 echo "╚══════════════════════════════════════════════════════════════╝"
 echo ""
 
-# Warm-up: 5 requests to prime any lazy loading
-echo "→ Warm-up (5 requests)..."
-for i in $(seq 1 5); do
-  curl -s -o /dev/null -w "  #${i} status=%{http_code} time=%{time_total}s\n" "${BASE_URL}${ENDPOINT}"
-done
+# Warm-up: 5 requests to prime cache (skip with SKIP_WARMUP=1 for cold-start measurement)
+if [ "$SKIP_WARMUP" = "1" ]; then
+  echo "→ Warm-up SKIPPED (SKIP_WARMUP=1)"
+else
+  echo "→ Warm-up (5 requests)..."
+  for i in $(seq 1 5); do
+    curl -s -o /dev/null -w "  #${i} status=%{http_code} time=%{time_total}s\n" "${BASE_URL}${ENDPOINT}"
+  done
+fi
 echo ""
 
 # Capture Docker stats snapshot (before)

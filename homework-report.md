@@ -153,23 +153,29 @@ Changed from `logging: true` to `logging: process.env.DB_LOGGING === 'true'`.
 
 ### Methodology note
 
-Two measurement methods were used. Rate limiting (`@Throttle`) was disabled on the public endpoint during benchmarking to measure raw application throughput, not the throttler ceiling.
+Two measurement methods were used. Rate limiting (`@Throttle`) was **temporarily replaced with `@SkipThrottle()`** on the public endpoint during benchmarking to measure raw application throughput. The committed code has `@Throttle({ default: { ttl: 60s, limit: 3000 } })` which would start returning 429s after ~15s at sustained load. See reproduction steps below.
 
 **1. autocannon** (10 connections, 30s, no pipelining) — measures sustained throughput under parallel load.
 
-Two runs were performed to isolate the cache warm-up effect:
+Two runs were performed to isolate the cache warm-up effect. The "cache fills during run" scenario started with an empty cache — the first request triggered a DB query and filled the cache, so subsequent requests hit the cache. The "cache pre-warmed" scenario primed the cache with 5 warm-up requests before autocannon started.
 
-| Metric | Cold start (cache empty) | Warm-only (cache primed) | Comment |
-|--------|--------------------------|--------------------------|---------|
+| Metric | Cache fills during run | Cache pre-warmed | Comment |
+|--------|------------------------|------------------|---------|
 | p50 latency | 43ms | 43ms | Serialization + transfer bound |
-| p97.5 latency | 182ms | 106ms | **42% tail latency reduction** when cache is warm |
-| p99 latency | 316ms | 125ms | **60% reduction** — no cold DB queries in tail |
+| p97.5 latency | 182ms | 106ms | **42% tail latency reduction** — no cold DB hits in tail |
+| p99 latency | 316ms | 125ms | **60% reduction** — eliminates DB-caused spikes |
 | Avg latency | 59ms | 51ms | 14% improvement |
 | Throughput | ~168 req/s | ~193 req/s | **15% throughput gain** |
 | Total requests | 5,049 | 5,787 | More requests completed in same 30s window |
 | Error rate | 0% | 0% | No regression |
 
-Under sustained load, p50 latency is unchanged because the bottleneck shifts from the database to **JSON serialization + network transfer** (193 req/s × 164KB = 31.6 MB/s over the local Docker bridge). The LRU cache eliminates DB latency, but the response is still 164KB of JSON per request. The tail improvement (p97.5, p99) is where the cache shines: cold-start runs have occasional requests that hit the DB and spike to 300ms+, while warm-only runs stay consistently fast.
+To reproduce both scenarios, the benchmark script supports `SKIP_WARMUP=1` to skip cache priming:
+```bash
+SKIP_WARMUP=1 ./benchmarks/run-baseline.sh cold    # cache fills during run
+./benchmarks/run-baseline.sh warm                    # cache pre-warmed (default)
+```
+
+Under sustained load, p50 latency is unchanged because the bottleneck shifts from the database to **JSON serialization + network transfer** (193 req/s × 164KB = 31.6 MB/s over the local Docker bridge). The LRU cache eliminates DB latency, but the response is still 164KB of JSON per request. The tail improvement (p97.5, p99) is where the cache shines: when the cache fills during the run, occasional early requests hit the DB and spike to 300ms+, while pre-warmed runs stay consistently fast.
 
 This ceiling would be broken by combining cache + gzip (11KB responses instead of 164KB), but autocannon does not send `Accept-Encoding: gzip` by default.
 
@@ -241,6 +247,20 @@ curl -s --compressed -o /dev/null -w "size=%{size_download}\n" \
   http://localhost:8080/translations/perf-bench/common/en
 # Expected: ~11705 bytes (93% reduction)
 
-# 6. Run benchmark
-npx autocannon -c 10 -d 30 http://localhost:8080/translations/perf-bench/common/en
+# 6. Disable rate limiting for benchmarking
+# In src/modules/translations/public-translations.controller.ts,
+# temporarily replace:
+#   @Throttle({ default: { ttl: seconds(60), limit: 3000 } })
+# with:
+#   @SkipThrottle()
+# The 3000/min limit will start returning 429s after ~15s at sustained load.
+# Wait for the dev server to reload after saving.
+
+# 7. Run benchmark (warm cache — default)
+./benchmarks/run-baseline.sh warm
+
+# 8. Run benchmark (cold cache — no warm-up)
+SKIP_WARMUP=1 ./benchmarks/run-baseline.sh cold
+
+# 9. Restore throttling after benchmarking (revert the change from step 6)
 ```
