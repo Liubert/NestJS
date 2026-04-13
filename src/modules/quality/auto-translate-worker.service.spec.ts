@@ -301,10 +301,10 @@ describe('AutoTranslateWorkerService — translateKeysBulk', () => {
   it('filters out keys where all locales already have sandbox values', async () => {
     const locales = [makeLocaleWithSkill('uk'), makeLocaleWithSkill('sv')];
 
-    // key-1 has both locales already in sandbox
+    // key-1 has both locales already in sandbox (value must be non-empty)
     sandboxFindMock.mockResolvedValue([
-      { keyId: 'key-1', localeId: 'locale-uk' },
-      { keyId: 'key-1', localeId: 'locale-sv' },
+      { keyId: 'key-1', localeId: 'locale-uk', value: 'Привіт' },
+      { keyId: 'key-1', localeId: 'locale-sv', value: 'Hej' },
     ]);
 
     bulkTranslateMock.mockResolvedValue({ results: {}, contextInfo: {} });
