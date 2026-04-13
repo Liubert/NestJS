@@ -6,8 +6,6 @@ import {
 } from '@nestjs/terminus';
 import { SkipThrottle } from '@nestjs/throttler';
 
-// Health check should never be rate-limited (used by load balancers / monitoring)
-@SkipThrottle()
 @Controller()
 export class AppController {
   constructor(
@@ -15,6 +13,8 @@ export class AppController {
     private readonly db: TypeOrmHealthIndicator,
   ) {}
 
+  // Health check should never be rate-limited (used by load balancers / monitoring)
+  @SkipThrottle()
   @Get('health')
   @HealthCheck()
   check() {

@@ -17,6 +17,7 @@ import { LocaleEntity } from './entities/locale.entity.js';
 import { TranslationKeyEntity } from './entities/translation-key.entity.js';
 import { TranslationValueEntity } from './entities/translation-value.entity.js';
 import { UserRole } from '../users/types/user-role.enum.js';
+import { TranslationCacheService } from './translation-cache.service.js';
 import { ImportTranslationsDto } from './dto/import-translations.dto.js';
 import { CreateEntryDto } from './dto/create-entry.dto.js';
 import { UpdateEntryDto } from './dto/update-entry.dto.js';
@@ -52,6 +53,7 @@ export class TranslationsService {
     private readonly dataSource: DataSource,
     private readonly webhooksService: WebhooksService,
     private readonly access: ProjectAccessHelper,
+    private readonly translationCache: TranslationCacheService,
   ) {}
 
   private emitWebhook(
@@ -337,6 +339,8 @@ export class TranslationsService {
       Object.keys(dto.values ?? {}),
     );
 
+    this.translationCache.invalidateNamespace(projectSlug, nsSlug);
+
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
@@ -405,6 +409,8 @@ export class TranslationsService {
       Object.keys(dto.values),
     );
 
+    this.translationCache.invalidateNamespace(projectSlug, nsSlug);
+
     return {
       key: keyEntity.key,
       createdAt: keyEntity.createdAt,
@@ -433,6 +439,8 @@ export class TranslationsService {
     this.emitWebhook('translation.deleted', project, nsSlug, key);
 
     await this.keyRepo.remove(keyEntity);
+
+    this.translationCache.invalidateNamespace(projectSlug, nsSlug);
   }
 
   // ─── Locize-compatible read (public — no access check) ────────────────────
@@ -442,6 +450,10 @@ export class TranslationsService {
     namespace: string,
     locale: string,
   ): Promise<Record<string, unknown>> {
+    // LRU cache: check for a cached response first
+    const cached = this.translationCache.get(projectSlug, namespace, locale);
+    if (cached) return cached;
+
     const candidates = resolveLocaleCandidates(locale);
 
     const rows = await this.valueRepo
@@ -466,7 +478,10 @@ export class TranslationsService {
       if (!projectExists) {
         throw new NotFoundException(`Project "${projectSlug}" not found`);
       }
-      const nsExists = await this.namespaceRepo.existsBy({ slug: namespace });
+      const nsExists = await this.namespaceRepo.existsBy({
+        slug: namespace,
+        project: { slug: projectSlug },
+      });
       if (!nsExists) {
         throw new NotFoundException(
           `Namespace "${namespace}" not found in project "${projectSlug}"`,
@@ -480,7 +495,12 @@ export class TranslationsService {
     const flat: Record<string, string> = Object.fromEntries(
       rows.map((r) => [r.key, r.value ?? '']),
     );
-    return unflattenJson(flat);
+    const result = unflattenJson(flat);
+
+    // Store in cache for subsequent requests
+    this.translationCache.set(projectSlug, namespace, locale, result);
+
+    return result;
   }
 
   async getLocales(projectSlug: string): Promise<string[]> {

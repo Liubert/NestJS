@@ -47,7 +47,9 @@ export function loadBaseConfig(): BaseAppConfig {
       namingStrategy: new SnakeNamingStrategy(),
       // Use synchronize in test env so Testcontainers schema is auto-created from entities
       synchronize: process.env.NODE_ENV === 'test',
-      logging: true,
+      // Logging every SQL query adds ~5-10% latency overhead.
+      // Enable only in dev/debug; disabled by default in production.
+      logging: process.env.DB_LOGGING === 'true',
     },
 
     s3: {

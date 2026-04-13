@@ -86,3 +86,6 @@ LOCALIZATION_PLATFORM_OVERVIEW.md
 /test/*.key
 /test/*.pem
 /test/*.pub
+
+# Benchmark results (machine-specific, not reproducible)
+benchmarks/results/

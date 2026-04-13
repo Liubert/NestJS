@@ -11,7 +11,6 @@ import { TranslationKeyEntity } from '../translations/entities/translation-key.e
 import { TranslationValueEntity } from '../translations/entities/translation-value.entity.js';
 import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
 import { ProductionSnapshotEntity } from '../translations/entities/production-snapshot.entity.js';
-
 @Module({
   imports: [
     TypeOrmModule.forFeature([

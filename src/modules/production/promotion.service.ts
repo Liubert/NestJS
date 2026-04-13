@@ -13,6 +13,7 @@ import { TranslationKeyEntity } from '../translations/entities/translation-key.e
 import { NamespaceEntity } from '../translations/entities/namespace.entity.js';
 import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { UserRole } from '../users/types/user-role.enum.js';
+import { TranslationCacheService } from '../translations/translation-cache.service.js';
 
 const MAX_SNAPSHOTS = 5;
 
@@ -53,6 +54,7 @@ export class PromotionService {
     private readonly localeRepo: Repository<LocaleEntity>,
     private readonly dataSource: DataSource,
     private readonly access: ProjectAccessHelper,
+    private readonly translationCache: TranslationCacheService,
   ) {}
 
   // ─── Diff (paginated) ────────────────────────────────────────────────────
@@ -396,6 +398,9 @@ export class PromotionService {
         sandboxHasChanges: false,
       });
 
+      // Invalidate translation cache after production data changed
+      this.translationCache.invalidateProject(projectSlug);
+
       return { snapshotId: savedSnapshot.id, promoted: promotedCount };
     });
   }
@@ -577,6 +582,9 @@ export class PromotionService {
         sandboxHasChanges: hasChanges,
       });
 
+      // Invalidate translation cache after selective promotion
+      this.translationCache.invalidateProject(projectSlug);
+
       return { snapshotId: savedSnapshot.id, promoted };
     });
   }
@@ -643,6 +651,9 @@ export class PromotionService {
         });
         restoredCount++;
       }
+
+      // Invalidate translation cache after revert
+      this.translationCache.invalidateProject(projectSlug);
 
       return { restored: restoredCount };
     });
