@@ -42,9 +42,10 @@ export function registerProjectManagementTools(server: McpServer): void {
       'Only call this after the user has explicitly confirmed they want to create a project.',
       'The slug must be unique — if a project with this slug already exists, the call will fail.',
       'At least one namespace is required — provide it in the namespaces array.',
-      'After creating a project, you must also: create at least one locale (create_locale).',
-      'Default locale "en" is auto-created. Sandbox is auto-initialized',
-      'and ready for writes immediately after project creation.',
+      'At least one target locale is required — these are the languages you want to translate INTO (besides "en" which is auto-created as default).',
+      'Supported locale codes: ar, bg, cs, da, de, el, es, et, fi, fr, hi, hr, hu, id, is, it, ja, ko, lt, lv, ms, nb, nl, pl, pt, ro, sk, sl, sr, sv, th, tr, uk, vi, zh.',
+      'You can also pass any valid 2-3 char ISO 639 code not in this list.',
+      'Sandbox is auto-initialized and ready for writes immediately after project creation.',
     ].join(' '),
     {
       slug: z
@@ -75,8 +76,23 @@ export function registerProjectManagementTools(server: McpServer): void {
         .describe(
           "List of namespace slugs to create (e.g. ['common'] or ['backoffice-translations', 'mobile']). At least one is required.",
         ),
+      locales: z
+        .array(
+          z
+            .string()
+            .regex(
+              /^[a-z]{2,3}$/,
+              'Locale codes must be 2-3 lowercase letters (ISO 639)',
+            ),
+        )
+        .min(1, 'At least one target locale is required')
+        .describe(
+          "Target locales to create besides the default 'en'. " +
+            'Supported: ar, bg, cs, da, de, el, es, et, fi, fr, hi, hr, hu, id, is, it, ja, ko, lt, lv, ms, nb, nl, pl, pt, ro, sk, sl, sr, sv, th, tr, uk, vi, zh. ' +
+            "Example: ['uk', 'de', 'fr'].",
+        ),
     },
-    async ({ slug, name, namespaces }) => {
+    async ({ slug, name, namespaces, locales }) => {
       try {
         interface ProjectCreated {
           id: string;
@@ -91,11 +107,16 @@ export function registerProjectManagementTools(server: McpServer): void {
           {
             slug,
             namespaces,
+            locales,
             ...(name ? { name } : {}),
           },
         );
 
-        logWrite('create_project', { slug, name, namespaces }, project);
+        logWrite(
+          'create_project',
+          { slug, name, namespaces, locales },
+          project,
+        );
 
         const lines = [
           `✅ Project created successfully.`,
@@ -104,9 +125,8 @@ export function registerProjectManagementTools(server: McpServer): void {
           ...(project.name ? [`Name: ${project.name}`] : []),
           `ID: ${project.id}`,
           `Namespaces: ${namespaces.join(', ')}`,
+          `Locales: en (default), ${locales.join(', ')}`,
           ``,
-          `Next steps:`,
-          `1. create_locale — add locales (default "en" already exists)`,
           `Sandbox is auto-initialized — you can start writing translations immediately.`,
         ];
 

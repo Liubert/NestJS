@@ -96,7 +96,7 @@ export function registerDiffTools(server: McpServer): void {
       try {
         const diff = await apiGet<DiffResponse>(
           `/translations/projects/${projectSlug}/sandbox/diff`,
-          { limit: 5000, ...(namespace ? { namespace } : {}) },
+          { limit: 200, ...(namespace ? { namespace } : {}) },
         );
 
         const entries = diff.entries;
@@ -165,7 +165,7 @@ export function registerDiffTools(server: McpServer): void {
           );
         }
 
-        const header = `Validation for ${projectSlug}${namespace ? `/${namespace}` : ""} (${diff.total} pending changes)`;
+        const header = `Validation for ${projectSlug}${namespace ? `/${namespace}` : ""} (${diff.total} pending changes${diff.meta.totalPages > 1 ? `, showing first ${entries.length} of ${diff.meta.total}` : ""})`;
 
         if (issues.length === 0) {
           return textResult(`${header}\n\nNo issues found. All pending translations look complete.`);
