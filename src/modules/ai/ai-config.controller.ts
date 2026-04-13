@@ -11,6 +11,9 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import { RolesGuard } from '../auth/roles.guard.js';
+import { Roles } from '../auth/role.decorator.js';
+import { UserRole } from '../users/types/user-role.enum.js';
 import { AiConfigService } from './ai-config.service.js';
 import { AiTranslateService } from './ai-translate.service.js';
 
@@ -44,7 +47,8 @@ class ValidateModelDto {
 
 @ApiTags('ai-config')
 @Controller('translations/ai-config')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
+@Roles(UserRole.ADMIN)
 @ApiBearerAuth()
 export class AiConfigController {
   constructor(

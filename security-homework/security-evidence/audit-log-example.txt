@@ -1,0 +1,25 @@
+# Evidence: Audit Log Events
+# Command: docker logs nest_js_api_1 2>&1 | grep AUDIT
+# Date: 2026-04-13
+
+# auth.login_failed (5 events from rate-limit test):
+{"action":"auth.login_failed","actorId":null,"actorRole":null,"targetType":"user","targetId":"unknown","outcome":"failure","timestamp":"2026-04-13T09:08:21.555Z","correlationId":"79c866b0-daa5-458c-9aa9-61b1b32652c0","ip":"::ffff:172.18.0.1","userAgent":"curl/8.7.1","reason":"invalid_credentials"}
+{"action":"auth.login_failed","actorId":null,"actorRole":null,"targetType":"user","targetId":"unknown","outcome":"failure","timestamp":"2026-04-13T09:08:21.734Z","correlationId":"77a7cbf3-0f62-410a-93a9-d4760172142a","ip":"::ffff:172.18.0.1","userAgent":"curl/8.7.1","reason":"invalid_credentials"}
+{"action":"auth.login_failed","actorId":null,"actorRole":null,"targetType":"user","targetId":"unknown","outcome":"failure","timestamp":"2026-04-13T09:08:21.828Z","correlationId":"9947c2b3-dbe3-47d8-bf10-6caae7ab1ed7","ip":"::ffff:172.18.0.1","userAgent":"curl/8.7.1","reason":"invalid_credentials"}
+{"action":"auth.login_failed","actorId":null,"actorRole":null,"targetType":"user","targetId":"unknown","outcome":"failure","timestamp":"2026-04-13T09:08:21.924Z","correlationId":"b101cc7a-87b9-4a21-8fbc-5280d2aafb89","ip":"::ffff:172.18.0.1","userAgent":"curl/8.7.1","reason":"invalid_credentials"}
+{"action":"auth.login_failed","actorId":null,"actorRole":null,"targetType":"user","targetId":"unknown","outcome":"failure","timestamp":"2026-04-13T09:08:22.071Z","correlationId":"a75fa07a-55b2-4fdb-9cef-d851de6bc654","ip":"::ffff:172.18.0.1","userAgent":"curl/8.7.1","reason":"invalid_credentials"}
+
+# Structure of each audit event:
+# - action: what happened (auth.login_failed)
+# - actorId: who did it (null for unauthenticated)
+# - actorRole: role at the time (null for unauthenticated)
+# - targetType: what entity was affected (user)
+# - targetId: which entity (unknown — we don't expose if user exists)
+# - outcome: result (failure)
+# - timestamp: ISO 8601
+# - correlationId: links to HTTP request logs
+# - ip: client IP
+# - userAgent: client identifier
+# - reason: why it failed (invalid_credentials vs internal_error)
+#
+# Note: NO passwords, tokens, emails, or JWTs appear in audit events.

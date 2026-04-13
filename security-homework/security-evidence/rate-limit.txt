@@ -1,0 +1,26 @@
+# Evidence: Rate Limiting Configuration
+# Date: 2026-04-13
+
+# Two-tier rate limiting is configured:
+#
+# 1. GLOBAL: 300 req/60s per IP (ThrottlerModule in app.module.ts)
+#    Applied to all endpoints by default via APP_GUARD ThrottlerGuard.
+#
+# 2. STRICT per-route overrides:
+#    - POST /auth/login:           5 req/60s  (brute-force protection)
+#    - POST /auth/forgot-password: 3 req/60s  (email enumeration prevention)
+#    - POST /auth/reset-password:  5 req/60s  (token abuse prevention)
+#    - POST /auth/change-password: 5 req/60s  (credential change protection)
+#    - POST /mcp-tokens:          10 req/60s  (token generation limit)
+#
+# 3. RELAXED for public i18n routes: 600 req/60s (frontend apps poll frequently)
+#
+# 4. EXEMPT: GET /health — @SkipThrottle (load balancer / monitoring probes)
+
+# Proof that strict auth rate limit works (from rate-limit-auth.txt):
+# for i in $(seq 1 8); do curl -s -o /dev/null -w "%{http_code} " -X POST \
+#   http://localhost:8080/auth/login -H "Content-Type: application/json" \
+#   -d '{"email":"test@test.com","password":"wrongpass1"}'; done
+#
+# Result: 401 401 401 401 401 429 429 429
+# Requests 1-5: 401 (invalid credentials). Requests 6+: 429 (throttled).

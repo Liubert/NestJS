@@ -32,15 +32,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
         ? exception.getResponse()
         : 'Internal server error';
 
-    // Log the error details for debugging purposes
-    // This is where you would connect your external logger service later
-    this.logger.error(
-      `Http Status: ${status} Error Message: ${JSON.stringify(message)}`,
-    );
+    // Log the error details — sanitize to prevent secret leakage in logs
+    const sanitized = this.sanitize(JSON.stringify(message));
+    this.logger.error(`Http Status: ${status} Error Message: ${sanitized}`);
 
-    // If it is not a standard HTTP exception, log the stack trace
-    if (!(exception instanceof HttpException)) {
-      this.logger.error(exception);
+    // For non-HTTP exceptions, log sanitized stack trace (avoid leaking secrets)
+    if (!(exception instanceof HttpException) && exception instanceof Error) {
+      this.logger.error(this.sanitize(exception.stack ?? exception.message));
     }
 
     // Send the unified JSON response to the client
@@ -50,5 +48,20 @@ export class AllExceptionsFilter implements ExceptionFilter {
       path: request.url,
       error: message,
     });
+  }
+
+  // Strip sensitive values from error messages before logging.
+  // Covers query-string (password=xxx), JSON ("password":"xxx"), and header formats.
+  private sanitize(msg: string): string {
+    return msg
+      .replace(/password[=:]\S+/gi, 'password=***')
+      .replace(/"password"\s*:\s*"[^"]*"/gi, '"password":"***"')
+      .replace(/secret[=:]\S+/gi, 'secret=***')
+      .replace(/"secret"\s*:\s*"[^"]*"/gi, '"secret":"***"')
+      .replace(/Bearer\s+\S+/gi, 'Bearer ***')
+      .replace(/token[=:]\S{20,}/gi, 'token=***')
+      .replace(/"(access|refresh)Token"\s*:\s*"[^"]*"/gi, '"$1Token":"***"')
+      .replace(/authorization[=:]\s*\S+/gi, 'authorization=***')
+      .replace(/x-api-key[=:]\s*\S+/gi, 'x-api-key=***');
   }
 }

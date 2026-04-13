@@ -1,5 +1,6 @@
 import { Controller, Get, Param, Query, Res } from '@nestjs/common';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Throttle, seconds } from '@nestjs/throttler';
 import type { Response } from 'express';
 import { TranslationsService } from './translations.service.js';
 import { SandboxService } from '../sandbox/sandbox.service.js';
@@ -12,6 +13,9 @@ import { LOCALE_REGISTRY } from './locale-registry.js';
  * LAST in the module's controllers array to avoid intercepting requests meant
  * for other controllers (webhooks, sandbox, etc.).
  */
+// Relaxed rate limit for public i18n routes — frontend apps poll frequently,
+// but we still want protection against scraping/abuse.
+@Throttle({ default: { ttl: seconds(60), limit: 600 } })
 @ApiTags('translations (public)')
 @Controller('translations')
 export class PublicTranslationsController {

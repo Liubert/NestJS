@@ -1,10 +1,13 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { TerminusModule } from '@nestjs/terminus';
+import { ThrottlerGuard, ThrottlerModule, seconds } from '@nestjs/throttler';
 
 import { AppController } from './app.controller';
 import { LoggerMiddleware } from './common/middleware/logger.middleware';
+import { AuditLogModule } from './common/audit/audit-log.module';
 import appConfig, { AppConfig } from './config/app.config';
 
 import { UsersModule } from './modules/users/users.module';
@@ -25,6 +28,12 @@ import { ProductionModule } from './modules/production/production.module';
       load: [appConfig],
     }),
 
+    // Global rate limit: 300 requests per 60 seconds per IP.
+    // Stricter limits applied per-route via @Throttle() on sensitive endpoints.
+    ThrottlerModule.forRoot([
+      { name: 'default', ttl: seconds(60), limit: 300 },
+    ]),
+
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (configService: ConfigService) => {
@@ -36,6 +45,7 @@ import { ProductionModule } from './modules/production/production.module';
       },
     }),
     TerminusModule,
+    AuditLogModule,
     AuthModule,
     UsersModule,
     WebhooksModule,
@@ -48,7 +58,10 @@ import { ProductionModule } from './modules/production/production.module';
     QualityModule,
   ],
   controllers: [AppController],
-  providers: [],
+  providers: [
+    // Apply ThrottlerGuard globally — every route is rate-limited by default
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+  ],
 })
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
