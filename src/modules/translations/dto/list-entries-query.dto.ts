@@ -20,13 +20,56 @@ export class ListEntriesQueryDto extends PaginationDto {
   @IsString()
   searchLocale?: string;
 
-  @ApiPropertyOptional({ enum: ['key', 'createdAt'], default: 'key' })
+  @ApiPropertyOptional({
+    description: 'Filter by quality level',
+    enum: ['green', 'yellow', 'red', 'unchecked', 'needs_context', 'expected'],
+  })
   @IsOptional()
-  @IsIn(['key', 'createdAt'])
-  sortBy: 'key' | 'createdAt' = 'key';
+  @IsIn(['green', 'yellow', 'red', 'unchecked', 'needs_context', 'expected'])
+  qualityLevel?: string;
+
+  @ApiPropertyOptional({
+    description: 'Filter by quality review state',
+    enum: [
+      'checked',
+      'not_checked',
+      'skipped',
+      'failed',
+      'expected',
+      'queued',
+      'processing',
+    ],
+  })
+  @IsOptional()
+  @IsIn([
+    'checked',
+    'not_checked',
+    'skipped',
+    'failed',
+    'expected',
+    'queued',
+    'processing',
+  ])
+  reviewState?: string;
+
+  @ApiPropertyOptional({
+    enum: ['key', 'createdAt', 'qualityScore'],
+    default: 'key',
+  })
+  @IsOptional()
+  @IsIn(['key', 'createdAt', 'qualityScore'])
+  sortBy: 'key' | 'createdAt' | 'qualityScore' = 'key';
 
   @ApiPropertyOptional({ enum: ['asc', 'desc'], default: 'asc' })
   @IsOptional()
   @IsIn(['asc', 'desc'])
   sortOrder: 'asc' | 'desc' = 'asc';
+
+  @ApiPropertyOptional({
+    description: 'Filter to keys missing a value for the specified locale',
+    example: 'nb',
+  })
+  @IsOptional()
+  @IsString()
+  missingLocale?: string;
 }

@@ -5,8 +5,10 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { NamespaceEntity } from './namespace.entity';
-import { LocaleEntity } from './locale.entity';
+
+import { NamespaceEntity } from './namespace.entity.js';
+import { LocaleEntity } from './locale.entity.js';
+import { ProjectMemberEntity } from './project-member.entity.js';
 
 @Entity('translation_projects')
 export class ProjectEntity {
@@ -19,12 +21,31 @@ export class ProjectEntity {
   @Column({ type: 'text' })
   name!: string;
 
+  @Column({ type: 'uuid', name: 'owner_id', nullable: true })
+  ownerId!: string | null;
+
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt!: Date;
+
+  @Column({ name: 'sandbox_has_changes', type: 'boolean', default: false })
+  sandboxHasChanges!: boolean;
+
+  @Column({
+    name: 'auto_translate_enabled',
+    type: 'boolean',
+    default: false,
+  })
+  autoTranslateEnabled!: boolean;
+
+  @Column({ name: 'ai_token_daily_limit', type: 'int', nullable: true })
+  aiTokenDailyLimit!: number | null;
 
   @OneToMany(() => NamespaceEntity, (ns) => ns.project)
   namespaces!: NamespaceEntity[];
 
   @OneToMany(() => LocaleEntity, (l) => l.project)
   locales!: LocaleEntity[];
+
+  @OneToMany(() => ProjectMemberEntity, (m) => m.project)
+  members!: ProjectMemberEntity[];
 }

@@ -8,6 +8,7 @@ HEALTH_TIMEOUT ?= 60
 
 .PHONY: help \
 	dev dev-up dev-build dev-down dev-restart dev-logs dev-ps dev-health dev-wait \
+	dev-local dev-local-api dev-setup-local \
 	prod prod-build prod-bg \
 	migrate seed init \
 	clean-cache clean-cache-all \
@@ -27,6 +28,22 @@ help:
 	@echo "  make seed         - Run seed one-off container"
 	@echo "  make init         - Full local init (build + db deps + migrate + seed + dev up)"
 	@echo "  make reset        - Reset DB volumes and re-run migrate + seed"
+	@echo ""
+	@echo "Local (no Docker):"
+	@echo "  make dev-local      - Start API + Admin UI locally (no Docker)"
+	@echo "  make dev-local-api  - Start API only locally (no Docker)"
+	@echo "  make dev-setup-local - One-time local setup (PostgreSQL, deps, migrations)"
+
+# ---------- Local Development (no Docker) ----------
+
+dev-local:
+	./dev.sh
+
+dev-local-api:
+	./dev.sh --api-only
+
+dev-setup-local:
+	./dev-setup.sh
 
 # ---------- Development ----------
 

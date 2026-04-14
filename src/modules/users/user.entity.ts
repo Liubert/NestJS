@@ -1,4 +1,9 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  CreateDateColumn,
+  Entity,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
 import { UserRole } from './types/user-role.enum';
 
 @Entity('users')
@@ -30,4 +35,10 @@ export class UserEntity {
 
   @Column({ type: 'uuid', name: 'avatar_file_id', nullable: true })
   avatarFileId!: string | null;
+
+  @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
+  createdAt!: Date;
+
+  @Column({ type: 'boolean', name: 'must_change_password', default: false })
+  mustChangePassword!: boolean;
 }

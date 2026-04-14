@@ -4,6 +4,11 @@
   "sourceRoot": "src",
   "compilerOptions": {
     "tsConfigPath": "tsconfig.build.json",
-    "deleteOutDir": true
+    "deleteOutDir": true,
+    "watchAssets": true
+  },
+  "watchOptions": {
+    "usePolling": true,
+    "interval": 1000
   }
 }

@@ -1,247 +1,373 @@
 import {
   Body,
   Controller,
-  Delete,
   Get,
-  HttpCode,
-  HttpStatus,
+  Logger,
   Param,
-  Patch,
   Post,
   Query,
-  Res,
-  UploadedFile,
   UseGuards,
-  UseInterceptors,
 } from '@nestjs/common';
-import { FileInterceptor } from '@nestjs/platform-express';
-import {
-  ApiBearerAuth,
-  ApiBody,
-  ApiConsumes,
-  ApiOperation,
-  ApiParam,
-  ApiResponse,
-  ApiTags,
-} from '@nestjs/swagger';
-import type { Response } from 'express';
+import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard.js';
+import { CurrentUser } from '../auth/current-user.decorator.js';
+import type { CurrentUserType } from '../users/types/current-user.type.js';
 import { TranslationsService } from './translations.service.js';
-import { AiTranslateService } from './ai-translate.service.js';
-import { AiTranslateDto } from './dto/ai-translate.dto.js';
-import { CheckQualityDto } from './dto/check-quality.dto.js';
-import { ImportTranslationsDto } from './dto/import-translations.dto.js';
-import { CreateProjectDto } from './dto/create-project.dto.js';
-import { CreateNamespaceDto } from './dto/create-namespace.dto.js';
-import { CreateLocaleDto } from './dto/create-locale.dto.js';
-import { CreateEntryDto } from './dto/create-entry.dto.js';
-import { UpdateEntryDto } from './dto/update-entry.dto.js';
+import { ProjectsService } from '../projects/projects.service.js';
+import { AiTranslateService } from '../ai/ai-translate.service.js';
+import { AiUsageService } from '../ai/ai-usage.service.js';
+import { SandboxService } from '../sandbox/sandbox.service.js';
+import { AiTranslateDto } from '../ai/dto/ai-translate.dto.js';
+import { BulkAiTranslateDto } from '../ai/dto/bulk-ai-translate.dto.js';
+import { BulkTranslateAndSaveDto } from '../ai/dto/bulk-translate-and-save.dto.js';
+import { CheckQualityDto } from '../ai/dto/check-quality.dto.js';
 import { ListEntriesQueryDto } from './dto/list-entries-query.dto.js';
-import { PaginationDto } from '../../common/dto/pagination.dto.js';
+import { BulkQualityCheckAiDto } from '../ai/dto/bulk-quality-check-ai.dto.js';
+import { PreviewPromptDto } from '../ai/dto/preview-prompt.dto.js';
 
 @ApiTags('translations')
 @Controller('translations')
 export class TranslationsController {
+  private readonly logger = new Logger(TranslationsController.name);
   constructor(
     private readonly translationsService: TranslationsService,
+    private readonly projectsService: ProjectsService,
     private readonly aiTranslateService: AiTranslateService,
+    private readonly aiUsageService: AiUsageService,
+    private readonly sandboxService: SandboxService,
   ) {}
 
-  // ─── Public (Locize-compatible) ───────────────────────────────────────────
+  // ─── AI Usage (must be before wildcard routes) ────────────────────────────
 
-  @Get(':projectSlug/locales')
-  @ApiOperation({ summary: 'Get all supported locales for a project' })
-  @ApiParam({ name: 'projectSlug', example: 'travis' })
-  async getLocales(
-    @Param('projectSlug') projectSlug: string,
-  ): Promise<string[]> {
-    return this.translationsService.getLocales(projectSlug);
-  }
-
-  @Get(':projectSlug/namespaces')
-  @ApiOperation({ summary: 'Get all namespaces for a project' })
-  @ApiParam({ name: 'projectSlug', example: 'travis' })
-  async getNamespaces(
-    @Param('projectSlug') projectSlug: string,
-  ): Promise<string[]> {
-    return this.translationsService.getNamespaces(projectSlug);
-  }
-
-  @Get(':projectSlug/:namespace/:locale')
-  @ApiOperation({
-    summary: 'Get translations for a namespace and locale (Locize-compatible)',
-  })
-  @ApiParam({ name: 'projectSlug', example: 'travis' })
-  @ApiParam({ name: 'namespace', example: 'backoffice-translations' })
-  @ApiParam({ name: 'locale', example: 'en' })
-  @ApiResponse({
-    status: 200,
-    description: 'Flat key-value translation object',
-  })
-  async getNamespace(
-    @Param('projectSlug') projectSlug: string,
-    @Param('namespace') namespace: string,
-    @Param('locale') locale: string,
-    @Res() res: Response,
-  ): Promise<void> {
-    const translations = await this.translationsService.getNamespace(
-      projectSlug,
-      namespace,
-      locale,
-    );
-    res.setHeader('Cache-Control', 'public, max-age=300');
-    res.json(translations);
-  }
-
-  @Post('import')
-  @HttpCode(HttpStatus.OK)
-  @UseInterceptors(FileInterceptor('file'))
-  @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Import translations from a ZIP file' })
-  @ApiBody({
-    schema: {
-      type: 'object',
-      required: ['file', 'projectSlug'],
-      properties: {
-        file: { type: 'string', format: 'binary' },
-        projectSlug: { type: 'string', example: 'travis' },
-        projectName: { type: 'string', example: 'TRAVIS' },
-        defaultLocale: { type: 'string', example: 'en' },
-      },
-    },
-  })
-  async importTranslations(
-    @UploadedFile() file: Express.Multer.File,
-    @Body() dto: ImportTranslationsDto,
+  @Get('projects/:slug/ai-usage')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get AI token usage for a project' })
+  async getAiUsage(
+    @Param('slug') slug: string,
+    @CurrentUser() _user: CurrentUserType,
   ) {
-    if (!file) {
-      return { error: 'No file uploaded' };
-    }
-    return this.translationsService.importFromZip(file.buffer, dto);
+    const project = await this.projectsService.getProjectBySlug(slug);
+    return this.aiUsageService.getProjectUsage(project.id);
   }
 
-  // ─── AI Translation helper (protected) ───────────────────────────────────
+  // ─── AI (protected) ───────────────────────────────────────────────────────
 
   @Post('ai-translate')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @ApiOperation({ summary: 'AI-generate translations' })
+  async aiTranslate(@Body() dto: AiTranslateDto): Promise<{
+    translations: Record<string, string>;
+    contextNeed: string;
+    contextReason: string | null;
+  }> {
+    const t0 = Date.now();
+    let projectId: string | undefined;
+    let localeGuidance: Record<string, string> | undefined;
+    if (dto.projectSlug) {
+      const project = await this.projectsService.getProjectBySlug(
+        dto.projectSlug,
+      );
+      this.logger.log(`[ai-translate] getProjectBySlug: ${Date.now() - t0}ms`);
+      projectId = project.id;
+      const t1 = Date.now();
+      const locales = await this.projectsService.getProjectLocales(
+        dto.projectSlug,
+      );
+      this.logger.log(`[ai-translate] getProjectLocales: ${Date.now() - t1}ms`);
+      const guidance = locales.reduce<Record<string, string>>((acc, l) => {
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
+        return acc;
+      }, {});
+      if (Object.keys(guidance).length) localeGuidance = guidance;
+    }
+    this.logger.log(
+      `[ai-translate] pre-translate setup: ${Date.now() - t0}ms, targetLocales: ${dto.targetLocales?.join(',') ?? 'all'}`,
+    );
+    const t2 = Date.now();
+    const result = await this.aiTranslateService.translate(
+      dto.text,
+      projectId,
+      dto.context,
+      dto.targetLocales,
+      localeGuidance,
+    );
+    this.logger.log(
+      `[ai-translate] Gemini translate call: ${Date.now() - t2}ms`,
+    );
+    this.logger.log(`[ai-translate] TOTAL: ${Date.now() - t0}ms`);
+    return result;
+  }
+
+  @Post('ai-translate/bulk')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Bulk AI-translate multiple keys' })
+  async bulkAiTranslate(
+    @Body() dto: BulkAiTranslateDto,
+  ): Promise<Record<string, Record<string, string>>> {
+    let projectId: string | undefined;
+    let localeGuidance: Record<string, string> | undefined;
+    let targetLocales: string[] | undefined = dto.targetLocales;
+
+    if (dto.projectSlug) {
+      const project = await this.projectsService.getProjectBySlug(
+        dto.projectSlug,
+      );
+      projectId = project.id;
+      const locales = await this.projectsService.getProjectLocales(
+        dto.projectSlug,
+      );
+      const guidance = locales.reduce<Record<string, string>>((acc, l) => {
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
+        return acc;
+      }, {});
+      if (Object.keys(guidance).length) localeGuidance = guidance;
+
+      if (dto.targetLocales && dto.targetLocales.length > 0) {
+        const projectLocaleCodes = new Set(
+          locales.filter((l) => !l.isDefault).map((l) => l.code),
+        );
+        targetLocales = dto.targetLocales.filter((code) =>
+          projectLocaleCodes.has(code),
+        );
+      } else if (!dto.targetLocales) {
+        targetLocales = locales.filter((l) => !l.isDefault).map((l) => l.code);
+      }
+    }
+
+    const entriesWithLocales = dto.entries.map((e) => ({
+      ...e,
+      targetLocales,
+    }));
+    const { results } = await this.aiTranslateService.bulkTranslate(
+      entriesWithLocales,
+      projectId,
+      localeGuidance,
+    );
+    return results;
+  }
+
+  @Post('ai-translate/bulk-and-save')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({
     summary:
-      'AI-generate translations for Ukrainian, Norwegian, Swedish, Danish',
+      'Translate multiple keys, save to sandbox, and optionally run quality check — all in one step',
   })
-  @ApiResponse({
-    status: 200,
-    description: 'Translated values keyed by locale code',
-    schema: {
-      example: { uk: '...', 'nb-NO': '...', sv: '...', 'da-DK': '...' },
-    },
-  })
-  async aiTranslate(
-    @Body() dto: AiTranslateDto,
-  ): Promise<Record<string, string>> {
-    return this.aiTranslateService.translate(dto.text);
+  async bulkTranslateAndSave(@Body() dto: BulkTranslateAndSaveDto) {
+    const project = await this.projectsService.getProjectBySlug(
+      dto.projectSlug,
+    );
+    const namespace = await this.projectsService.requireNamespace(
+      project.id,
+      dto.namespace,
+    );
+
+    const locales = await this.projectsService.getProjectLocales(
+      dto.projectSlug,
+    );
+    const localeGuidance = locales.reduce<Record<string, string>>((acc, l) => {
+      if (l.localeSkill) acc[l.code] = l.localeSkill;
+      return acc;
+    }, {});
+    const guidanceParam = Object.keys(localeGuidance).length
+      ? localeGuidance
+      : undefined;
+
+    let targetLocales: string[] | undefined = dto.targetLocales;
+    if (dto.targetLocales && dto.targetLocales.length > 0) {
+      const projectLocaleCodes = new Set(
+        locales.filter((l) => !l.isDefault).map((l) => l.code),
+      );
+      targetLocales = dto.targetLocales.filter((code) =>
+        projectLocaleCodes.has(code),
+      );
+    } else if (!dto.targetLocales) {
+      targetLocales = locales.filter((l) => !l.isDefault).map((l) => l.code);
+    }
+
+    const commentMap = await this.sandboxService.getQualityCommentsForKeys(
+      project.id,
+      namespace.id,
+      dto.entries.map((e) => e.key),
+    );
+
+    const entriesWithLocales = dto.entries.map((e) => ({
+      ...e,
+      targetLocales,
+      previousComment: commentMap.get(e.key) ?? undefined,
+    }));
+    const { results: translations } =
+      await this.aiTranslateService.bulkTranslate(
+        entriesWithLocales,
+        project.id,
+        guidanceParam,
+      );
+
+    const sandboxEntries = dto.entries
+      .filter((e) => translations[e.key])
+      .map((e) => ({
+        key: e.key,
+        values: translations[e.key],
+        context: e.context,
+      }));
+
+    const saved = await this.sandboxService.bulkUpsert(
+      project,
+      namespace,
+      sandboxEntries,
+    );
+
+    if (dto.skipQuality === true) {
+      // Quality worker (standalone process) will pick these up on next poll cycle
+      return {
+        translations,
+        saved,
+        qualityStatus: 'queued' as const,
+      };
+    }
+
+    const qualityItems = dto.entries
+      .filter((e) => translations[e.key])
+      .map((e) => ({
+        key: e.key,
+        source: e.text,
+        context: e.context ?? null,
+        translations: translations[e.key],
+      }));
+
+    const qualityResult = await this.aiTranslateService.bulkCheckQuality(
+      qualityItems,
+      5,
+      15_000,
+      project.id,
+      guidanceParam,
+    );
+
+    await this.sandboxService.persistQualityResults(
+      project.id,
+      dto.namespace,
+      qualityResult.results,
+    );
+
+    return {
+      translations,
+      quality: qualityResult.results,
+      saved,
+    };
   }
 
   @Post('ai-quality-check')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Check translation quality using AI' })
-  @ApiResponse({
-    status: 200,
-    schema: {
-      example: {
-        score: 7,
-        level: 'average',
-        comment: 'Wording sounds unnatural for UI context.',
-      },
-    },
-  })
   async checkQuality(@Body() dto: CheckQualityDto) {
+    let projectId: string | undefined;
+    let localeGuidanceStr: string | undefined;
+    if (dto.projectSlug) {
+      const project = await this.projectsService.getProjectBySlug(
+        dto.projectSlug,
+      );
+      projectId = project.id;
+      const locales = await this.projectsService.getProjectLocales(
+        dto.projectSlug,
+      );
+      const matched = locales.find(
+        (l) => l.code === dto.locale && l.localeSkill,
+      );
+      if (matched) localeGuidanceStr = matched.localeSkill!;
+    }
     return this.aiTranslateService.checkQuality(
       dto.source,
       dto.translation,
       dto.locale,
+      dto.mode,
+      projectId,
+      dto.context,
+      localeGuidanceStr,
     );
   }
 
-  // ─── Projects (protected) ─────────────────────────────────────────────────
-
-  @Get('projects')
+  @Post('ai-quality-check/bulk')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'List all projects' })
-  async listProjects(@Query() query: PaginationDto) {
-    return this.translationsService.listProjects(query.page, query.limit);
+  @ApiOperation({ summary: 'Bulk AI quality check for multiple locales' })
+  async bulkCheckQualityAi(
+    @Body() dto: BulkQualityCheckAiDto,
+  ): Promise<
+    Record<string, { score: number; level: string; comment: string }>
+  > {
+    let projectId: string | undefined;
+    let localeGuidance: Record<string, string> | undefined;
+    if (dto.projectSlug) {
+      const project = await this.projectsService.getProjectBySlug(
+        dto.projectSlug,
+      );
+      projectId = project.id;
+      const locales = await this.projectsService.getProjectLocales(
+        dto.projectSlug,
+      );
+      const guidance = locales.reduce<Record<string, string>>((acc, l) => {
+        if (l.localeSkill) acc[l.code] = l.localeSkill;
+        return acc;
+      }, {});
+      if (Object.keys(guidance).length) localeGuidance = guidance;
+    }
+    const items = [
+      {
+        key: 'input',
+        source: dto.source,
+        context: dto.context ?? null,
+        translations: dto.translations,
+      },
+    ];
+    const bulkResult = await this.aiTranslateService.bulkCheckQuality(
+      items,
+      undefined,
+      undefined,
+      projectId,
+      localeGuidance,
+    );
+    return bulkResult.results['input'] ?? {};
   }
 
-  @Post('projects')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new project' })
-  async createProject(@Body() dto: CreateProjectDto) {
-    return this.translationsService.createProject(dto);
-  }
-
-  @Get('projects/:slug')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get project details (namespaces + locales)' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  async getProject(@Param('slug') slug: string) {
-    return this.translationsService.getProjectDetails(slug);
-  }
-
-  @Delete('projects/:slug')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete a project (cascades to all data)' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  async deleteProject(@Param('slug') slug: string): Promise<void> {
-    return this.translationsService.deleteProject(slug);
-  }
-
-  // ─── Namespaces (protected) ───────────────────────────────────────────────
-
-  @Post('projects/:slug/namespaces')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Create a new namespace in a project' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  async createNamespace(
-    @Param('slug') slug: string,
-    @Body() dto: CreateNamespaceDto,
-  ) {
-    return this.translationsService.createNamespace(slug, dto);
-  }
-
-  @Post('projects/:slug/locales')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Add a locale to a project' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  async createLocale(
-    @Param('slug') slug: string,
-    @Body() dto: CreateLocaleDto,
-  ) {
-    return this.translationsService.createLocale(slug, dto.code, dto.isDefault);
-  }
-
-  @Delete('projects/:slug/namespaces/:ns')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @Post('ai-preview-prompt')
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
   @ApiOperation({
-    summary: 'Delete a namespace (cascades to all keys and values)',
+    summary: 'Preview constructed prompt without calling Gemini',
   })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
-  async deleteNamespace(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-  ): Promise<void> {
-    return this.translationsService.deleteNamespace(slug, ns);
+  async previewPrompt(
+    @Body() dto: PreviewPromptDto,
+  ): Promise<{ prompt: string }> {
+    let prompt: string;
+    if (dto.type === 'translate') {
+      const targetLocales =
+        dto.targetLocales && Object.keys(dto.targetLocales).length > 0
+          ? dto.targetLocales
+          : { uk: 'Ukrainian' };
+      prompt = await this.aiTranslateService.buildTranslatePrompt(
+        dto.text,
+        targetLocales,
+        dto.localeSkill,
+        dto.context,
+      );
+    } else {
+      prompt = await this.aiTranslateService.buildQualityPrompt(
+        dto.text,
+        dto.translation ?? '',
+        dto.locale ?? 'uk',
+        dto.mode ?? 'translation_quality',
+        dto.context,
+        dto.localeSkill?.[dto.locale ?? 'uk'],
+      );
+    }
+    return { prompt };
   }
+
+  // ─── Namespace bulk operations ────────────────────────────────────────────
 
   // ─── Entries (protected) ──────────────────────────────────────────────────
 
@@ -251,61 +377,18 @@ export class TranslationsController {
   @ApiOperation({
     summary: 'List translation entries with search and pagination',
   })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
   async listEntries(
     @Param('slug') slug: string,
     @Param('ns') ns: string,
     @Query() query: ListEntriesQueryDto,
+    @CurrentUser() user: CurrentUserType,
   ) {
-    return this.translationsService.listEntries(slug, ns, query);
-  }
-
-  @Post('projects/:slug/namespaces/:ns/entries')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({
-    summary: 'Create a new translation key with optional initial values',
-  })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
-  async createEntry(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Body() dto: CreateEntryDto,
-  ) {
-    return this.translationsService.createEntry(slug, ns, dto);
-  }
-
-  @Patch('projects/:slug/namespaces/:ns/entries/:key')
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Update translation values for a key' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
-  @ApiParam({ name: 'key', example: 'accessControl' })
-  async updateEntry(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('key') key: string,
-    @Body() dto: UpdateEntryDto,
-  ) {
-    return this.translationsService.updateEntry(slug, ns, key, dto);
-  }
-
-  @Delete('projects/:slug/namespaces/:ns/entries/:key')
-  @HttpCode(HttpStatus.NO_CONTENT)
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: 'Delete a translation key and all its values' })
-  @ApiParam({ name: 'slug', example: 'travis' })
-  @ApiParam({ name: 'ns', example: 'backoffice-translations' })
-  @ApiParam({ name: 'key', example: 'accessControl' })
-  async deleteEntry(
-    @Param('slug') slug: string,
-    @Param('ns') ns: string,
-    @Param('key') key: string,
-  ): Promise<void> {
-    return this.translationsService.deleteEntry(slug, ns, key);
+    return this.translationsService.listEntries(
+      slug,
+      ns,
+      query,
+      user.userId,
+      user.role,
+    );
   }
 }

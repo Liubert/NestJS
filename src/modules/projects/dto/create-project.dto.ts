@@ -1,0 +1,52 @@
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  ArrayMinSize,
+  IsArray,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
+
+export class CreateProjectDto {
+  @ApiProperty({ example: 'my-project' })
+  @IsString()
+  @Matches(/^[a-z0-9-]+$/, {
+    message: 'slug must be lowercase alphanumeric with dashes',
+  })
+  @MaxLength(100)
+  slug!: string;
+
+  @ApiPropertyOptional({ example: 'My Project' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  name?: string;
+
+  @ApiProperty({
+    example: ['common'],
+    description: 'At least one namespace must be provided',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one namespace is required' })
+  @IsString({ each: true })
+  @Matches(/^[a-z0-9-]+$/, {
+    each: true,
+    message: 'namespace slugs must be lowercase alphanumeric with dashes',
+  })
+  namespaces!: string[];
+
+  @ApiProperty({
+    example: ['uk', 'de'],
+    description:
+      'Target locales to create (besides the default "en"). At least one is required.',
+  })
+  @IsArray()
+  @ArrayMinSize(1, { message: 'At least one target locale is required' })
+  @IsString({ each: true })
+  @Matches(/^[a-z]{2,3}(-[A-Z]{2})?$/, {
+    each: true,
+    message: 'locale codes must be ISO 639 (e.g. uk, de, nb-NO)',
+  })
+  locales!: string[];
+}

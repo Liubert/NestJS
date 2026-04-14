@@ -33,6 +33,46 @@ export class TranslationValueEntity {
   @Column({ type: 'text', nullable: true })
   value!: string | null;
 
+  @Column({ name: 'quality_score', type: 'int', nullable: true })
+  qualityScore!: number | null;
+
+  @Column({
+    name: 'quality_level',
+    type: 'varchar',
+    length: 10,
+    nullable: true,
+  })
+  qualityLevel!: 'green' | 'yellow' | 'red' | 'expected' | null;
+
+  @Column({ name: 'quality_comment', type: 'text', nullable: true })
+  qualityComment!: string | null;
+
+  @Column({ name: 'quality_checked_at', type: 'timestamptz', nullable: true })
+  qualityCheckedAt!: Date | null;
+
+  @Column({
+    name: 'quality_review_state',
+    type: 'varchar',
+    length: 20,
+    default: 'not_checked',
+  })
+  qualityReviewState!:
+    | 'not_checked'
+    | 'queued'
+    | 'processing'
+    | 'checked'
+    | 'expected'
+    | 'failed'
+    | 'skipped';
+
+  @Column({
+    name: 'quality_content_hash',
+    type: 'varchar',
+    length: 64,
+    nullable: true,
+  })
+  qualityContentHash!: string | null;
+
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt!: Date;
 }

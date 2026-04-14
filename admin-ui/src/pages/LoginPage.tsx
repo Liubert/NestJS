@@ -2,7 +2,7 @@ import React from 'react';
 import { Form, Input, Button, Card, message } from 'antd';
 import { UserOutlined, LockOutlined } from '@ant-design/icons';
 import apiClient from '../api/client';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 
 const LoginPage: React.FC = () => {
   const navigate = useNavigate();
@@ -13,13 +13,18 @@ const LoginPage: React.FC = () => {
     try {
       const response = await apiClient.post('/auth/login', values);
       const { accessToken, user } = response.data;
-      
+
       localStorage.setItem('accessToken', accessToken);
       localStorage.setItem('user', JSON.stringify(user));
-      
+
+      if (user.mustChangePassword) {
+        navigate('/change-password');
+        return;
+      }
+
       message.success('Login successful!');
       navigate('/');
-      window.location.reload(); // Simple way to refresh app state
+      window.location.reload();
     } catch (error: any) {
       message.error(error.response?.data?.message || 'Login failed');
     } finally {
@@ -30,14 +35,13 @@ const LoginPage: React.FC = () => {
   return (
     <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#f0f2f5' }}>
       <Card title="Localization Admin Login" style={{ width: 400 }}>
-        <Form
-          name="login"
-          initialValues={{ remember: true }}
-          onFinish={onFinish}
-        >
+        <Form name="login" initialValues={{ remember: true }} onFinish={onFinish}>
           <Form.Item
             name="email"
-            rules={[{ required: true, message: 'Please input your Email!' }, { type: 'email', message: 'Please enter a valid email!' }]}
+            rules={[
+              { required: true, message: 'Please input your Email!' },
+              { type: 'email', message: 'Please enter a valid email!' },
+            ]}
           >
             <Input prefix={<UserOutlined />} placeholder="Email" size="large" />
           </Form.Item>
@@ -52,6 +56,9 @@ const LoginPage: React.FC = () => {
               Log in
             </Button>
           </Form.Item>
+          <div style={{ textAlign: 'center' }}>
+            <Link to="/forgot-password">Forgot password?</Link>
+          </div>
         </Form>
       </Card>
     </div>

@@ -1,0 +1,27 @@
+# Evidence: Security Headers (helmet)
+# Command: curl -sI http://localhost:8080/health
+# Date: 2026-04-13
+
+HTTP/1.1 200 OK
+Cross-Origin-Opener-Policy: same-origin
+Cross-Origin-Resource-Policy: same-origin
+Origin-Agent-Cluster: ?1
+Referrer-Policy: no-referrer
+Strict-Transport-Security: max-age=31536000; includeSubDomains
+X-Content-Type-Options: nosniff
+X-DNS-Prefetch-Control: off
+X-Download-Options: noopen
+X-Frame-Options: SAMEORIGIN
+X-Permitted-Cross-Domain-Policies: none
+X-XSS-Protection: 0
+X-Request-Id: 1e5c3f93-5d2f-47f2-ac60-346d9775ed51
+X-Correlation-Id: 1e5c3f93-5d2f-47f2-ac60-346d9775ed51
+
+# All security headers are present and correctly configured by helmet():
+# - X-Content-Type-Options: nosniff — prevents MIME type sniffing
+# - X-Frame-Options: SAMEORIGIN — prevents clickjacking
+# - X-DNS-Prefetch-Control: off — prevents DNS prefetch data leaks
+# - Referrer-Policy: no-referrer — prevents referrer leakage
+# - Strict-Transport-Security — enforces HTTPS (once TLS is deployed)
+# - Cross-Origin-Opener-Policy/Resource-Policy — cross-origin isolation
+# - X-XSS-Protection: 0 — disabled (CSP is the modern replacement)

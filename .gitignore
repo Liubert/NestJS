@@ -57,3 +57,35 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
 # Local agent/assistant artifacts
 /skills/
+CLAUDE.md
+.claude/
+homework_ci_cd_plan.md
+tsconfig.build.tsbuildinfo
+
+# Auto-generated GraphQL schema
+schema.gql
+src/schema.gql
+
+# Audit logs
+mcp-audit.log
+
+# Assignment artifacts
+hw17-evidence/
+homework*.md
+TRAVIS-json.zip
+
+# Generated docs
+*.pdf
+FINAL_REVIEW_SUMMARY.md
+LOCALIZATION_PLATFORM_OVERVIEW.md
+
+# Local MCP config
+.mcp.json
+
+# Local SSH keys used for cloud access
+/test/*.key
+/test/*.pem
+/test/*.pub
+
+# Benchmark results (machine-specific, not reproducible)
+benchmarks/results/

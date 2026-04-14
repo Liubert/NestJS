@@ -5,4 +5,5 @@ export type CurrentUserType = {
   role: UserRole;
   email: string;
   scopes: string[];
+  isMcpToken: boolean;
 };

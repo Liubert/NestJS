@@ -1,0 +1,464 @@
+# flows/onboarding-flow.yaml
+# Localization MCP Server — Onboarding Flow Definition
+#
+# This file defines the setup/onboarding flow for the localization MCP server.
+# It is read by the agent as structured guidance during the /assess flow.
+# Edit this file to change questions, options, branching, or default values.
+# Do NOT rename step 'id' values — they are referenced by the agent classification logic.
+#
+# Field reference:
+#   id: unique step identifier
+#   type: auto | question | input | confirm | action | info | terminal
+#   message: what the agent says/asks to the user
+#   options: list of answer options (for type: question)
+#     label: shown to user
+#     value: stored answer
+#     next: id of next step
+#     set: context values to store
+#   store_as: variable name to store user input (for type: input)
+#   validation: { pattern, error } for input validation
+#   default: default value for question steps
+#   next: default next step id
+#   write_marker: false (setup markers are not used — detection is always dynamic)
+#   action: name of MCP tool or agent action to run
+
+version: 2
+name: localization-setup
+description: >
+  Integration assessment and guided setup flow for the Localization MCP Server.
+  The agent assesses local + remote state dynamically on each run — no stored setup history.
+
+entry: detect_state
+
+defaults:
+  namespace: common
+  locale_hint: "BCP 47 format, e.g. en-US, uk-UA, de-DE, nb-NO"
+
+# ─── Step definitions ──────────────────────────────────────────────────────────
+
+steps:
+
+  # ── S0: Detection (auto — no user input) ────────────────────────────────────
+  detect_state:
+    id: detect_state
+    type: auto
+    description: >
+      Agent calls assess_integration_state to get remote state and URL patterns,
+      then inspects local project files and classifies into one of the 6 states.
+    actions:
+      - call: assess_integration_state
+      - inspect: local_i18n_config
+      - inspect: local_env_files
+      - classify: integration_state
+    branches:
+      s1_correct:        next: confirm_correct
+      s2_outdated:       next: offer_repair
+      s3_not_integrated: next: offer_connect_or_create
+      s4_no_project:     next: offer_create_project
+      s5_empty:          next: bootstrap_empty_project
+      s6_no_i18n:        next: offer_full_integration
+
+  # ── S1: Already correctly integrated ────────────────────────────────────────
+  confirm_correct:
+    id: confirm_correct
+    type: info
+    message: |
+      ✅ This project is already correctly integrated with the localization server.
+
+      - Local config references the correct backend URL
+      - Non-production environments use ?env=sandbox (sandbox mode)
+      - Production environments use the base URL (production data)
+
+      No setup needed. You can start translation work right away.
+    next: done_no_action
+
+  # ── S2: Outdated integration (missing sandbox URL separation) ───────────────
+  offer_repair:
+    id: offer_repair
+    type: question
+    message: |
+      ⚠️ This project uses our localization server, but is missing the required
+      sandbox/production URL separation.
+
+      Non-production environments (dev, staging) must use:
+        {backendUrl}/translations/{slug}/{namespace}/{locale}?env=sandbox
+
+      Production environments must use (no query param):
+        {backendUrl}/translations/{slug}/{namespace}/{locale}
+
+      I found the localization config in: {detected_files}
+
+      What would you like to do?
+    options:
+      - label: "Show me the required changes and apply them (with my approval per file)"
+        value: apply
+        next: run_repair
+      - label: "Show me what needs to change — I'll update it manually"
+        value: manual
+        next: explain_repair
+      - label: "Skip for now"
+        value: skip
+        next: done_skip
+
+  run_repair:
+    id: run_repair
+    type: action
+    description: >
+      Agent inspects the localization config files, shows the user what needs to change
+      (non-production config must add ?env=sandbox), and applies each change after
+      user approval. Sandbox auto-initializes on project creation; no init step needed after repair.
+    next: verify_repair
+
+  explain_repair:
+    id: explain_repair
+    type: info
+    message: |
+      Here is what needs to change in your local project:
+
+      For each non-production environment config (development, staging, test):
+        Change the translation fetch URL from:
+          {backendUrl}/translations/{slug}/{namespace}/{locale}
+        To:
+          {backendUrl}/translations/{slug}/{namespace}/{locale}?env=sandbox
+
+      For production environment config — keep the base URL as-is (no change needed):
+          {backendUrl}/translations/{slug}/{namespace}/{locale}
+
+      Sandbox auto-initializes on project creation — no manual init needed.
+    next: done_skip
+
+  verify_repair:
+    id: verify_repair
+    type: auto
+    description: Agent re-inspects local config to confirm the ?env=sandbox pattern is now present.
+    on_success: next: confirm_correct
+    on_failure: next: explain_repair
+
+  # ── S3: Not integrated, remote project available ─────────────────────────────
+  offer_connect_or_create:
+    id: offer_connect_or_create
+    type: question
+    message: |
+      Your local project is not yet integrated with our localization server.
+      However, I found {project_count} existing project(s) you have access to.
+
+      What would you like to do?
+    options:
+      - label: "Connect this local project to an existing remote project"
+        value: connect
+        next: select_existing_project
+      - label: "Create a new separate project for this local project"
+        value: create
+        next: offer_create_project
+      - label: "Skip for now"
+        value: skip
+        next: done_skip
+
+  select_existing_project:
+    id: select_existing_project
+    type: select
+    message: "Which remote project should this local project connect to?"
+    source: list_projects
+    store_as: selected_project_slug
+    next: apply_local_integration
+
+  # ── S4: Not integrated, no remote project ──────────────────────────────────
+  offer_create_project:
+    id: offer_create_project
+    type: question
+    message: |
+      No suitable localization project exists yet.
+      I can create one now, or you can create it manually in the Admin UI.
+
+      Suggested project name based on your repository: "{suggested_name}"
+    options:
+      - label: "Create project now — use suggested name \"{suggested_name}\""
+        value: create_suggested
+        next: confirm_suggested_name
+      - label: "Create project now — I'll choose a different name"
+        value: create_custom
+        next: input_project_slug
+      - label: "Create manually in Admin UI — show me the steps"
+        value: admin_ui
+        next: explain_admin_ui_create
+      - label: "Skip for now"
+        value: skip
+        next: done_skip
+
+  confirm_suggested_name:
+    id: confirm_suggested_name
+    type: confirm
+    message: "Create project with slug \"{suggested_name}\"? (yes to confirm, no to enter a different name)"
+    set:
+      project_slug: "{suggested_name}"
+    on_yes: next: input_primary_locale
+    on_no:  next: input_project_slug
+
+  input_project_slug:
+    id: input_project_slug
+    type: input
+    message: |
+      Enter the project slug. Rules:
+      - Lowercase letters, digits, and hyphens only
+      - Must start with a letter or digit
+      - Examples: my-app, travis-v2, admin-portal
+    store_as: project_slug
+    validation:
+      pattern: "^[a-z0-9][a-z0-9-]*$"
+      error: "Use only lowercase letters, digits, and hyphens. Must start with a letter or digit."
+    next: input_project_name
+
+  input_project_name:
+    id: input_project_name
+    type: input
+    message: "Optional: Enter a human-readable project name (shown in Admin UI), or press enter to skip:"
+    store_as: project_name
+    optional: true
+    next: input_primary_locale
+
+  input_primary_locale:
+    id: input_primary_locale
+    type: input
+    message: "What is the primary (default) locale for this project? ({locale_hint})"
+    store_as: primary_locale
+    validation:
+      pattern: "^[a-z]{2,3}(-[A-Z]{2,4})?$"
+      error: "Must be a valid BCP 47 code, e.g. en-US, uk-UA, de-DE"
+    next: input_namespace_name
+
+  input_namespace_name:
+    id: input_namespace_name
+    type: question
+    message: "What should the default namespace be called?"
+    default: common
+    options:
+      - label: "Use \"common\" (recommended default)"
+        value: common
+        set:
+          namespace_slug: common
+        next: run_create_project
+      - label: "Enter a custom namespace name"
+        value: custom
+        next: input_custom_namespace
+
+  input_custom_namespace:
+    id: input_custom_namespace
+    type: input
+    message: "Enter namespace name (lowercase, hyphens allowed, e.g. main, translations, backoffice):"
+    store_as: namespace_slug
+    validation:
+      pattern: "^[a-z0-9][a-z0-9-]*$"
+      error: "Lowercase letters, digits, and hyphens only."
+    next: run_create_project
+
+  run_create_project:
+    id: run_create_project
+    type: action
+    description: >
+      Agent calls the following MCP tools in sequence:
+      1. create_project(slug: project_slug, name: project_name)
+      2. create_namespace(projectSlug: project_slug, namespace: namespace_slug, reason: "Initial namespace created during project setup")
+      3. create_locale(projectSlug: project_slug, code: primary_locale)
+      (sandbox auto-initializes on project creation — no manual init step needed)
+    next: apply_local_integration
+
+  explain_admin_ui_create:
+    id: explain_admin_ui_create
+    type: info
+    message: |
+      To create the project manually in the Admin UI:
+      1. Open the Admin UI at {adminUiUrl}
+      2. Go to Projects → Create New Project
+      3. Enter your desired project slug and name
+      4. Add at least one locale
+      5. Create a namespace (recommended name: "common")
+      6. Come back and I'll re-run the assessment
+
+      I'll offer setup again on your next interaction (no permanent setup markers are used).
+    next: done_skip
+
+  # ── Apply local integration (after project selected or created) ─────────────
+  apply_local_integration:
+    id: apply_local_integration
+    type: question
+    message: |
+      Now I need to update your local project config to use the localization server.
+
+      For non-production environments, the translation URL should be:
+        {backendUrl}/translations/{project_slug}/{namespace}/{locale}?env=sandbox
+
+      For production environments:
+        {backendUrl}/translations/{project_slug}/{namespace}/{locale}
+
+      How would you like to proceed?
+    options:
+      - label: "Propose and apply changes to my local config (with approval per file)"
+        value: apply
+        next: run_apply_integration
+      - label: "Show me what needs to change — I'll do it manually"
+        value: manual
+        next: explain_integration_steps
+      - label: "Skip local config changes for now"
+        value: skip
+        next: bootstrap_empty_project
+
+  run_apply_integration:
+    id: run_apply_integration
+    type: action
+    description: >
+      Agent inspects local project for i18n config and env files,
+      proposes specific changes to use the localization backend URL with ?env=sandbox
+      for non-production environments. Applies each change after user approval.
+    next: bootstrap_empty_project
+
+  explain_integration_steps:
+    id: explain_integration_steps
+    type: info
+    message: |
+      Here is what your local project needs:
+
+      1. In your i18n configuration, set the translation backend URL:
+         - Non-production: {backendUrl}/translations/{project_slug}/{namespace}/{locale}?env=sandbox
+         - Production: {backendUrl}/translations/{project_slug}/{namespace}/{locale}
+
+      2. Configure your i18n library to fetch from this URL.
+         For i18next with HTTP backend:
+           backend: {
+             loadPath: process.env.NODE_ENV === 'production'
+               ? '{backendUrl}/translations/{project_slug}/{{ns}}/{{lng}}'
+               : '{backendUrl}/translations/{project_slug}/{{ns}}/{{lng}}?env=sandbox'
+           }
+
+      3. Store the backend URL in your environment variables (e.g. NEXT_PUBLIC_I18N_URL or VITE_I18N_URL).
+    next: bootstrap_empty_project
+
+  # ── S5: Empty/incomplete project bootstrap ────────────────────────────────
+  bootstrap_empty_project:
+    id: bootstrap_empty_project
+    type: question
+    message: |
+      The project "{project_slug}" exists but needs to be bootstrapped:
+      {missing_items_summary}
+
+      What would you like to do?
+    options:
+      - label: "Set up structure and import local translations (if available)"
+        value: full_bootstrap
+        next: run_full_bootstrap
+      - label: "Set up namespace and locale structure only (I'll add translations later)"
+        value: structure_only
+        next: run_structure_only
+      - label: "Skip — I'll set it up manually"
+        value: skip
+        next: done_skip
+
+  run_full_bootstrap:
+    id: run_full_bootstrap
+    type: action
+    description: >
+      Agent runs these steps, skipping any that are already done (idempotent):
+      1. Ensure namespace exists (create if missing, ask for name if multiple local namespaces detected)
+      2. Ensure locale exists (create if missing, ask for BCP 47 code)
+      (sandbox auto-initializes on project creation — no manual init needed)
+      3. Scan local project for translation files (JSON, common i18n paths)
+      4. If local files found: validate locale codes and key format, then bulk_import
+      5. Run compare_local_vs_server to show import summary
+      6. Run validate_translations to surface any gaps
+      7. Offer preview_push_to_production to show what would be promoted
+    next: done_success
+
+  run_structure_only:
+    id: run_structure_only
+    type: action
+    description: >
+      Agent runs these steps, skipping any that are already done:
+      1. Ensure namespace exists
+      2. Ensure locale exists
+      (sandbox auto-initializes on project creation)
+    next: done_success
+
+  # ── S6: No localization at all ────────────────────────────────────────────
+  offer_full_integration:
+    id: offer_full_integration
+    type: question
+    message: |
+      No localization system was found in this project.
+      Our backend can manage all your translations — I can help set it up from scratch.
+
+      What would you like to do?
+    options:
+      - label: "Set up localization from scratch (install library, create config, connect to backend)"
+        value: full_setup
+        next: select_i18n_library
+      - label: "Skip — I'll handle this manually"
+        value: skip
+        next: done_skip
+
+  select_i18n_library:
+    id: select_i18n_library
+    type: question
+    message: "Which i18n library would you like to use?"
+    options:
+      - label: "i18next (recommended — works with React, Node, Vue, Angular)"
+        value: i18next
+        next: run_i18n_setup
+      - label: "vue-i18n (Vue.js projects)"
+        value: vue_i18n
+        next: run_i18n_setup
+      - label: "Custom fetch (no library — plain fetch/axios calls)"
+        value: custom_fetch
+        next: run_i18n_setup
+      - label: "Let the agent decide based on my project"
+        value: auto_detect
+        next: run_i18n_setup
+    default: i18next
+
+  run_i18n_setup:
+    id: run_i18n_setup
+    type: action
+    description: >
+      Agent performs the following based on selected library and project type:
+      1. Install the i18n library and its backend plugin (e.g. i18next + i18next-http-backend)
+      2. Create the i18n initialization file with correct backend URL and ?env=sandbox pattern
+      3. Create .env entries for the backend URL
+      4. Show the user what was created and what to import/use in their app
+      5. Then continue with project creation (offer_create_project path)
+    next: offer_create_project
+
+  # ── Terminal states ──────────────────────────────────────────────────────────
+  done_success:
+    id: done_success
+    type: terminal
+    write_marker: false    # no markers — detection is always dynamic
+    message: |
+      ✅ Setup complete.
+
+      Summary:
+      - Integration state: {final_state}
+      - Project: {project_slug}
+      - Sandbox: initialized
+      - Translations: {translation_summary}
+
+      ⚠️ Translations are in SANDBOX — not yet live in production.
+      To publish them: go to Admin UI → {project_slug} → Push to Production.
+      Or call preview_push_to_production to review changes before promoting.
+
+      Admin UI: {adminUiUrl}
+
+  done_no_action:
+    id: done_no_action
+    type: terminal
+    write_marker: false
+    message: |
+      ✅ No setup needed — project is already correctly integrated.
+      You can start translation work right away.
+
+  done_skip:
+    id: done_skip
+    type: terminal
+    write_marker: false    # no markers — assessment runs dynamically every time
+    message: |
+      Setup skipped. You can re-run assessment at any time by calling /assess
+      or asking me to "check the localization integration state".
+
+      Since no setup markers are used, I will assess the current state fresh each time.

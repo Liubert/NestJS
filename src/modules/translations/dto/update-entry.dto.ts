@@ -1,11 +1,3 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsObject } from 'class-validator';
+import { RequiredValuesDto } from './base-entry.dto.js';
 
-export class UpdateEntryDto {
-  @ApiProperty({
-    example: { en: 'Access control', 'nb-NO': 'Adgangskontroll' },
-    description: 'Values to upsert per locale code',
-  })
-  @IsObject()
-  values!: Record<string, string>;
-}
+export class UpdateEntryDto extends RequiredValuesDto {}
