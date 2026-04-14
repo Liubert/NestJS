@@ -11,7 +11,8 @@ import { LRUCache } from 'lru-cache';
  * long enough to absorb repeated requests from multiple frontend clients.
  *
  * Max entries: 500 — fits ~500 project/namespace/locale combinations.
- * At ~50KB per 2000-key namespace, max memory ≈ 25MB.
+ * At ~164KB JSON per 2000-key namespace (higher in-memory due to object overhead),
+ * worst-case memory ≈ 80-100MB if all 500 slots hold large namespaces.
  */
 @Injectable()
 export class TranslationCacheService {
@@ -97,7 +98,7 @@ export class TranslationCacheService {
   }
 
   stats(): { size: number; max: number } {
-    return { size: this.cache.size, max: 500 };
+    return { size: this.cache.size, max: this.cache.max };
   }
 }
 

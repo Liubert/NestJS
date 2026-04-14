@@ -197,7 +197,7 @@ The cache effect is clearly visible in individual requests: 496ms → 64ms. Unde
 
 ## Trade-offs
 
-1. **LRU cache introduces stale data risk.** With a 60-second TTL, clients may see translations up to 1 minute old after an update. This is acceptable for a translation service where changes are infrequent. Invalidation on mutations keeps the window small.
+1. **LRU cache introduces stale data risk.** With a 60-second server-side TTL, the server may serve stale data for up to 1 minute after a mutation. Additionally, public responses set `Cache-Control: public, max-age=300` (5 minutes), so the worst-case staleness from a client perspective is 60s (server) + 300s (browser) = **6 minutes** after an update. This is acceptable for a translation service where changes are infrequent and not latency-critical. Invalidation on mutations keeps the server-side window small.
 
 2. **Cache invalidation adds complexity.** Every mutating operation (create, update, delete, promote) must invalidate the cache. Missing an invalidation point means serving stale data. The trade-off is managed by invalidating at the namespace level (coarse but safe) rather than per-key (precise but fragile).
 
