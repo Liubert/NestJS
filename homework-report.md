@@ -161,13 +161,23 @@ Two runs were performed to isolate the cache warm-up effect. The "cache fills du
 
 | Metric | Cache fills during run | Cache pre-warmed | Comment |
 |--------|------------------------|------------------|---------|
-| p50 latency | 43ms | 43ms | Serialization + transfer bound |
-| p97.5 latency | 182ms | 106ms | **42% tail latency reduction** — no cold DB hits in tail |
-| p99 latency | 316ms | 125ms | **60% reduction** — eliminates DB-caused spikes |
-| Avg latency | 59ms | 51ms | 14% improvement |
-| Throughput | ~168 req/s | ~193 req/s | **15% throughput gain** |
-| Total requests | 5,049 | 5,787 | More requests completed in same 30s window |
+| p50 latency | 39ms | 39ms | Serialization + transfer bound |
+| p90 latency | 74ms | 73ms | ~p95 proxy (autocannon reports p90/p97.5, not exact p95) |
+| p97.5 latency | 103ms | 96ms | Tail latency slightly better when cache is warm |
+| p99 latency | 120ms | 115ms | No cold DB queries in tail |
+| Avg latency | 48ms | 48ms | Consistent across both scenarios |
+| Throughput | ~208 req/s | ~206 req/s | Transfer-bound ceiling (~34 MB/s) |
+| Total requests | 6,234 | 6,190 | ~6.2K requests in 30s window |
 | Error rate | 0% | 0% | No regression |
+| CPU (api) | idle→peak during run | idle→peak during run | Not captured as sustained % (docker stats is snapshot) |
+| Memory (api) | 70MB → 103MB | 103MB → 137MB | LRU cache fills ~67MB over sustained load |
+| Memory (postgres) | 30MB → 31MB | 31MB → 33MB | Constant — cache absorbs the load |
+| Event loop lag | Not measured | Not measured | Bottleneck is DB I/O + JSON transfer, not CPU-bound blocking |
+| Replicas | 1 | 1 | Single Docker Compose VPS, no horizontal scaling |
+| Resource limits | None | None | Docker Compose without Swarm, no deploy.resources |
+| Cost proxy | — | — | Bandwidth: gzip saves 93% (164KB→12KB); single VPS ~$20/mo |
+
+Raw JSON results saved in `hw21-evidence/autocannon-cold.json` and `hw21-evidence/autocannon-warm.json`.
 
 To reproduce both scenarios, the benchmark script supports `SKIP_WARMUP=1` to skip cache priming:
 ```bash
@@ -175,7 +185,7 @@ SKIP_WARMUP=1 ./benchmarks/run-baseline.sh cold    # cache fills during run
 ./benchmarks/run-baseline.sh warm                    # cache pre-warmed (default)
 ```
 
-Under sustained load, p50 latency is unchanged because the bottleneck shifts from the database to **JSON serialization + network transfer** (193 req/s × 164KB = 31.6 MB/s over the local Docker bridge). The LRU cache eliminates DB latency, but the response is still 164KB of JSON per request. The tail improvement (p97.5, p99) is where the cache shines: when the cache fills during the run, occasional early requests hit the DB and spike to 300ms+, while pre-warmed runs stay consistently fast.
+Under sustained load, p50 latency is nearly identical between both runs because the cache fills on the very first request — only 1 out of ~6200 requests actually hits the DB. The bottleneck is **JSON serialization + network transfer** (~208 req/s × 164KB = 34 MB/s over the local Docker bridge). The LRU cache eliminates DB latency, but the response is still 164KB of JSON per request.
 
 This ceiling would be broken by combining cache + gzip (11KB responses instead of 164KB), but autocannon does not send `Accept-Encoding: gzip` by default.
 
@@ -264,3 +274,17 @@ SKIP_WARMUP=1 ./benchmarks/run-baseline.sh cold
 
 # 9. Restore throttling after benchmarking (revert the change from step 6)
 ```
+
+---
+
+## Evidence
+
+Raw data files saved in `hw21-evidence/`:
+
+| File | Contents |
+|------|----------|
+| `autocannon-cold.json` | autocannon JSON output — cold cache run (6,234 requests, 0 errors) |
+| `autocannon-warm.json` | autocannon JSON output — warm cache run (6,190 requests, 0 errors) |
+| `explain-analyze.txt` | EXPLAIN (ANALYZE, BUFFERS) output for the hot 5-table JOIN query |
+| `docker-stats-idle.txt` | docker stats snapshot at rest (before benchmark) |
+| `docker-stats-during-benchmark.txt` | docker stats snapshots: idle → after cold → after warm |
