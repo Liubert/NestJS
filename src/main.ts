@@ -7,6 +7,7 @@ import { ResponseTimeInterceptor } from './common/interceptors/response-time.int
 import { setupSwagger } from './config/swagger/swagger';
 import { ConfigService } from '@nestjs/config';
 import helmet from 'helmet';
+import compression from 'compression';
 import { AllExceptionsFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
@@ -50,6 +51,10 @@ async function bootstrap() {
   if (env === Envs.staging || env === Envs.prod) {
     app.set('trust proxy', 1);
   }
+
+  // Gzip/deflate compression: translation JSON compresses ~80-90%.
+  // Reduces bandwidth and transfer time for large namespace responses.
+  app.use(compression());
 
   // Helmet: security headers. CSP disabled in non-prod so Swagger UI works.
   if (env !== Envs.prod) {

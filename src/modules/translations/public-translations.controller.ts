@@ -13,9 +13,10 @@ import { LOCALE_REGISTRY } from './locale-registry.js';
  * LAST in the module's controllers array to avoid intercepting requests meant
  * for other controllers (webhooks, sandbox, etc.).
  */
-// Relaxed rate limit for public i18n routes — frontend apps poll frequently,
-// but we still want protection against scraping/abuse.
-@Throttle({ default: { ttl: seconds(60), limit: 600 } })
+// Higher rate limit for public i18n routes — frontend apps poll frequently.
+// Global default is 300/min; public reads get 3000/min to avoid blocking
+// legitimate traffic while still protecting against abuse.
+@Throttle({ default: { ttl: seconds(60), limit: 3000 } })
 @ApiTags('translations (public)')
 @Controller('translations')
 export class PublicTranslationsController {
