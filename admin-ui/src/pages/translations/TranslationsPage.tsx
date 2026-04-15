@@ -431,14 +431,14 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         deleteConfirmTitle,
         deleteConfirmDescription,
         defaultLocale,
-        isSandbox ? (key, locale) => resetKeyLocaleMutation.mutate({ key, locale }) : undefined,
-        isSandbox ? (key) => resetKeyAllLocalesMutation.mutate(key) : undefined,
-        isSandbox ? {
+        (key, locale) => resetKeyLocaleMutation.mutate({ key, locale }),
+        (key) => resetKeyAllLocalesMutation.mutate(key),
+        {
           editingCell,
           onStartEdit: (key: string, locale: string) => setEditingCell({ key, locale }),
           onSaveEdit: handleSaveInlineEdit,
           onCancelEdit: () => setEditingCell(null),
-        } : undefined,
+        },
       ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [locales, projectSlug, namespace, isSandbox, invalidate, getFlagForCode, renderKeyExtra, deleteConfirmTitle, deleteConfirmDescription, defaultLocale, editingCell, handleSaveInlineEdit],
