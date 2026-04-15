@@ -55,24 +55,30 @@ export class AutoTranslateWorkerService
   }
 
   /**
-   * Immediately translate all keys in the given namespace that are missing
-   * non-default-locale sandbox values — bypassing the auto_translate_enabled flag.
-   * Intended for use after a namespace reset. Fire-and-forget safe.
+   * Mark all keys in a namespace for re-translation by setting pending_auto_translate=true.
+   * Does NOT translate directly — the poller picks up pending rows in batches.
+   * Fire-and-forget safe.
    */
   triggerForNamespace(projectId: string, namespaceId: string): void {
-    void this.translateNamespace(projectId, namespaceId);
+    void this.markNamespacePending(projectId, namespaceId);
   }
 
   /**
-   * Immediately re-translate a single key in a namespace across all non-default locales.
-   * Uses the same sandbox-source-text query as triggerForNamespace but filtered to one key.
-   * Intended for use after a single key+locale sandbox value is deleted. Fire-and-forget safe.
+   * Mark a single key for re-translation. If localeId is provided, only that locale
+   * is marked pending; otherwise all non-default locales are marked.
+   * Does NOT translate directly — the poller picks up pending rows in batches.
+   * Fire-and-forget safe.
    */
-  triggerForKey(projectId: string, namespaceId: string, keyId: string): void {
-    void this.translateSingleKey(projectId, namespaceId, keyId);
+  triggerForKey(
+    projectId: string,
+    _namespaceId: string,
+    keyId: string,
+    localeId?: string,
+  ): void {
+    void this.markKeyPending(projectId, keyId, localeId);
   }
 
-  private async translateNamespace(
+  private async markNamespacePending(
     projectId: string,
     namespaceId: string,
   ): Promise<void> {
@@ -82,21 +88,11 @@ export class AutoTranslateWorkerService
       const nonDefaultLocales = locales.filter((l) => !l.isDefault);
       if (!defaultLocale || !nonDefaultLocales.length) return;
 
+      // Get ALL keys that have a source text — no LIMIT
       const rows = await this.dataSource.query<
-        {
-          key_id: string;
-          key_name: string;
-          source_text: string;
-          key_context: string | null;
-        }[]
+        { key_id: string; key_name: string }[]
       >(
-        `SELECT tk.id AS key_id,
-                tk.key AS key_name,
-                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $2
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1
-                ) AS key_context,
-                sv_def.value AS source_text
+        `SELECT tk.id AS key_id, tk.key AS key_name
          FROM translation_keys tk
          JOIN sandbox_values sv_def
            ON sv_def.key_id = tk.id
@@ -104,9 +100,8 @@ export class AutoTranslateWorkerService
            AND sv_def.project_id = $2
            AND sv_def.is_deleted = false
          WHERE tk.namespace_id = $3
-           AND sv_def.value IS NOT NULL
-         LIMIT $4`,
-        [defaultLocale.id, projectId, namespaceId, MAX_KEYS_PER_CYCLE],
+           AND sv_def.value IS NOT NULL`,
+        [defaultLocale.id, projectId, namespaceId],
       );
 
       if (!rows.length) {
@@ -116,35 +111,21 @@ export class AutoTranslateWorkerService
         return;
       }
 
-      const keys = rows.map((row) => ({
-        keyId: row.key_id,
-        keyName: row.key_name,
-        sourceText: row.source_text,
-        context: row.key_context,
-      }));
+      // Set pending_auto_translate=true for all keys × all non-default locales
+      await this.setPendingFlags(
+        projectId,
+        rows.map((r) => ({
+          keyId: r.key_id,
+          keyName: r.key_name,
+          sourceText: '',
+          context: null,
+        })),
+        nonDefaultLocales,
+      );
 
-      // Mark pending before translating so the frontend can show spinners immediately
-      await this.setPendingFlags(projectId, keys, nonDefaultLocales);
-
-      try {
-        await this.translateKeysBulk(projectId, keys, nonDefaultLocales);
-        this.logger.log(
-          `triggerForNamespace: translated ${keys.length} keys in namespace ${namespaceId}`,
-        );
-      } catch (e: unknown) {
-        // Clear pending flags so spinners don't get stuck
-        const keyIds = keys.map((k) => k.keyId);
-        await this.dataSource
-          .query(
-            `UPDATE sandbox_values SET pending_auto_translate = false
-             WHERE project_id = $1 AND key_id = ANY($2) AND pending_auto_translate = true`,
-            [projectId, keyIds],
-          )
-          .catch(() => {});
-        this.logger.warn(
-          `triggerForNamespace batch failed: ${e instanceof Error ? e.message : String(e)}`,
-        );
-      }
+      this.logger.log(
+        `triggerForNamespace: marked ${rows.length} keys as pending in namespace ${namespaceId}`,
+      );
     } catch (e: unknown) {
       this.logger.error(
         `triggerForNamespace error: ${e instanceof Error ? e.message : String(e)}`,
@@ -152,95 +133,32 @@ export class AutoTranslateWorkerService
     }
   }
 
-  private async translateSingleKey(
+  private async markKeyPending(
     projectId: string,
-    namespaceId: string,
     keyId: string,
+    localeId?: string,
   ): Promise<void> {
     try {
-      const locales = await this.localeRepo.findBy({ projectId });
-      const defaultLocale = locales.find((l) => l.isDefault);
-      const nonDefaultLocales = locales.filter((l) => !l.isDefault);
-      this.logger.log(
-        `triggerForKey: start key=${keyId} ns=${namespaceId} defaultLocale=${defaultLocale?.code ?? 'none'} nonDefault=${nonDefaultLocales.map((l) => l.code).join(',')}`,
-      );
-      if (!defaultLocale || !nonDefaultLocales.length) return;
-
-      // Use the same sandbox-source-text query as translateNamespace but filtered to one key.
-      // This ensures consistency with replace-per-locale: source text comes from the sandbox
-      // default locale value (not production fallback), matching the authoritative sandbox state.
-      const rows = await this.dataSource.query<
-        {
-          key_id: string;
-          key_name: string;
-          source_text: string;
-          key_context: string | null;
-        }[]
-      >(
-        `SELECT tk.id AS key_id,
-                tk.key AS key_name,
-                (SELECT sv_ctx.context FROM sandbox_values sv_ctx
-                 WHERE sv_ctx.key_id = tk.id AND sv_ctx.project_id = $2
-                   AND sv_ctx.is_deleted = false AND sv_ctx.context IS NOT NULL LIMIT 1
-                ) AS key_context,
-                sv_def.value AS source_text
-         FROM translation_keys tk
-         JOIN sandbox_values sv_def
-           ON sv_def.key_id = tk.id
-           AND sv_def.locale_id = $1
-           AND sv_def.project_id = $2
-           AND sv_def.is_deleted = false
-         WHERE tk.namespace_id = $3
-           AND tk.id = $4
-           AND sv_def.value IS NOT NULL
-         LIMIT 1`,
-        [defaultLocale.id, projectId, namespaceId, keyId],
-      );
-
-      if (!rows.length) {
-        this.logger.warn(
-          `triggerForKey: no source text found for key ${keyId} in namespace ${namespaceId} (defaultLocaleId=${defaultLocale.id})`,
-        );
-        return;
+      let targetLocales: LocaleEntity[];
+      if (localeId) {
+        const locale = await this.localeRepo.findOneBy({ id: localeId });
+        if (!locale) return;
+        targetLocales = [locale];
+      } else {
+        const locales = await this.localeRepo.findBy({ projectId });
+        targetLocales = locales.filter((l) => !l.isDefault);
       }
+      if (!targetLocales.length) return;
 
-      const row = rows[0];
-
-      // Mark pending before translating so the frontend can show spinners immediately
       await this.setPendingFlags(
         projectId,
-        [
-          {
-            keyId: row.key_id,
-            keyName: row.key_name,
-            sourceText: row.source_text,
-            context: row.key_context,
-          },
-        ],
-        nonDefaultLocales,
+        [{ keyId, keyName: '', sourceText: '', context: null }],
+        targetLocales,
       );
 
-      try {
-        await this.translateKey(
-          projectId,
-          row.key_id,
-          row.key_name,
-          row.source_text,
-          nonDefaultLocales,
-          row.key_context,
-        );
-        this.logger.log(`triggerForKey: translated key "${row.key_name}"`);
-      } catch (e: unknown) {
-        // Clear pending flags so spinners don't get stuck
-        await this.dataSource
-          .query(
-            `UPDATE sandbox_values SET pending_auto_translate = false
-             WHERE project_id = $1 AND key_id = $2 AND pending_auto_translate = true`,
-            [projectId, row.key_id],
-          )
-          .catch(() => {});
-        throw e;
-      }
+      this.logger.log(
+        `triggerForKey: marked key ${keyId} as pending for ${localeId ? '1 locale' : `${targetLocales.length} locales`}`,
+      );
     } catch (e: unknown) {
       this.logger.error(
         `triggerForKey error: ${e instanceof Error ? e.message : String(e)}`,
@@ -338,6 +256,10 @@ export class AutoTranslateWorkerService
         this.logger.debug('No keys need auto-translation');
         return;
       }
+
+      this.logger.debug(
+        `pollAndProcess: found ${rows.length} keys needing translation`,
+      );
 
       // Group by project
       const byProject = new Map<
@@ -614,6 +536,10 @@ export class AutoTranslateWorkerService
 
     if (!entries.length) return;
 
+    this.logger.debug(
+      `translateKeysBulk: ${entries.length} entries to translate`,
+    );
+
     // Build locale guidance from all nonDefaultLocales (shared across batch)
     const localeGuidance = nonDefaultLocales.reduce<Record<string, string>>(
       (acc, l) => {
@@ -630,6 +556,10 @@ export class AutoTranslateWorkerService
         projectId,
         Object.keys(localeGuidance).length ? localeGuidance : undefined,
       );
+
+    this.logger.debug(
+      `bulkTranslate returned ${Object.keys(results).length} keys`,
+    );
 
     // Build UPSERT values from results, mapping key names back to keyIds
     const values: Partial<SandboxValueEntity>[] = [];

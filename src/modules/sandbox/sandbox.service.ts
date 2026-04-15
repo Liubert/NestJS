@@ -342,9 +342,13 @@ export class SandboxService {
       await this.projectRepo.update(project.id, { sandboxHasChanges: true });
     }
 
-    // Fire-and-forget: re-translate this single key for all non-default locales.
-    // Pass ns.id so triggerForKey uses the same sandbox-source-text query as replace-per-locale.
-    this.autoTranslateWorkerService.triggerForKey(project.id, ns.id, key.id);
+    // Fire-and-forget: re-translate only this key+locale combo.
+    this.autoTranslateWorkerService.triggerForKey(
+      project.id,
+      ns.id,
+      key.id,
+      locale.id,
+    );
 
     return { deleted: deletedRows.length };
   }
@@ -356,12 +360,15 @@ export class SandboxService {
     userId: string,
     role: UserRole,
   ): Promise<{ deleted: number }> {
-    if (dto.key && dto.locale) {
+    // Merge single locale into locales array for uniform handling
+    const locales = dto.locales ?? (dto.locale ? [dto.locale] : undefined);
+
+    if (dto.key && locales?.length === 1) {
       return this.deleteKeySandboxValue(
         projectSlug,
         nsSlug,
         dto.key,
-        dto.locale,
+        locales[0],
         userId,
         role,
       );
@@ -375,14 +382,19 @@ export class SandboxService {
         role,
       );
     }
-    if (dto.locale) {
-      return this.deleteLocaleSandboxTranslations(
-        projectSlug,
-        nsSlug,
-        dto.locale,
-        userId,
-        role,
-      );
+    if (locales?.length) {
+      let totalDeleted = 0;
+      for (const locale of locales) {
+        const { deleted } = await this.deleteLocaleSandboxTranslations(
+          projectSlug,
+          nsSlug,
+          locale,
+          userId,
+          role,
+        );
+        totalDeleted += deleted;
+      }
+      return { deleted: totalDeleted };
     }
     return this.deleteNamespaceSandboxTranslations(
       projectSlug,

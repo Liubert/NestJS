@@ -711,7 +711,7 @@ export function registerSandboxWriteTools(server: McpServer): void {
     'reset_namespace_translations',
     [
       'Delete sandbox translations and trigger re-translation.',
-      'Scope: namespace (no body), single locale ({ locale }), or single key+locale ({ key, locale }).',
+      'Scope: namespace (no params), single locale ({ locale }), multiple locales ({ locales: ["de","fr"] }), or single key+locale ({ key, locale }).',
       'The auto-translate worker will re-populate deleted values asynchronously.',
       'Use when you need to regenerate translations (e.g. after updating AI config or locale skill).',
       'Only non-default locales are affected — source/default locale values are preserved.',
@@ -723,7 +723,13 @@ export function registerSandboxWriteTools(server: McpServer): void {
         .string()
         .optional()
         .describe(
-          'Locale code — omit to retranslate all non-default locales in the namespace',
+          'Single locale code — omit to retranslate all non-default locales. Use "locales" for multiple.',
+        ),
+      locales: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Array of locale codes to retranslate (e.g. ["de","fr"]). Alternative to single "locale" param.',
         ),
       key: z
         .string()
@@ -732,10 +738,11 @@ export function registerSandboxWriteTools(server: McpServer): void {
           'Key name — requires locale; omit to retranslate the whole namespace/locale scope',
         ),
     },
-    async ({ projectSlug, namespace, locale, key }) => {
+    async ({ projectSlug, namespace, locale, locales, key }) => {
       try {
-        const body: Record<string, string> = {};
-        if (locale) body.locale = locale;
+        const body: Record<string, unknown> = {};
+        if (locales?.length) body.locales = locales;
+        else if (locale) body.locale = locale;
         if (key) body.key = key;
         const result = await apiPost<{ deleted: number }>(
           `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/retranslate`,
@@ -743,14 +750,16 @@ export function registerSandboxWriteTools(server: McpServer): void {
         );
         logWrite(
           'reset_namespace_translations',
-          { projectSlug, namespace, locale, key },
+          { projectSlug, namespace, locale, locales, key },
           result,
         );
-        const scope = key && locale
-          ? `key "${key}" / locale "${locale}"`
-          : locale
-            ? `locale "${locale}"`
-            : 'all non-default locales';
+        const scope = key && (locale || locales?.length)
+          ? `key "${key}" / locale "${locale ?? locales!.join(',')}"`
+          : locales?.length
+            ? `locales [${locales.join(', ')}]`
+            : locale
+              ? `locale "${locale}"`
+              : 'all non-default locales';
         return textResult(
           [
             `Reset translations: ${projectSlug}/${namespace} (scope: ${scope})`,

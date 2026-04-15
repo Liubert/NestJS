@@ -61,7 +61,7 @@ const DEFAULT_SETUP_CONTENT = [
   "- `bulk_set_locale` — fill many keys for a single locale at once (for existing keys)",
   "- `bulk_import` — import multiple locales from a JSON map",
   "- `bulk_check_quality` — run AI quality check on many keys at once (persisted)",
-  "- `reset_namespace_translations` — clear non-default translations to trigger re-translate",
+  "- `reset_namespace_translations` — clear non-default translations to trigger re-translate. Supports: full namespace (no params), single locale ({ locale }), multiple locales ({ locales: [...] }), or key+locale ({ key, locale })",
   "- `reset_namespace_quality` — clear quality scores to trigger re-evaluation",
   "- `delete_translation` — soft-delete a key in sandbox",
   "",

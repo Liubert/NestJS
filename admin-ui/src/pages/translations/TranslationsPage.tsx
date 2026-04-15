@@ -573,13 +573,9 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         okButtonProps={{ danger: true, disabled: selectedLocalesForReset.length === 0 }}
         onCancel={() => setResetLocalesModalOpen(false)}
         onOk={async () => {
-          await Promise.all(
-            selectedLocalesForReset.map((locale) =>
-              apiClient.post(
-                `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/retranslate`,
-                { locale },
-              ),
-            ),
+          await apiClient.post(
+            `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/retranslate`,
+            { locales: selectedLocalesForReset },
           );
           message.success(
             `${selectedLocalesForReset.length} locale(s) reset — auto-translate will re-translate`,
