@@ -334,6 +334,20 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
       message.error(e.response?.data?.message ?? 'Error resetting translation'),
   });
 
+  const resetKeyAllLocalesMutation = useMutation({
+    mutationFn: (key: string) =>
+      apiClient.post(
+        `/translations/projects/${projectSlug}/sandbox/namespaces/${namespace}/retranslate`,
+        { key },
+      ),
+    onSuccess: (_data: any, key: string) => {
+      message.success(`All translations for "${key}" reset — re-translating...`);
+      void invalidate();
+    },
+    onError: (e: any) =>
+      message.error(e.response?.data?.message ?? 'Error resetting translations'),
+  });
+
   const handleSaveInlineEdit = useCallback(async (key: string, locale: string, value: string) => {
     if (!value.trim()) {
       setEditingCell(null);
@@ -418,6 +432,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
         deleteConfirmDescription,
         defaultLocale,
         isSandbox ? (key, locale) => resetKeyLocaleMutation.mutate({ key, locale }) : undefined,
+        isSandbox ? (key) => resetKeyAllLocalesMutation.mutate(key) : undefined,
         isSandbox ? {
           editingCell,
           onStartEdit: (key: string, locale: string) => setEditingCell({ key, locale }),

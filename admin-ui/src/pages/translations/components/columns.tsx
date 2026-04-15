@@ -79,6 +79,7 @@ export function buildColumns(
   deleteConfirmDescription?: string,
   defaultLocale?: string,
   onResetKeyLocale?: (key: string, locale: string) => void,
+  onResetKeyAllLocales?: (key: string) => void,
   inlineEdit?: InlineEditState,
 ): ColumnsType<Entry> {
   const readOnly = !onEdit && !onDelete;
@@ -250,10 +251,24 @@ export function buildColumns(
     ...(readOnly ? [] : [{
       title: '',
       key: 'actions',
-      width: 80,
+      width: onResetKeyAllLocales ? 110 : 80,
       fixed: 'right' as const,
       render: (_: unknown, record: Entry) => (
         <Space size={4}>
+          {onResetKeyAllLocales && (
+            <Popconfirm
+              title="Re-translate all locales?"
+              description="All non-default locale translations for this key will be deleted and re-translated."
+              onConfirm={() => onResetKeyAllLocales(record.key)}
+              okText="Re-translate"
+              okButtonProps={{ danger: true }}
+              cancelText="Cancel"
+            >
+              <Tooltip title="Re-translate all locales">
+                <Button type="text" size="small" icon={<ReloadOutlined />} />
+              </Tooltip>
+            </Popconfirm>
+          )}
           <Tooltip title="Edit translation">
             <Button
               type="text"
