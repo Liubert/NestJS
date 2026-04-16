@@ -97,6 +97,13 @@ export class QualityWorkerQueries {
         projectId,
       ],
     );
+
+    // Notify SSE clients (works cross-process via PostgreSQL LISTEN/NOTIFY)
+    await this.ds
+      .query(`SELECT pg_notify('sse_events', $1)`, [
+        JSON.stringify({ type: 'quality.changed', projectId }),
+      ])
+      .catch(() => {});
   }
 
   /** Mark keys where AI timed out — they'll be retried on next tick. */

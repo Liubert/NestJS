@@ -12,6 +12,7 @@ import { SandboxValueEntity } from '../translations/entities/sandbox-value.entit
 import { LocaleEntity } from '../translations/entities/locale.entity.js';
 import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { getLocaleName } from '../translations/locale-registry.js';
+import { SseService } from '../sse/sse.service.js';
 
 const POLL_INTERVAL_MS = 10_000;
 const MAX_KEYS_PER_CYCLE = 20;
@@ -41,6 +42,7 @@ export class AutoTranslateWorkerService
     private readonly localeRepo: Repository<LocaleEntity>,
     private readonly aiTranslateService: AiTranslateService,
     private readonly dataSource: DataSource,
+    private readonly sseService: SseService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -196,8 +198,7 @@ export class AutoTranslateWorkerService
         `INSERT INTO sandbox_values (project_id, key_id, locale_id, value, pending_auto_translate, is_deleted, updated_at)
          SELECT * FROM UNNEST($1::uuid[], $2::uuid[], $3::uuid[], $4::text[], $5::boolean[], $6::boolean[], $7::timestamptz[])
          ON CONFLICT (project_id, key_id, locale_id)
-           DO UPDATE SET pending_auto_translate = true, updated_at = EXCLUDED.updated_at
-           WHERE sandbox_values.value IS NULL OR sandbox_values.value = ''`,
+           DO UPDATE SET pending_auto_translate = true, updated_at = EXCLUDED.updated_at`,
         [
           projectIds,
           keyIds,
@@ -292,22 +293,25 @@ export class AutoTranslateWorkerService
           await this.translateKeysBulk(projectId, keys, nonDefaultLocales);
           totalTranslated += keys.length;
         } catch (e: unknown) {
-          // Clear pending flags so spinners don't get stuck
-          const failedKeyIds = keys.map((k) => k.keyId);
-          await this.dataSource
-            .query(
-              `UPDATE sandbox_values SET pending_auto_translate = false
-               WHERE project_id = $1 AND key_id = ANY($2) AND pending_auto_translate = true`,
-              [projectId, failedKeyIds],
-            )
-            .catch(() => {});
           if (e instanceof HttpException && e.getStatus() === 429) {
+            // Daily token limit — clear pending flags so spinners stop;
+            // worker will NOT retry until user explicitly retranslates.
+            const failedKeyIds = keys.map((k) => k.keyId);
+            await this.dataSource
+              .query(
+                `UPDATE sandbox_values SET pending_auto_translate = false
+                 WHERE project_id = $1 AND key_id = ANY($2) AND pending_auto_translate = true`,
+                [projectId, failedKeyIds],
+              )
+              .catch(() => {});
             this.logger.warn(
-              `Daily token limit reached for project ${projectId}, skipping remaining keys`,
+              `Daily token limit reached for project ${projectId}, clearing pending flags`,
             );
           } else {
+            // Transient error (network, Gemini 5xx, timeout) — keep pending=true
+            // so next poll cycle retries these keys automatically.
             this.logger.warn(
-              `Failed to auto-translate batch for project ${projectId}: ${e instanceof Error ? e.message : String(e)}`,
+              `Failed to auto-translate batch for project ${projectId}, will retry: ${e instanceof Error ? e.message : String(e)}`,
             );
           }
         }
@@ -434,16 +438,25 @@ export class AutoTranslateWorkerService
 
       // Mark project as having sandbox changes
       await this.projectRepo.update(projectId, { sandboxHasChanges: true });
+
+      // Notify SSE clients about new translations
+      void this.sseService.notify('sandbox.changed', projectId);
     }
 
-    // Clear pending flags for ALL requested locales (handles partial Gemini responses)
-    await this.dataSource
-      .query(
-        `UPDATE sandbox_values SET pending_auto_translate = false
-         WHERE project_id = $1 AND key_id = $2 AND pending_auto_translate = true`,
-        [projectId, keyId],
-      )
-      .catch(() => {});
+    // Clear pending flags ONLY for locales that were actually translated.
+    // Partial Gemini responses leave untranslated locales pending for the next poll cycle.
+    if (values.length) {
+      const translatedLocaleIds = values.map((v) => v.localeId);
+      await this.dataSource
+        .query(
+          `UPDATE sandbox_values SET pending_auto_translate = false
+           WHERE project_id = $1 AND key_id = $2
+             AND locale_id = ANY($3)
+             AND pending_auto_translate = true`,
+          [projectId, keyId, translatedLocaleIds],
+        )
+        .catch(() => {});
+    }
 
     // Persist contextNeed from translate so quality worker does not overwrite it
     if (values.length) {
@@ -603,17 +616,26 @@ export class AutoTranslateWorkerService
         ],
       );
       await this.projectRepo.update(projectId, { sandboxHasChanges: true });
+
+      // Notify SSE clients about new translations
+      void this.sseService.notify('sandbox.changed', projectId);
     }
 
-    // Clear pending flags for ALL requested keys (handles partial Gemini responses
-    // where some locales were omitted — avoids infinite spinners)
-    await this.dataSource
-      .query(
-        `UPDATE sandbox_values SET pending_auto_translate = false
-         WHERE project_id = $1 AND key_id = ANY($2) AND pending_auto_translate = true`,
-        [projectId, allKeyIds],
-      )
-      .catch(() => {});
+    // Clear pending flags ONLY for key+locale pairs that were actually translated.
+    // Partial Gemini responses leave untranslated locales pending for the next poll cycle.
+    if (values.length) {
+      const translatedKeyIds = values.map((v) => v.keyId);
+      const translatedLocaleIds = values.map((v) => v.localeId);
+      await this.dataSource
+        .query(
+          `UPDATE sandbox_values SET pending_auto_translate = false
+           WHERE project_id = $1
+             AND (key_id, locale_id) IN (SELECT * FROM UNNEST($2::uuid[], $3::uuid[]))
+             AND pending_auto_translate = true`,
+          [projectId, translatedKeyIds, translatedLocaleIds],
+        )
+        .catch(() => {});
+    }
 
     // Persist contextNeed per key (batch UPDATE for all keys that have contextInfo)
     for (const entry of entries) {

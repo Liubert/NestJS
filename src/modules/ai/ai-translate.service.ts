@@ -189,9 +189,12 @@ export class AiTranslateService {
       let parsed: Record<string, unknown>;
       try {
         parsed = JSON.parse(cleaned) as Record<string, unknown>;
-      } catch {
+      } catch (parseErr) {
         this.logger.warn(
-          `bulkTranslate: failed to parse chunk ${chunksProcessed} response, skipping ${chunk.length} keys`,
+          `bulkTranslate: failed to parse chunk ${chunksProcessed}, ${chunk.length} keys — ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+        );
+        this.logger.debug(
+          `bulkTranslate: raw tail (last 300 chars): …${raw.slice(-300)}`,
         );
         chunk.forEach((e) => skippedKeys.push(e.key));
         continue;

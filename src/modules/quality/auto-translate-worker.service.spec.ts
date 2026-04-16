@@ -6,6 +6,7 @@ import { AiTranslateService } from '../ai/ai-translate.service.js';
 import { ProjectEntity } from '../translations/entities/project.entity.js';
 import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
 import { LocaleEntity } from '../translations/entities/locale.entity.js';
+import { SseService } from '../sse/sse.service.js';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -68,6 +69,10 @@ describe('AutoTranslateWorkerService — translateKey locale code mismatch', () 
         {
           provide: getDataSourceToken(),
           useValue: { query: dataSourceQueryMock },
+        },
+        {
+          provide: SseService,
+          useValue: { notify: jest.fn() },
         },
       ],
     }).compile();
@@ -263,6 +268,10 @@ describe('AutoTranslateWorkerService — translateKeysBulk', () => {
         {
           provide: getDataSourceToken(),
           useValue: { query: dataSourceQueryMock },
+        },
+        {
+          provide: SseService,
+          useValue: { notify: jest.fn() },
         },
       ],
     }).compile();
@@ -477,5 +486,30 @@ describe('AutoTranslateWorkerService — translateKeysBulk', () => {
 
     // translateKeysBulk (via bulkTranslate) should have been called once (then stopped on 429)
     expect(bulkTranslateMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('triggerForKey marks existing translated rows pending for explicit re-translate', async () => {
+    const localeRepoMock = service['localeRepo'] as unknown as {
+      findOneBy: jest.Mock;
+    };
+    localeRepoMock.findOneBy.mockResolvedValueOnce(makeLocaleWithSkill('uk'));
+
+    service['triggerForKey'](projectId, 'ns-1', 'key-1', 'locale-uk');
+    // Wait for the internal async work to settle
+    await new Promise((r) => setTimeout(r, 50));
+
+    const pendingCalls = (
+      dataSourceQueryMock.mock.calls as [string, unknown[]][]
+    ).filter(
+      ([sql]) =>
+        typeof sql === 'string' &&
+        sql.includes('INSERT INTO sandbox_values') &&
+        sql.includes('pending_auto_translate = true'),
+    );
+
+    expect(pendingCalls).toHaveLength(1);
+    expect(pendingCalls[0][0]).not.toContain(
+      "WHERE sandbox_values.value IS NULL OR sandbox_values.value = ''",
+    );
   });
 });

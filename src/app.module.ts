@@ -21,6 +21,7 @@ import { ProjectsModule } from './modules/projects/projects.module';
 import { AiModule } from './modules/ai/ai.module';
 import { ProductionModule } from './modules/production/production.module';
 import { TranslationCacheModule } from './modules/translations/translation-cache.service';
+import { SseModule } from './modules/sse/sse.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { TranslationCacheModule } from './modules/translations/translation-cache
     TranslationsModule,
     McpPromptsModule,
     QualityModule,
+    SseModule,
   ],
   controllers: [AppController],
   providers: [

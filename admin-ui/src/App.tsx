@@ -3,7 +3,6 @@ import { ConfigProvider, Layout, Menu, theme, Avatar, Dropdown, Space } from 'an
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import {
-  TranslationOutlined,
   AppstoreOutlined,
   LogoutOutlined,
   UserOutlined,
@@ -81,11 +80,6 @@ const AppLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
       key: '/projects',
       icon: <AppstoreOutlined />,
       label: <Link to="/projects">Projects</Link>,
-    },
-    {
-      key: '/translations',
-      icon: <TranslationOutlined />,
-      label: <Link to="/translations">Translations</Link>,
     },
     {
       key: '/api-tokens',
@@ -182,10 +176,11 @@ function App() {
                 <PrivateRoute>
                   <AppLayout>
                     <Routes>
-                      <Route path="/" element={<Navigate to="/translations" replace />} />
+                      <Route path="/" element={<Navigate to="/projects" replace />} />
                       <Route path="/projects" element={<ProjectsPage />} />
-                      <Route path="/projects/:slug" element={<ProjectSettingsPage />} />
-                      <Route path="/translations" element={<TranslationsPage />} />
+                      <Route path="/projects/:slug" element={<TranslationsPage />} />
+                      <Route path="/projects/:slug/settings" element={<ProjectSettingsPage />} />
+                      <Route path="/translations" element={<Navigate to="/projects" replace />} />
                       <Route path="/users" element={<UsersPage />} />
                       <Route path="/ai-settings" element={<AiSettingsPage />} />
                       <Route path="/ai-config" element={<Navigate to="/ai-settings" replace />} />

@@ -523,7 +523,8 @@ const ProjectSettingsPage: React.FC = () => {
         style={{ marginBottom: 16 }}
         items={[
           { title: <Link to="/projects">Projects</Link> },
-          { title: p.name },
+          { title: <Link to={`/projects/${slug}`}>{p.name}</Link> },
+          { title: 'Settings' },
         ]}
       />
 
@@ -543,9 +544,9 @@ const ProjectSettingsPage: React.FC = () => {
         </Title>
         <Button
           icon={<TranslationOutlined />}
-          onClick={() => navigate('/translations')}
+          onClick={() => navigate(`/projects/${slug}`)}
         >
-          Open in Translations
+          Translations
         </Button>
       </div>
 

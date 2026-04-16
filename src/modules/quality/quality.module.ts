@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AiModule } from '../ai/ai.module.js';
 import { ProjectsModule } from '../projects/projects.module.js';
+import { SseModule } from '../sse/sse.module.js';
 import { SandboxValueEntity } from '../translations/entities/sandbox-value.entity.js';
 import { TranslationKeyEntity } from '../translations/entities/translation-key.entity.js';
 import { TranslationValueEntity } from '../translations/entities/translation-value.entity.js';
@@ -21,6 +22,7 @@ import { TranslationQualityService } from './translation-quality.service.js';
   imports: [
     AiModule,
     ProjectsModule,
+    SseModule,
     TypeOrmModule.forFeature([
       SandboxValueEntity,
       TranslationKeyEntity,

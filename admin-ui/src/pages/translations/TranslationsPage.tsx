@@ -17,6 +17,7 @@ import {
   Spin,
   Tabs,
   Empty,
+  Breadcrumb,
 } from 'antd';
 import {
   ArrowRightOutlined,
@@ -25,8 +26,10 @@ import {
   CheckCircleOutlined,
   PlusOutlined,
   ClearOutlined,
+  SettingOutlined,
 } from '@ant-design/icons';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useParams, useNavigate, Link, Navigate } from 'react-router-dom';
 import type { ColumnsType, TablePaginationConfig } from 'antd/es/table';
 import type { FilterValue, SorterResult } from 'antd/es/table/interface';
 import apiClient from '../../api/client';
@@ -34,7 +37,6 @@ import { useSupportedLocales } from '../../hooks/useSupportedLocales';
 
 // ─── Extracted Components ─────────────────────────────────────────────────────
 import type {
-  Project,
   ProjectDetails,
   PaginatedEntries,
   SandboxStatus,
@@ -46,7 +48,6 @@ import type {
   EntriesTableProps,
 } from './components/types';
 import {
-  fetchProjects,
   fetchProjectDetails,
   fetchEntries,
   fetchSandboxStatus,
@@ -64,6 +65,7 @@ import { buildColumns } from './components/columns';
 import FilterBar from './components/FilterBar';
 import EntryEditModal from './components/EntryEditModal';
 import AddLocaleModal from './components/AddLocaleModal';
+import { useProjectEvents } from '../../hooks/useProjectEvents';
 
 const { Title, Text } = Typography;
 
@@ -75,7 +77,7 @@ const ROW_BG: Record<string, string> = {
   deleted: '#fff1f0',
 };
 
-const POLL_INTERVAL_MS = 10_000; // 10s background refresh
+// Polling replaced by real-time SSE updates (useProjectEvents hook)
 
 // ─── Diff helpers ─────────────────────────────────────────────────────────────
 
@@ -251,7 +253,6 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           reviewState || undefined,
         ),
       enabled: !!projectSlug && namespaceIsValid && enabled,
-      refetchInterval: POLL_INTERVAL_MS,
     });
 
   const invalidate = useCallback(() => {
@@ -522,7 +523,7 @@ const EntriesTable: React.FC<EntriesTableProps> = ({
           description={
             (entriesError as any)?.response?.data?.message
             || (entriesError as Error)?.message
-            || 'Could not refresh translations. Will retry automatically.'
+            || 'Could not refresh translations. Try reloading the page.'
           }
           style={{ marginBottom: 12 }}
         />
@@ -666,14 +667,14 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
     queryKey: ['sandbox-status', projectSlug],
     queryFn: () => fetchSandboxStatus(projectSlug),
     enabled: !!projectSlug,
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: false,
   });
 
   const { data: diff, isError: diffIsError } = useQuery<DiffResult>({
     queryKey: ['sandbox-diff', projectSlug],
     queryFn: () => fetchSandboxDiff(projectSlug),
     enabled: !!projectSlug && !!status,
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: false,
   });
 
   const keyStatusMap = useMemo(
@@ -960,7 +961,7 @@ const SandboxTab: React.FC<SandboxTabProps> = ({ projectSlug }) => {
           showIcon
           closable
           message="Background refresh failed"
-          description="Could not refresh sandbox data. Will retry automatically."
+          description="Could not refresh sandbox data. Try reloading the page."
           style={{ marginBottom: 12 }}
         />
       )}
@@ -1403,7 +1404,7 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
     queryKey: ['sandbox-snapshots', projectSlug],
     queryFn: () => fetchSnapshots(projectSlug),
     enabled: !!projectSlug && revertModalOpen,
-    refetchInterval: POLL_INTERVAL_MS,
+    refetchInterval: false,
   });
 
   const revertMutation = useMutation({
@@ -1511,33 +1512,29 @@ const ProductionTab: React.FC<ProductionTabProps> = ({ projectSlug }) => {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 const TranslationsPage: React.FC = () => {
-  const [projectSlug, setProjectSlug] = useState(
-    () => localStorage.getItem('translations_projectSlug') || '',
-  );
+  const { slug: projectSlug } = useParams<{ slug: string }>();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('sandbox');
 
-  const handleProjectChange = (val: string) => {
-    setProjectSlug(val);
-    localStorage.setItem('translations_projectSlug', val);
-  };
+  // SSE: real-time updates from auto-translate and quality workers
+  useProjectEvents(projectSlug);
 
-  const { data: projects = [], isLoading: projectsLoading } = useQuery<
-    Project[]
-  >({
-    queryKey: ['projects'],
-    queryFn: fetchProjects,
+  const { data: project, isLoading: projectLoading } = useQuery<ProjectDetails>({
+    queryKey: ['project', projectSlug],
+    queryFn: () => fetchProjectDetails(projectSlug!),
+    enabled: !!projectSlug,
   });
 
   React.useEffect(() => {
-    if (projects.length > 0) {
-      const slugExists = projects.some((p) => p.slug === projectSlug);
-      if (!projectSlug || !slugExists) {
-        const first = projects[0].slug;
-        setProjectSlug(first);
-        localStorage.setItem('translations_projectSlug', first);
-      }
+    if (!projectLoading && !project && projectSlug) {
+      message.error(`Project "${projectSlug}" not found`);
+      navigate('/projects', { replace: true });
     }
-  }, [projects, projectSlug]);
+  }, [project, projectLoading, projectSlug, navigate]);
+
+  if (!projectSlug) {
+    return <Navigate to="/projects" replace />;
+  }
 
   const tabItems = [
     {
@@ -1548,31 +1545,33 @@ const TranslationsPage: React.FC = () => {
     {
       key: 'production',
       label: 'Production',
-      children: projectSlug ? (
-        <ProductionTab projectSlug={projectSlug} />
-      ) : (
-        <Empty description="Select a project" style={{ marginTop: 48 }} />
-      ),
+      children: <ProductionTab projectSlug={projectSlug} />,
     },
   ];
 
   return (
     <div>
+      <Breadcrumb
+        style={{ marginBottom: 12 }}
+        items={[
+          { title: <Link to="/projects">Projects</Link> },
+          { title: project?.name ?? projectSlug },
+        ]}
+      />
+
       <Row align="middle" gutter={16} style={{ marginBottom: 20 }}>
-        <Col>
+        <Col flex="auto">
           <Title level={3} style={{ margin: 0 }}>
-            Translations
+            {project?.name ?? projectSlug}
           </Title>
         </Col>
         <Col>
-          <Select
-            placeholder="Select project"
-            loading={projectsLoading}
-            value={projectSlug || undefined}
-            onChange={handleProjectChange}
-            style={{ width: 200 }}
-            options={projects.map((p) => ({ value: p.slug, label: p.name }))}
-          />
+          <Button
+            icon={<SettingOutlined />}
+            onClick={() => navigate(`/projects/${projectSlug}/settings`)}
+          >
+            Settings
+          </Button>
         </Col>
       </Row>
 
