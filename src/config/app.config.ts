@@ -13,19 +13,11 @@ type AuthConfig = {
   JWT_SECRET: string;
 };
 
-type S3Config = {
-  region: string;
-  bucket: string;
-  accessKeyId: string;
-  secretAccessKey: string;
-};
-
 export type BaseAppConfig = {
   port: number;
   env: Envs;
   db: PostgresConnectionOptions;
   auth: AuthConfig;
-  s3: S3Config;
 };
 
 export function loadBaseConfig(): BaseAppConfig {
@@ -50,13 +42,6 @@ export function loadBaseConfig(): BaseAppConfig {
       // Logging every SQL query adds ~5-10% latency overhead.
       // Enable only in dev/debug; disabled by default in production.
       logging: process.env.DB_LOGGING === 'true',
-    },
-
-    s3: {
-      region: process.env.AWS_REGION!,
-      bucket: process.env.AWS_S3_BUCKET!,
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
     },
   };
 }

@@ -5,7 +5,7 @@ services:
     profiles: ["dev-tools"]
 
   api:
-    image: ${APP_IMAGE:-nest-js-app:local}-dev
+    image: ${APP_IMAGE:-locale-engine:local}-dev
     env_file:
       - .env
     build:
@@ -59,7 +59,7 @@ services:
     profiles: ["dev-tools"]
 
   quality-worker:
-    image: ${APP_IMAGE:-nest-js-app:local}-dev
+    image: ${APP_IMAGE:-locale-engine:local}-dev
     env_file:
       - .env
     build:
