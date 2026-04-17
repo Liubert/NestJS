@@ -5,27 +5,29 @@ Self-hosted translation management system. Stores, serves, and quality-checks tr
 ## Architecture
 
 ```
-┌──────────────────┐    SSE     ┌──────────────────┐
-│    Admin UI      │◀───────────│       API        │
-│  (React + Vite)  │───────────▶│     (NestJS)     │
-│     :3010        │   REST     │     :8080        │
-└──────────────────┘            └────────┬─────────┘
-                                         │
-                    ┌────────────────────┤
-                    │                    │
-                    ▼                    ▼
-           ┌────────────────┐   ┌──────────────────────┐
-           │ PostgreSQL 15  │   │   Google Gemini AI    │
-           │     :5432      │   │  (gemini-2.0-flash)   │
-           └───────┬────────┘   └──────────────────────┘
-                   │                     ▲
-    LISTEN/NOTIFY  │                     │
-                   │                     │
-           ┌───────▼────────┐            │
-           │ Quality Worker │────────────┘
-           │   (NestJS)     │  scoring via Gemini
-           │ no exposed port│
-           └────────────────┘
+┌──────────────────┐    SSE     ┌──────────────────────────────────────────┐
+│    Admin UI      │◀───────────│                 API (NestJS :8080)       │
+│  (React + Vite)  │───────────▶│                                          │
+│     :3010        │   REST     │  ┌─────────────────┐ ┌────────────────┐  │
+└──────────────────┘            │  │ Auto-Translate   │ │ Quality Worker │  │
+                                │  │ Worker (in-proc) │ │   (in-proc)    │  │
+                                │  └────────┬────────┘ └───────┬────────┘  │
+                                └───────────┼──────────────────┼───────────┘
+                                            │                  │
+                                            ▼                  ▼
+                                   ┌──────────────────────────────────────┐
+                                   │         Google Gemini AI              │
+                                   │        (gemini-2.0-flash)             │
+                                   │                                       │
+                                   │  • bulk translate (all target langs)  │
+                                   │  • quality scoring (1–100 per value)  │
+                                   │  • source grammar check               │
+                                   └──────────────────────────────────────┘
+
+                    ┌────────────────┐
+                    │ PostgreSQL 15  │  LISTEN/NOTIFY for SSE event bus
+                    │     :5432      │  between workers and Admin UI
+                    └────────────────┘
 
 ┌──────────────────────────────────────┐
 │           MCP Server                 │
@@ -40,8 +42,9 @@ Self-hosted translation management system. Stores, serves, and quality-checks tr
 |-----------|-------------|
 | **API** | NestJS REST API. Auth, translation CRUD, AI translate, SSE real-time updates, import/export. Swagger at `/api-docs`. |
 | **Admin UI** | React + Ant Design SPA. Real-time updates via SSE (no polling). Manage translations, projects, users, AI config. |
-| **Quality Worker** | Separate NestJS process. Polls PostgreSQL for pending quality checks, scores translations via Gemini. Notifies API via `pg_notify`. |
-| **PostgreSQL** | All data + inter-process communication via `LISTEN/NOTIFY` (SSE event bus between worker and API). |
+| **Auto-Translate Worker** | In-process background worker. Polls for keys marked `pending_auto_translate`, calls Gemini to translate into all target locales. |
+| **Quality Worker** | In-process background worker. Scores each translation 1–100 via Gemini (accuracy, fluency, context fit). Also checks source English for grammar quality. |
+| **PostgreSQL** | All data + inter-process communication via `LISTEN/NOTIFY` (SSE event bus between workers and Admin UI). |
 | **MCP Server** | npm package for Claude. 21 tools for reading/writing translations. Production writes blocked by design. |
 
 ## Prerequisites
