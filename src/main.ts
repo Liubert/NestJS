@@ -12,20 +12,17 @@ import { AllExceptionsFilter } from './common/filters/global-exception.filter';
 
 async function bootstrap() {
   // CORS: restrict origins via env var.
-  // In prod: CORS_ORIGINS must be set, otherwise no origin is allowed.
-  // In dev: empty CORS_ORIGINS falls back to allow-all for convenience.
+  // Empty CORS_ORIGINS = allow all (this is a translation API consumed by other services).
+  // Set CORS_ORIGINS to restrict (comma-separated list of allowed origins).
   const corsOrigins = (process.env.CORS_ORIGINS ?? '')
     .split(',')
     .map((v) => v.trim())
     .filter(Boolean);
-  const isProd = process.env.NODE_ENV === 'prod';
 
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     cors: corsOrigins.length
       ? { origin: corsOrigins, credentials: true }
-      : isProd
-        ? { origin: false } // Prod: deny all if CORS_ORIGINS not configured
-        : { origin: true, credentials: true }, // Dev: allow all
+      : { origin: true, credentials: true }, // Allow all when not restricted
   });
 
   app.useGlobalPipes(
