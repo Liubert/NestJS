@@ -31,7 +31,7 @@ COPY tsconfig*.json ./
 COPY src ./src
 
 EXPOSE 3000
-CMD ["npm", "run", "start:dev"]
+CMD ["/bin/sh", "-c", "exec ${WORKER_CMD:-npm run start:dev}"]
 
 ############################
 # build
@@ -76,8 +76,8 @@ COPY --chown=node:node package*.json ./
 
 EXPOSE 3000
 
-# Start compiled NestJS app
-CMD ["node", "dist/main.js"]
+# Start compiled NestJS app (or WORKER_CMD if set for quality-worker)
+CMD ["/bin/sh", "-c", "exec ${WORKER_CMD:-node dist/main.js}"]
 
 ############################
 # frontend-deps

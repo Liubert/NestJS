@@ -69,7 +69,7 @@ services:
       DB_USER: ${DB_USER}
       DB_PASS: ${DB_PASS}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
-    command: ["node", "dist/quality-worker.main.js"]
+      WORKER_CMD: "node dist/quality-worker.main.js"
     networks:
       - internal
       - public
