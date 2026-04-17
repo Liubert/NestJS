@@ -1,131 +1,202 @@
-# Localization Platform — Current Architecture
+# Localization Platform
 
-Self-hosted translation management system replacing [locize](https://www.locize.app/). Stores, serves, and quality-checks translations for frontend, mobile, and backend applications.
+Self-hosted translation management system. Stores, serves, and quality-checks translations for frontend, mobile, and backend applications. Drop-in replacement for [Locize](https://www.locize.app/) — same JSON format, only the URL changes.
 
-**Why we are building this:** [locize](https://www.locize.app/) is becoming too expensive — currently around $100/month, expected to grow to $200–300/month after upcoming spring releases. This platform covers 100% of the [locize](https://www.locize.app/) features we actually use.
-
-**Status:** Running on staging. During April 2026 we migrate our own project (frontend, mobile, backend). If successful, in May 2026 we open the platform for other teams.
-
----
-
-## 1. Business / Product View
-
-**Translation management**
-Translations are organized into projects and namespaces (e.g. "front", "mobile", "backend" or "common", "settings"). Each project has its own languages, keys, and team members. Edits are made through the Admin UI or Claude.
-
-The platform covers all parts of the product that need localized text:
-- **Frontend** — UI labels, buttons, messages, validation text
-- **Mobile** — same API as frontend
-- **Backend** — error messages, email templates, PDF generation, push notifications
-
-**Safe editing workflow (Sandbox → Production)**
-All edits happen in a sandbox (draft). Changes reach production only after explicit review and push. Before each push, a snapshot is saved automatically. Production can be reverted to any of the last 5 snapshots.
-
-**AI-powered translation**
-Enter English text → the system generates translations for all target languages (Ukrainian, Norwegian, Swedish, Danish) using Google Gemini.
-
-**Automated quality scoring**
-Every translation is scored 1–100 by AI in the background:
-
-| Level | Score | Meaning |
-|-------|-------|---------|
-| Green | 90–100 | Production-ready |
-| Yellow | 80–89 | Could be improved |
-| Red | Below 80 | Needs rework |
-
-English source text is also checked for grammar quality. Scores and thresholds are configurable at runtime.
-
-**User and access control**
-Two roles: admin (full access) and regular user (access only to assigned projects). Project owners manage their own members.
-
-**Claude integration (MCP)**
-As part of this project, we built an MCP package for Claude. It works as a driver that lets Claude interact with the platform API. Setup is simple: generate a token in Admin UI, give it to Claude, and it can work with translations.
-
-If Claude knows the context of the target project and understands our API, integration is straightforward. During testing, frontend and mobile integrations typically succeeded on the first or second attempt. Backend integrations may require a bit more developer involvement.
-
-Claude cannot push to production — that requires human approval.
-
-**ZIP import**
-Existing translation files can be bulk-imported via ZIP. Projects, locales, and namespaces are created automatically from the file structure.
-
-**Drop-in compatibility**
-The API serves translations in the same JSON format as [locize](https://www.locize.app/). Existing frontend code works without changes — only the URL needs updating.
-
-**Note:** A dedicated manual import/export UI for non-technical users is planned but not yet built.
-
----
-
-## 2. DevOps / Technical View
-
-### Architecture
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           Docker Compose cluster                            │
-│                                                                             │
-│  ┌─────────────────┐   ┌─────────────────┐   ┌──────────────────────────┐  │
-│  │    Admin UI      │   │      API         │   │     Quality Worker       │  │
-│  │    (nginx)       │   │    (NestJS)      │   │       (NestJS)           │  │
-│  │ :3010            │──▶│ :8080            │   │ no exposed port          │  │
-│  └─────────────────┘   └───────┬──────────┘   └────────────┬─────────────┘  │
-│                                │                            │                │
-│              ┌─────────────────┴────────────────────────────┴──────┐         │
-│              │                                                     │         │
-│         ┌────▼─────────┐                            ┌─────────────▼──────┐  │
-│         │ PostgreSQL 15 │                            │     RabbitMQ       │  │
-│         │ :5432         │                            │ :5672 / :15672     │  │
-│         └──────────────┘                            └────────────────────┘  │
-└─────────────────────────────────────────────────────────────────────────────┘
+                         ┌──────────────────────┐
+                         │   Google Gemini AI    │
+                         │  (gemini-2.0-flash)   │
+                         └──────────┬───────────┘
+                                    │
+              ┌─────────────────────┼─────────────────────┐
+              ▼                                           ▼
+┌──────────────────┐                          ┌────────────────────┐
+│       API        │                          │   Quality Worker   │
+│     (NestJS)     │                          │     (NestJS)       │
+│     :8080        │                          │  no exposed port   │
+└────────┬─────────┘                          └──────────┬─────────┘
+         │                                               │
+         └──────────────────┬────────────────────────────┘
+                            │
+              ┌─────────────┴─────────────┐
+              ▼                           ▼
+     ┌────────────────┐         ┌─────────────────┐
+     │ PostgreSQL 15  │         │    RabbitMQ      │
+     │     :5432      │         │  :5672 / :15672  │
+     └────────────────┘         └─────────────────┘
 
+┌──────────────────┐         ┌──────────────────────────────┐
+│    Admin UI      │         │       MCP Server              │
+│  (React + nginx) │────────▶│  (localization-mcp-server)    │
+│     :3010        │         │  npm i localization-mcp-server│
+└──────────────────┘         └──────────────────────────────┘
 ```
 
-### External services
-
-```
-                    ┌──────────────────────────┐
-                    │      Google Gemini AI     │
-                    │    (gemini-2.0-flash)     │
-                    └─────────┬────────────────┘
-                              │
-              ┌───────────────┼───────────────┐
-              ▼                               ▼
-   ┌─────────────────┐             ┌─────────────────┐
-   │       API       │             │  Quality Worker  │
-   │    calls for:   │             │    calls for:    │
-   │  • AI translate │             │  • quality score │
-   └─────────────────┘             └─────────────────┘
-
-   ┌──────────────────────────────────────────────────┐
-   │                  MCP Server                       │
-   │         (localization-mcp-server)                 │
-   │                                                   │
-   │  Installed as a separate npm package.             │
-   │  Connects Claude to the API via MCP token.        │
-   │  21 tools: read/write sandbox, diff, validate.    │
-   │  Production writes blocked — human approval only. │
-   │                                                   │
-   │  npm install localization-mcp-server              │
-   └──────────────────────────────┬───────────────────┘
-                                  │
-                                  ▼
-                         ┌────────────────┐
-                         │  Platform API  │
-                         │    (:8080)     │
-                         └────────────────┘
-```
-
-### Components
-
-| Component | What it does |
+| Component | Description |
 |-----------|-------------|
-| **API** (NestJS, :8080) | REST API for all translation ops, auth, user management. Swagger at `/api-docs`. |
-| **Admin UI** (React + nginx, :3010) | SPA for managing translations, projects, users, AI config, API tokens. |
-| **Quality Worker** (NestJS) | Consumes quality-check jobs from RabbitMQ, calls Gemini, writes scores to DB. |
-| **PostgreSQL 15** | All data: translations, users, projects, quality scores, snapshots. |
-| **RabbitMQ** | Async quality processing with retry (3×, 60s delay) and dead-letter queue. |
-| **Google Gemini** | Translation generation + quality scoring. Model: `gemini-2.0-flash`. |
-| **MCP Server** | Separate npm package ([localization-mcp-server](https://www.npmjs.com/package/localization-mcp-server)). 21 tools for Claude. Auth via MCP token (`lmcp_` prefix). Production writes blocked by design. |
+| **API** | NestJS REST API. Auth, translation CRUD, AI translate, import/export. Swagger at `/api-docs`. |
+| **Admin UI** | React + Ant Design SPA. Manage translations, projects, users, AI config, API tokens. |
+| **Quality Worker** | Separate NestJS process. Picks quality-check jobs from RabbitMQ, scores translations via Gemini. |
+| **MCP Server** | npm package for Claude. 21 tools for reading/writing translations. Production writes blocked by design. |
 
-### Hosting
+## Prerequisites
 
-Currently hosted on a personal project server at `http://79.76.35.167:3010` (Admin UI) / `:8080` (API). Will be moved to a company-owned host soon.
+- Node.js 22+
+- Docker & Docker Compose
+- Google Gemini API key (for AI features)
+
+## Quick Start
+
+```bash
+# 1. Clone and configure
+git clone https://github.com/Liubert/NestJS.git
+cd NestJS
+cp .env.example .env
+# Edit .env — set JWT_SECRET, DB_PASS, GEMINI_API_KEY
+
+# 2. Build and start everything (DB + API + quality worker)
+make init
+
+# 3. Start Admin UI (separate terminal)
+cd admin-ui && npm install && npm run dev
+# Open http://localhost:3010
+```
+
+### Development (Docker)
+
+```bash
+make dev            # Start dev stack (hot-reload)
+make dev-build      # Rebuild and start (after package.json changes)
+make dev-down       # Stop
+make dev-logs       # Follow logs
+make dev-ps         # Container status
+make migrate        # Run DB migrations
+make seed           # Seed test data
+make reset          # Reset DB and re-seed (destroys data)
+```
+
+### Development (no Docker)
+
+```bash
+make dev-setup-local   # One-time: install PostgreSQL, deps, run migrations
+make dev-local         # Start API + Admin UI
+make dev-local-api     # Start API only
+```
+
+### Tests
+
+```bash
+npm test                                    # All tests
+npx jest --testPathPattern="<pattern>"      # Specific test
+```
+
+### Lint
+
+```bash
+npm run lint          # Backend (auto-fix)
+npm run lint:check    # Backend (check only)
+cd admin-ui && npm run lint     # Frontend
+```
+
+## Environment Variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `APP_PORT` | No | API port (default: 3000, exposed as 8080 via Docker) |
+| `JWT_SECRET` | Yes | Secret for signing JWT tokens |
+| `DB_HOST` | Yes | PostgreSQL host |
+| `DB_PORT` | No | PostgreSQL port (default: 5432) |
+| `DB_NAME` | Yes | Database name |
+| `DB_USER` | Yes | Database user |
+| `DB_PASS` | Yes | Database password |
+| `RABBITMQ_URL` | Yes | AMQP connection string |
+| `GEMINI_API_KEY` | Yes | Google Gemini API key |
+| `CORS_ORIGINS` | No | Comma-separated allowed origins |
+
+## MCP Integration (Claude)
+
+The platform ships with an [MCP server](https://www.npmjs.com/package/localization-mcp-server) that lets Claude read and write translations directly.
+
+### Setup
+
+1. **Generate an API token** in Admin UI (API Tokens page)
+
+2. **Add to Claude config** (`~/.claude.json` or Claude Desktop config):
+
+```json
+{
+  "mcpServers": {
+    "localization": {
+      "command": "npx",
+      "args": ["-y", "localization-mcp-server"],
+      "env": {
+        "BACKEND_URL": "http://localhost:8080",
+        "MCP_TOKEN": "lmcp_your_token_here"
+      }
+    }
+  }
+}
+```
+
+3. **Verify**: ask Claude to list projects — it should return your project list.
+
+### What Claude Can Do
+
+- Browse projects, namespaces, locales, and translations
+- Edit translations in sandbox (draft mode)
+- Run AI translation and quality checks
+- View diffs between sandbox and production
+- Validate translations before push
+- **Cannot** push to production — requires human approval in Admin UI
+
+### Tips
+
+- Give Claude context about the target project and its domain for better translations
+- Frontend and mobile integrations typically succeed on the first attempt
+- Backend integrations (error messages, emails) may need more guidance
+
+## API
+
+Full API documentation is available at `/api-docs` (Swagger UI) when the server is running.
+
+### Public Endpoints (Locize-compatible)
+
+```
+GET /:projectSlug/:namespace/:locale    — Serve translations JSON
+GET /:projectSlug/locales               — List project locales
+```
+
+### Protected Endpoints (JWT required)
+
+```
+POST   /auth/login                      — Get JWT token
+POST   /auth/forgot-password            — Request password reset
+POST   /auth/reset-password             — Reset password
+
+GET    /translations/projects           — List projects
+POST   /translations/projects           — Create project
+GET    /translations/projects/:slug     — Project details
+DELETE /translations/projects/:slug     — Delete project
+
+POST   /translations/ai-translate       — AI translation via Gemini
+POST   /translations/ai-quality-check   — Quality check
+POST   /translations/import             — ZIP import
+```
+
+## Deployment
+
+CI/CD is configured via GitHub Actions. Push to `develop` triggers:
+1. Build Docker images
+2. Push to GitHub Container Registry (GHCR)
+3. Deploy to staging via SSH
+
+```bash
+# Manual deploy trigger
+gh workflow run build-and-stage.yml --ref develop
+```
+
+## License
+
+Private. Internal use only.
