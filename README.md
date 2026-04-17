@@ -5,54 +5,57 @@ Self-hosted translation management system. Stores, serves, and quality-checks tr
 ## Architecture
 
 ```
-                         ┌──────────────────────┐
-                         │   Google Gemini AI    │
-                         │  (gemini-2.0-flash)   │
-                         └──────────┬───────────┘
-                                    │
-              ┌─────────────────────┼─────────────────────┐
-              ▼                                           ▼
-┌──────────────────┐                          ┌────────────────────┐
-│       API        │                          │   Quality Worker   │
-│     (NestJS)     │                          │     (NestJS)       │
-│     :8080        │                          │  no exposed port   │
-└────────┬─────────┘                          └──────────┬─────────┘
-         │                                               │
-         └──────────────────┬────────────────────────────┘
-                            │
-              ┌─────────────┴─────────────┐
-              ▼                           ▼
-     ┌────────────────┐         ┌─────────────────┐
-     │ PostgreSQL 15  │         │    RabbitMQ      │
-     │     :5432      │         │  :5672 / :15672  │
-     └────────────────┘         └─────────────────┘
+┌──────────────────┐    SSE     ┌──────────────────┐
+│    Admin UI      │◀───────────│       API        │
+│  (React + Vite)  │───────────▶│     (NestJS)     │
+│     :3010        │   REST     │     :8080        │
+└──────────────────┘            └────────┬─────────┘
+                                         │
+                    ┌────────────────────┤
+                    │                    │
+                    ▼                    ▼
+           ┌────────────────┐   ┌──────────────────────┐
+           │ PostgreSQL 15  │   │   Google Gemini AI    │
+           │     :5432      │   │  (gemini-2.0-flash)   │
+           └───────┬────────┘   └──────────────────────┘
+                   │                     ▲
+    LISTEN/NOTIFY  │                     │
+                   │                     │
+           ┌───────▼────────┐            │
+           │ Quality Worker │────────────┘
+           │   (NestJS)     │  scoring via Gemini
+           │ no exposed port│
+           └────────────────┘
 
-┌──────────────────┐         ┌──────────────────────────────┐
-│    Admin UI      │         │       MCP Server              │
-│  (React + nginx) │────────▶│  (localization-mcp-server)    │
-│     :3010        │         │  npm i localization-mcp-server│
-└──────────────────┘         └──────────────────────────────┘
+┌──────────────────────────────────────┐
+│           MCP Server                 │
+│    (localization-mcp-server)         │
+│    npm i localization-mcp-server     │
+│                                      │
+│  Claude ──▶ 21 tools ──▶ API :8080   │
+└──────────────────────────────────────┘
 ```
 
 | Component | Description |
 |-----------|-------------|
-| **API** | NestJS REST API. Auth, translation CRUD, AI translate, import/export. Swagger at `/api-docs`. |
-| **Admin UI** | React + Ant Design SPA. Manage translations, projects, users, AI config, API tokens. |
-| **Quality Worker** | Separate NestJS process. Picks quality-check jobs from RabbitMQ, scores translations via Gemini. |
+| **API** | NestJS REST API. Auth, translation CRUD, AI translate, SSE real-time updates, import/export. Swagger at `/api-docs`. |
+| **Admin UI** | React + Ant Design SPA. Real-time updates via SSE (no polling). Manage translations, projects, users, AI config. |
+| **Quality Worker** | Separate NestJS process. Polls PostgreSQL for pending quality checks, scores translations via Gemini. Notifies API via `pg_notify`. |
+| **PostgreSQL** | All data + inter-process communication via `LISTEN/NOTIFY` (SSE event bus between worker and API). |
 | **MCP Server** | npm package for Claude. 21 tools for reading/writing translations. Production writes blocked by design. |
 
 ## Prerequisites
 
 - Node.js 22+
-- Docker & Docker Compose
+- Docker & Docker Compose (or local PostgreSQL 15+)
 - Google Gemini API key (for AI features)
 
 ## Quick Start
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/Liubert/NestJS.git
-cd NestJS
+git clone https://gitlab.com/lfedyshyn/Locale-Engine.git
+cd Locale-Engine
 cp .env.example .env
 # Edit .env — set JWT_SECRET, DB_PASS, GEMINI_API_KEY
 
@@ -111,7 +114,6 @@ cd admin-ui && npm run lint     # Frontend
 | `DB_NAME` | Yes | Database name |
 | `DB_USER` | Yes | Database user |
 | `DB_PASS` | Yes | Database password |
-| `RABBITMQ_URL` | Yes | AMQP connection string |
 | `GEMINI_API_KEY` | Yes | Google Gemini API key |
 | `CORS_ORIGINS` | No | Comma-separated allowed origins |
 
@@ -187,15 +189,13 @@ POST   /translations/import             — ZIP import
 
 ## Deployment
 
-CI/CD is configured via GitHub Actions. Push to `develop` triggers:
-1. Build Docker images
-2. Push to GitHub Container Registry (GHCR)
-3. Deploy to staging via SSH
+CI/CD pipelines are in `.github/workflows/`:
 
-```bash
-# Manual deploy trigger
-gh workflow run build-and-stage.yml --ref develop
-```
+| Workflow | Trigger | What it does |
+|----------|---------|-------------|
+| `pr-checks.yml` | Pull request | Lint, tests, build validation |
+| `build-and-stage.yml` | Push to `develop` | Build Docker images → GHCR → deploy to staging |
+| `deploy-prod.yml` | Manual | Deploy to production |
 
 ## License
 
